@@ -73,6 +73,8 @@ Experimental protegido por flags:
 
 Same-generation e o modo estavel: os dois saves sao da mesma geracao e o client escreve o raw payload daquela mesma geracao. Cross-generation usa payload canonico e conversores locais; o servidor apenas valida sala, senha, modo, ofertas e confirmacoes.
 
+No app R36S, a criacao de sala usa deteccao automatica: o usuario cria a sala, o segundo jogador entra, e o servidor escolhe `same_generation`, `time_capsule_gen1_gen2`, `forward_transfer_to_gen3` ou `legacy_downconvert_experimental` conforme o par de geracoes. A troca ainda bloqueia no ato da oferta se o Pokemon, os moves ou as perdas de dados nao passarem pelo `CompatibilityReport`.
+
 Modos protegidos por flags:
 
 - `time_capsule_gen1_gen2`: Gen 1 <-> Gen 2 para Pokemon compativeis.

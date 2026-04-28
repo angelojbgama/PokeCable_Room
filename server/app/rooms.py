@@ -11,7 +11,10 @@ from .models import (
     PokemonOffer,
     Room,
     RoomError,
+    FORWARD_TRANSFER_TO_GEN3,
+    LEGACY_DOWNCONVERT_EXPERIMENTAL,
     SAME_GENERATION,
+    TIME_CAPSULE_GEN1_GEN2,
     game_family_for_generation,
     generation_mismatch_message,
     now_utc,
@@ -144,6 +147,11 @@ class RoomManager:
                 raise RoomError("room_expired", "Sala expirada.")
             if not verify_room_password(password, room.password_hash):
                 raise RoomError("invalid_password", "Senha incorreta.")
+            peer_slot = "A" if "A" in room.players else "B"
+            peer = room.players.get(peer_slot)
+            entrant_supported_modes = (
+                supported_trade_modes if supported_trade_modes is not None else supported_trade_modes_for_generation(generation)
+            )
             if generation != room.generation:
                 mode = trade_mode_for_generations(room.generation, generation)
                 mode_enabled = self._trade_mode_enabled(mode)
@@ -165,20 +173,28 @@ class RoomManager:
                     if mode_enabled
                     else ["Use same-generation por enquanto ou aguarde o conversor deste modo."],
                 }
-                if room.trade_mode != mode:
-                    if room.trade_mode != SAME_GENERATION or mode_enabled:
-                        raise RoomError("game_mismatch", f"Esta sala usa {room.trade_mode}, mas este par exige {mode}.")
+                if room.trade_mode != SAME_GENERATION and room.trade_mode != mode:
+                    raise RoomError(
+                        "game_mismatch",
+                        f"Esta sala usa {room.trade_mode}, mas este par exige {mode}. "
+                        f"Crie uma nova sala no modo {_human_trade_mode(mode)}.",
+                    )
                 if not mode_enabled:
                     raise RoomError("generation_mismatch", generation_mismatch_message(room.generation, generation))
+                if room.trade_mode == SAME_GENERATION:
+                    if peer is not None and mode not in peer.supported_trade_modes:
+                        raise RoomError("game_mismatch", f"O criador da sala nao anunciou suporte a {mode}.")
+                    if mode not in entrant_supported_modes:
+                        raise RoomError("game_mismatch", f"Este client nao anunciou suporte a {mode}.")
+                    room.trade_mode = mode
+                    room.compatibility_status["mode"] = mode
+                    room.compatibility_status["warnings"].append(
+                        f"Modo detectado automaticamente: {_human_trade_mode(mode)}."
+                    )
             elif room.trade_mode != SAME_GENERATION:
                 raise RoomError("game_mismatch", f"Esta sala usa {room.trade_mode}; um segundo jogador Gen {generation} nao corresponde a esse modo.")
             if not self._trade_mode_enabled(room.trade_mode):
                 raise RoomError("generation_mismatch", generation_mismatch_message(room.generation, generation))
-            peer_slot = "A" if "A" in room.players else "B"
-            peer = room.players.get(peer_slot)
-            entrant_supported_modes = (
-                supported_trade_modes if supported_trade_modes is not None else supported_trade_modes_for_generation(generation)
-            )
             if room.trade_mode != SAME_GENERATION:
                 if peer is not None and room.trade_mode not in peer.supported_trade_modes:
                     raise RoomError("game_mismatch", f"O criador da sala nao anunciou suporte a {room.trade_mode}.")
@@ -319,3 +335,13 @@ class RoomManager:
         if trade_mode == SAME_GENERATION:
             return True
         return self.cross_generation_enabled and trade_mode in self.enabled_trade_modes
+
+
+def _human_trade_mode(trade_mode: str) -> str:
+    labels = {
+        SAME_GENERATION: "Same-generation",
+        TIME_CAPSULE_GEN1_GEN2: "Time Capsule Gen 1/2",
+        FORWARD_TRANSFER_TO_GEN3: "Transfer para Gen 3",
+        LEGACY_DOWNCONVERT_EXPERIMENTAL: "Downconvert experimental Gen 3 -> Gen 1/2",
+    }
+    return labels.get(trade_mode, trade_mode)

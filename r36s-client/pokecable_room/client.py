@@ -100,13 +100,12 @@ async def run_trade(
             ui.print("Sala encontrada. Aguardando ofertas.")
             room_info = dict(joined.get("room") or {})
 
-        if action == "join":
-            trade_mode = str(room_info.get("trade_mode") or trade_mode)
-            if trade_mode != SAME_GENERATION and not (cross_generation_enabled and trade_mode in enabled_cross_generation_modes):
-                raise RuntimeError("Este modo de troca entre geracoes nao esta habilitado neste client.")
+        trade_mode = str(room_info.get("trade_mode") or trade_mode)
+        if trade_mode != SAME_GENERATION and not (cross_generation_enabled and trade_mode in enabled_cross_generation_modes):
+            raise RuntimeError("Este modo de troca entre geracoes nao esta habilitado neste client.")
         target_generation = _peer_generation(room_info, network.client_id) if trade_mode != SAME_GENERATION else local_generation
         expected_mode = get_trade_mode(local_generation, target_generation)
-        if action == "create" and expected_mode != trade_mode:
+        if trade_mode != SAME_GENERATION and expected_mode != trade_mode:
             raise RuntimeError(f"Modo da sala ({trade_mode}) nao corresponde ao par Gen {local_generation} -> Gen {target_generation} ({expected_mode}).")
         offer = _build_offer_payload(
             parser,
@@ -557,9 +556,6 @@ def interactive_menu() -> int:
             "PokeCable Room",
             [
                 "create_same",
-                "create_time_capsule",
-                "create_transfer_gen3",
-                "create_downconvert",
                 "join",
                 "save",
                 "party",
@@ -570,10 +566,7 @@ def interactive_menu() -> int:
                 "exit",
             ],
             [
-                "Criar sala same-generation",
-                "Criar sala Time Capsule Gen 1/2",
-                "Criar sala Transfer para Gen 3",
-                "Criar sala Downconvert experimental",
+                "Criar sala",
                 "Entrar em sala",
                 "Escolher save",
                 "Ver party",

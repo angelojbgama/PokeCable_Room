@@ -364,6 +364,26 @@ PrepareRoomCredentials() {
     printf "%s\t%s" "$room" "$password"
 }
 
+TradeModeLabel() {
+    case "$1" in
+        "same_generation")
+            printf "Same-generation"
+            ;;
+        "time_capsule_gen1_gen2")
+            printf "Time Capsule Gen 1/2"
+            ;;
+        "forward_transfer_to_gen3")
+            printf "Transfer para Gen 3"
+            ;;
+        "legacy_downconvert_experimental")
+            printf "Downconvert Gen 3 -> Gen 1/2"
+            ;;
+        *)
+            printf "%s" "$1"
+            ;;
+    esac
+}
+
 ChooseSave() {
     local tmp
     local choice
@@ -455,6 +475,7 @@ PY
 RunRealTrade() {
     local action="$1"
     local action_label="$2"
+    local trade_mode="${3:-same_generation}"
     local save_path
     local pokemon_location
     local server_url
@@ -462,6 +483,7 @@ RunRealTrade() {
     local password
     local credentials
     local status
+    local mode_label
 
     save_path="$(ChooseSave)" || return
     [ -z "$save_path" ] && return
@@ -472,10 +494,14 @@ RunRealTrade() {
     credentials="$(PrepareRoomCredentials "$action" "$action_label")" || return
     room="${credentials%%$'\t'*}"
     password="${credentials#*$'\t'}"
+    mode_label="$(TradeModeLabel "$trade_mode")"
+    if [ "$action" = "create" ] && [ "$trade_mode" = "same_generation" ]; then
+        mode_label="Automatico"
+    fi
 
     dialog --backtitle "$APP_NAME" --title "Confirmar troca" \
-        --yesno "Sala: $room\nSenha: $password\n\nSave:\n$(basename "$save_path")\nPokemon: $pokemon_location\n\nFeche o emulador antes de continuar.\nA tool criara backup antes de escrever.\n\nDepois que os dois usuarios oferecerem Pokemon, a troca sera confirmada automaticamente.\n\nContinuar?" \
-        18 76 > "$CURR_TTY" 2>&1 || return
+        --yesno "Modo: $mode_label\nSala: $room\nSenha: $password\n\nSave:\n$(basename "$save_path")\nPokemon: $pokemon_location\n\nFeche o emulador antes de continuar.\nA tool criara backup antes de escrever.\n\nQuando o segundo usuario entrar, o servidor detecta same-generation ou cross-generation automaticamente.\n\nDepois que os dois usuarios oferecerem Pokemon, a troca sera confirmada automaticamente.\n\nContinuar?" \
+        20 76 > "$CURR_TTY" 2>&1 || return
 
     RunClientWithDialog "$action_label" \
         python3 "$APP_DIR/client.py" \
@@ -485,6 +511,7 @@ RunRealTrade() {
         --password "$password" \
         --save "$save_path" \
         --pokemon-location "$pokemon_location" \
+        --trade-mode "$trade_mode" \
         --auto-confirm
     status=$?
 
@@ -506,7 +533,7 @@ ConfigureServer() {
     updated="$(AskText "Servidor VPS" "URL WebSocket do servidor:" "$current")" || return
     [ -z "$updated" ] && return
     SetServerUrl "$updated"
-    MsgBox "Servidor VPS" "Servidor configurado:\n$updated\n\nCross-generation permanece desativado." 10 72
+    MsgBox "Servidor VPS" "Servidor configurado:\n$updated\n\nModos cross-generation dependem do config.json local e do servidor." 10 72
 }
 
 HealthCheck() {
@@ -620,7 +647,7 @@ ShowLogs() {
 
 About() {
     MsgBox "PokeCable Room" \
-"Produto inicial\n\nSuporte real atual:\n- Gen 1 Red/Blue/Yellow: party\n- Gen 2 Gold/Silver/Crystal: party\n- Gen 3 Ruby/Sapphire/Emerald/FireRed/LeafGreen: party\n- Backup automatico antes de escrever\n\nAinda nao implementado:\n- Boxes\n- Troca entre geracoes\n\nServidor:\n$(GetServerUrl)" 20 74
+"Produto inicial\n\nSuporte real atual:\n- Gen 1 Red/Blue/Yellow: party\n- Gen 2 Gold/Silver/Crystal: party\n- Gen 3 Ruby/Sapphire/Emerald/FireRed/LeafGreen: party\n- Same-generation\n- Cross-generation por flags e conversores locais\n- Backup automatico antes de escrever\n\nAinda nao implementado:\n- Boxes\n\nServidor:\n$(GetServerUrl)" 20 74
 }
 
 StartConsole
@@ -630,7 +657,7 @@ EnsureLocalConfig
 while true; do
     CHOICE=$(dialog --backtitle "$APP_NAME" \
         --title "PokeCable Room" \
-        --menu "Troca real por edicao segura de save\nGen 1, Gen 2 e Gen 3 ficam sempre separados.\nFeche o emulador antes de trocar.\nServidor: $(ServerHostLabel)" \
+        --menu "Troca real por edicao segura de save\nO modo e detectado quando o segundo usuario entra.\nFeche o emulador antes de trocar.\nServidor: $(ServerHostLabel)" \
         16 72 5 \
         "CreateReal" "Criar troca" \
         "JoinReal" "Entrar em troca" \

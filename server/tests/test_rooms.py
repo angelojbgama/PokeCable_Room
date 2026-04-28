@@ -268,6 +268,36 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(raised.exception.code, "game_mismatch")
 
+    async def test_same_generation_room_auto_switches_to_required_cross_generation_mode(self) -> None:
+        manager = RoomManager(
+            room_timeout_seconds=60,
+            max_rooms=10,
+            cross_generation_enabled=True,
+            enabled_trade_modes=[FORWARD_TRANSFER_TO_GEN3],
+        )
+        room, _ = await manager.create_room(
+            room_name="auto-forward",
+            password="pw",
+            client_id="a",
+            generation=1,
+            game="pokemon_red",
+            supported_trade_modes=[SAME_GENERATION, FORWARD_TRANSFER_TO_GEN3],
+        )
+        self.assertEqual(room.trade_mode, SAME_GENERATION)
+
+        room, slot = await manager.join_room(
+            room_name="auto-forward",
+            password="pw",
+            client_id="b",
+            generation=3,
+            game="pokemon_emerald",
+            supported_trade_modes=[SAME_GENERATION, FORWARD_TRANSFER_TO_GEN3],
+        )
+        self.assertEqual(slot, "B")
+        self.assertEqual(room.trade_mode, FORWARD_TRANSFER_TO_GEN3)
+        self.assertTrue(room.compatibility_status["compatible"])
+        self.assertEqual(room.compatibility_status["mode"], FORWARD_TRANSFER_TO_GEN3)
+
     async def test_forward_room_rejects_reverse_offer_when_legacy_mode_is_not_enabled(self) -> None:
         manager = RoomManager(
             room_timeout_seconds=60,

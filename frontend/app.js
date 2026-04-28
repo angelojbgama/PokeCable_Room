@@ -807,11 +807,8 @@ function sendOffer() {
 }
 
 function supportedTradeModes(generation) {
-  const modes = ["same_generation"];
-  if (generation === 1 || generation === 2) modes.push("time_capsule_gen1_gen2");
-  if (generation === 1 || generation === 2 || generation === 3) modes.push("forward_transfer_to_gen3");
-  if (generation === 3) modes.push("legacy_downconvert_experimental");
-  return modes;
+  void generation;
+  return ["same_generation"];
 }
 
 async function startRoom(action) {
