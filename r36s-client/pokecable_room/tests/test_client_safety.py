@@ -104,12 +104,27 @@ class ClientSafetyTests(unittest.TestCase):
         self.assertIn(SAME_GENERATION, modes)
         self.assertIn(TIME_CAPSULE_GEN1_GEN2, modes)
 
-    def test_client_announces_canonical_protocol_only_when_cross_generation_is_enabled(self) -> None:
-        self.assertEqual(_client_supported_protocols(cross_generation_enabled=False), ["raw_same_generation"])
+    def test_client_supported_protocols_always_include_raw_and_can_include_canonical(self) -> None:
+        self.assertEqual(_client_supported_protocols(cross_generation_capable=False), ["raw_same_generation"])
         self.assertEqual(
-            _client_supported_protocols(cross_generation_enabled=True),
+            _client_supported_protocols(cross_generation_capable=True),
             ["raw_same_generation", "canonical_cross_generation"],
         )
+
+    def test_preflight_cross_generation_disabled_returns_clear_error(self) -> None:
+        payload = canonical_payload(3, 1, 151, "Mew", native_id=151)
+        ok, report = _preflight_result_for_payload(
+            payload,
+            1,
+            cross_generation_enabled=False,
+            enabled_cross_generation_modes=["legacy_downconvert_experimental"],
+            cross_generation_policy="safe_default",
+            auto_confirm=False,
+            unsafe_auto_confirm_data_loss=False,
+            ui=FakeUI(),
+        )
+        self.assertFalse(ok)
+        self.assertIn("Configurar cross-generation", " ".join(report["blocking_reasons"]))
 
     def test_preflight_mew_gen3_to_gen1_allows_with_manual_confirmation(self) -> None:
         payload = canonical_payload(3, 1, 151, "Mew", native_id=151)

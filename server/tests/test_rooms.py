@@ -129,6 +129,82 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
             await manager.join_room(room_name="partial", password="pw", client_id="b", generation=3, game="pokemon_emerald", supported_protocols=PROTOCOLS)
         self.assertEqual(raised.exception.code, "trade_mode_disabled")
 
+    async def test_failed_join_rolls_back_player_slot(self) -> None:
+        manager = RoomManager(room_timeout_seconds=60, max_rooms=10, cross_generation_enabled=True, enabled_trade_modes=ALL_CROSS_MODES)
+        room, _slot = await manager.create_room(
+            room_name="rollback",
+            password="pw",
+            client_id="a",
+            generation=1,
+            game="pokemon_red",
+            supported_protocols=PROTOCOLS,
+        )
+        with self.assertRaises(RoomError) as raised:
+            await manager.join_room(
+                room_name="rollback",
+                password="pw",
+                client_id="b",
+                generation=3,
+                game="pokemon_emerald",
+                supported_protocols=[RAW_SAME_GENERATION],
+            )
+        self.assertEqual(raised.exception.code, "game_mismatch")
+        self.assertEqual(set(room.players), {"A"})
+        self.assertNotIn("b", manager.client_rooms)
+
+        room, slot = await manager.join_room(
+            room_name="rollback",
+            password="pw",
+            client_id="b",
+            generation=3,
+            game="pokemon_emerald",
+            supported_protocols=PROTOCOLS,
+        )
+        self.assertEqual(slot, "B")
+        self.assertTrue(room.is_ready())
+
+    async def test_no_room_full_after_failed_cross_generation_join(self) -> None:
+        manager = RoomManager(room_timeout_seconds=60, max_rooms=10, cross_generation_enabled=True, enabled_trade_modes=ALL_CROSS_MODES)
+        await manager.create_room(room_name="ghost", password="pw", client_id="a", generation=1, game="pokemon_red", supported_protocols=PROTOCOLS)
+        with self.assertRaises(RoomError):
+            await manager.join_room(
+                room_name="ghost",
+                password="pw",
+                client_id="b",
+                generation=3,
+                game="pokemon_emerald",
+                supported_protocols=[RAW_SAME_GENERATION],
+            )
+        try:
+            room, slot = await manager.join_room(
+                room_name="ghost",
+                password="pw",
+                client_id="b",
+                generation=3,
+                game="pokemon_emerald",
+                supported_protocols=PROTOCOLS,
+            )
+        except RoomError as exc:
+            self.fail(f"Join after failed attempt should not fail with {exc.code}: {exc.message}")
+        self.assertEqual(slot, "B")
+        self.assertTrue(room.is_ready())
+
+    async def test_cross_generation_join_requires_protocol_but_does_not_leave_ghost(self) -> None:
+        manager = RoomManager(room_timeout_seconds=60, max_rooms=10, cross_generation_enabled=True, enabled_trade_modes=ALL_CROSS_MODES)
+        room, _slot = await manager.create_room(room_name="protocol", password="pw", client_id="a", generation=1, game="pokemon_red", supported_protocols=PROTOCOLS)
+        with self.assertRaises(RoomError) as raised:
+            await manager.join_room(
+                room_name="protocol",
+                password="pw",
+                client_id="b",
+                generation=3,
+                game="pokemon_emerald",
+                supported_protocols=[RAW_SAME_GENERATION],
+            )
+        self.assertEqual(raised.exception.code, "game_mismatch")
+        self.assertEqual(list(room.players), ["A"])
+        self.assertNotIn("b", manager.client_rooms)
+
     async def test_same_generation_does_not_require_cross_generation(self) -> None:
         manager = RoomManager(room_timeout_seconds=60, max_rooms=10, cross_generation_enabled=False)
         await manager.create_room(room_name="same", password="pw", client_id="a", generation=2, game="pokemon_crystal", supported_protocols=[RAW_SAME_GENERATION])

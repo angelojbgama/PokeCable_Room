@@ -46,7 +46,7 @@ wss://9kernel.vps-kinghost.net/ws
 
 O menu nao pede para escolher Time Capsule, Transfer ou Downconvert. A sala e unica: cada jogador escolhe o save e o Pokemon, e o sistema valida automaticamente se a troca e same-generation ou cross-generation.
 
-Para testes cross-generation, edite `config.json` e habilite somente os modos validados:
+Para testes cross-generation, use `Configurar cross-generation` no menu ou edite `config.json` e habilite somente os modos validados:
 
 ```json
 "cross_generation": {

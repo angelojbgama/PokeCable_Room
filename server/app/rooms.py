@@ -164,7 +164,13 @@ class RoomManager:
                 supported_trade_modes=entrant_supported_modes,
                 supported_protocols=entrant_supported_protocols,
             )
-            self._derive_and_validate_room_modes_locked(room)
+            try:
+                self._derive_and_validate_room_modes_locked(room)
+            except Exception:
+                room.players.pop(slot, None)
+                room.scrub_sensitive_data()
+                self.client_rooms.pop(client_id, None)
+                raise
             self.client_rooms[client_id] = (room_name, slot)
             return room, slot
 
@@ -342,7 +348,7 @@ class RoomManager:
     ) -> list[str]:
         protocols = set(supported_protocols or [])
         protocols.add(RAW_SAME_GENERATION)
-        if any(mode != SAME_GENERATION for mode in supported_trade_modes):
+        if not supported_protocols and any(mode != SAME_GENERATION for mode in supported_trade_modes):
             protocols.add(CANONICAL_CROSS_GENERATION)
         return sorted(protocols)
 
@@ -366,10 +372,13 @@ class RoomManager:
                 raise RoomError(
                     "trade_mode_disabled",
                     f"O modo necessario {_human_trade_mode(missing[0])} nao esta habilitado no servidor.",
-                )
+            )
             for player in room.players.values():
                 if CANONICAL_CROSS_GENERATION not in player.supported_protocols:
-                    raise RoomError("game_mismatch", "Este client nao anunciou suporte a troca canonical cross-generation.")
+                    raise RoomError(
+                        "game_mismatch",
+                        "O client nao anunciou protocolo canonical_cross_generation. Atualize o client ou habilite cross-generation nas configuracoes.",
+                    )
         else:
             for player in room.players.values():
                 if RAW_SAME_GENERATION not in player.supported_protocols:

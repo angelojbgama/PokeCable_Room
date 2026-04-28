@@ -42,4 +42,6 @@ O usuario nao escolhe modo de geracao ao criar sala. O app detecta a geracao de 
 
 Suporte atual: party de Gen 1, party de Gen 2 Gold/Silver/Crystal e party de Gen 3. Boxes ainda nao estao habilitadas. Cross-generation fica desligado por padrao e exige flags no client e no servidor.
 
+Use `Configurar cross-generation` no menu para ativar o client, habilitar os tres modos validados e escolher a politica `safe_default`, `strict` ou `permissive`.
+
 Evolucao por item esta implementada para Gen 2/3, mas `item_trade_evolutions_enabled` permanece `false` por padrao para testes controlados.

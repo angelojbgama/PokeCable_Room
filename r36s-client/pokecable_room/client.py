@@ -14,7 +14,10 @@ if __package__ is None or __package__ == "":
 from pokecable_room.canonical import CanonicalPokemon
 from pokecable_room.compatibility import build_compatibility_report, supported_modes_for_generation
 from pokecable_room.compatibility.matrix import (
+    FORWARD_TRANSFER_TO_GEN3,
+    LEGACY_DOWNCONVERT_EXPERIMENTAL,
     SAME_GENERATION,
+    TIME_CAPSULE_GEN1_GEN2,
     UNSUPPORTED,
     get_trade_mode,
 )
@@ -66,7 +69,7 @@ async def run_trade(
         cross_generation_enabled=cross_generation_enabled,
         enabled_cross_generation_modes=enabled_cross_generation_modes,
     )
-    announced_protocols = _client_supported_protocols(cross_generation_enabled=cross_generation_enabled)
+    announced_protocols = _client_supported_protocols(cross_generation_capable=True)
     if trade_mode != SAME_GENERATION:
         ui.print(f"Aviso: --trade-mode={trade_mode} e legado/debug; o modo real sera derivado automaticamente.")
     async with PokeCableNetworkClient(server_url) as network:
@@ -104,9 +107,6 @@ async def run_trade(
             room_info = dict(joined.get("room") or {})
 
         target_generation = _peer_generation(room_info, network.client_id)
-        offer_mode = get_trade_mode(local_generation, target_generation)
-        if offer_mode != SAME_GENERATION and not (cross_generation_enabled and offer_mode in enabled_cross_generation_modes):
-            raise RuntimeError("Este modo de troca entre geracoes nao esta habilitado neste client.")
         offer = _build_offer_payload(
             parser,
             pokemon_location,
@@ -256,9 +256,6 @@ def _build_offer_payload(
         cross_generation_enabled=True,
         policy=cross_generation_policy,
     )
-    if trade_mode != SAME_GENERATION:
-        if report.mode != SAME_GENERATION and report.mode not in set(enabled_cross_generation_modes or []):
-            raise RuntimeError(f"Este Pokemon exige modo {report.mode}, mas esse modo nao esta habilitado neste client.")
     offer.source_generation = canonical.source_generation
     offer.source_game = canonical.source_game
     offer.target_generation = target_generation
@@ -320,7 +317,7 @@ def _preflight_result_for_payload(
             mode=get_trade_mode(payload.generation, local_generation),
             source_generation=payload.generation,
             target_generation=local_generation,
-            blocking_reasons=["Cross-generation esta desligado neste client."],
+            blocking_reasons=["Cross-generation esta desligado neste client. Ative em Configurar cross-generation para concluir a troca."],
         )
     if not payload.canonical:
         return False, _simple_preflight_report(
@@ -410,9 +407,9 @@ def _client_supported_trade_modes(
     return sorted(set(modes))
 
 
-def _client_supported_protocols(*, cross_generation_enabled: bool) -> list[str]:
+def _client_supported_protocols(*, cross_generation_capable: bool = True) -> list[str]:
     protocols = [RAW_SAME_GENERATION_PROTOCOL]
-    if cross_generation_enabled:
+    if cross_generation_capable:
         protocols.append(CANONICAL_CROSS_GENERATION_PROTOCOL)
     return protocols
 
@@ -540,6 +537,50 @@ def configure_server(ui: TerminalUI) -> None:
     ui.print("Servidor configurado.")
 
 
+def configure_cross_generation(ui: TerminalUI) -> None:
+    config = load_config()
+    current = dict(config.get("cross_generation") or {})
+    enabled = ui.confirm("Ativar cross-generation neste client?", default=bool(current.get("enabled", False)))
+    policy = ui.choose(
+        "Politica de compatibilidade",
+        ["safe_default", "strict", "permissive"],
+        [
+            "safe_default: bloqueia species/moves incompativeis e pede confirmacao para perdas",
+            "strict: bloqueia qualquer perda relevante",
+            "permissive: remove dados incompativeis quando possivel e pede confirmacao",
+        ],
+    )
+    enabled_modes = []
+    if enabled:
+        if ui.confirm("Habilitar todos os modos cross-generation validados?", default=True):
+            enabled_modes = [
+                TIME_CAPSULE_GEN1_GEN2,
+                FORWARD_TRANSFER_TO_GEN3,
+                LEGACY_DOWNCONVERT_EXPERIMENTAL,
+            ]
+        else:
+            for mode, label in [
+                (TIME_CAPSULE_GEN1_GEN2, "Gen 1 <-> Gen 2"),
+                (FORWARD_TRANSFER_TO_GEN3, "Gen 1/2 -> Gen 3"),
+                (LEGACY_DOWNCONVERT_EXPERIMENTAL, "Gen 3 -> Gen 1/2"),
+            ]:
+                if ui.confirm(f"Habilitar {label}?", default=mode in set(current.get("enabled_modes") or [])):
+                    enabled_modes.append(mode)
+    config["cross_generation"] = {
+        "enabled": enabled,
+        "enabled_modes": enabled_modes,
+        "policy": policy,
+        "unsafe_auto_confirm_data_loss": False,
+    }
+    save_config(config)
+    if enabled:
+        ui.print("Cross-generation ativado neste client.")
+        ui.print(f"Modos: {', '.join(enabled_modes)}")
+        ui.print(f"Politica: {policy}")
+    else:
+        ui.print("Cross-generation desativado neste client.")
+
+
 def show_logs(ui: TerminalUI) -> None:
     config = load_config()
     log_file = Path(config["log_dir"]) / "client.log"
@@ -630,6 +671,7 @@ def interactive_menu() -> int:
                 "party",
                 "compatibility",
                 "server",
+                "cross_generation",
                 "restore",
                 "logs",
                 "exit",
@@ -641,6 +683,7 @@ def interactive_menu() -> int:
                 "Ver party",
                 "Testar compatibilidade",
                 "Configurar servidor VPS",
+                "Configurar cross-generation",
                 "Restaurar backup",
                 "Ver logs",
                 "Sair",
@@ -678,6 +721,8 @@ def interactive_menu() -> int:
             test_compatibility(ui)
         elif choice == "server":
             configure_server(ui)
+        elif choice == "cross_generation":
+            configure_cross_generation(ui)
         elif choice == "restore":
             restore_backup_flow(ui)
         elif choice == "logs":
