@@ -1,0 +1,20 @@
+services:
+  pokecable-server:
+    build: .
+    container_name: pokecable-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      POKECABLE_SECRET_KEY: "${POKECABLE_SECRET_KEY:-change-me-before-production}"
+      ROOM_TIMEOUT_SECONDS: "${ROOM_TIMEOUT_SECONDS:-900}"
+      MAX_ROOMS: "${MAX_ROOMS:-200}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      ALLOW_CROSS_GENERATION: "false"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+

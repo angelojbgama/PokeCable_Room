@@ -1,0 +1,187 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import uuid
+from typing import Any
+
+from fastapi import WebSocket, WebSocketDisconnect
+
+from .models import PlayerSlot, Room, RoomError
+from .rooms import RoomManager
+
+
+logger = logging.getLogger("pokecable.websocket")
+
+
+class ConnectionHub:
+    def __init__(self, room_manager: RoomManager) -> None:
+        self.room_manager = room_manager
+        self.connections: dict[str, WebSocket] = {}
+        self.room_clients: dict[str, dict[PlayerSlot, str]] = {}
+
+    async def handle(self, websocket: WebSocket) -> None:
+        await websocket.accept()
+        client_id = str(uuid.uuid4())
+        self.connections[client_id] = websocket
+        await self._send(client_id, {"type": "connected", "client_id": client_id})
+        try:
+            while True:
+                message = await websocket.receive_json()
+                await self._handle_message(client_id, message)
+        except WebSocketDisconnect:
+            await self._disconnect(client_id)
+        except Exception as exc:
+            logger.exception("Unexpected websocket error for client_id=%s", client_id)
+            await self._safe_send(client_id, {"type": "error", "code": "internal_error", "message": str(exc)})
+            await self._disconnect(client_id)
+
+    async def _handle_message(self, client_id: str, message: dict[str, Any]) -> None:
+        message_type = message.get("type")
+        try:
+            if message_type == "heartbeat":
+                await self._send(client_id, {"type": "heartbeat", "status": "ok"})
+            elif message_type == "create_room":
+                await self._create_room(client_id, message)
+            elif message_type == "join_room":
+                await self._join_room(client_id, message)
+            elif message_type == "offer_pokemon":
+                await self._offer_pokemon(client_id, message)
+            elif message_type == "confirm_trade":
+                await self._confirm_trade(client_id)
+            elif message_type == "cancel_trade":
+                await self._cancel_trade(client_id, "cancelled")
+            else:
+                raise RoomError("unknown_message", f"Mensagem desconhecida: {message_type}")
+        except RoomError as exc:
+            error_type = exc.code if exc.code in {"generation_mismatch", "game_mismatch"} else "error"
+            await self._send(client_id, {"type": error_type, "code": exc.code, "message": exc.message})
+
+    async def _create_room(self, client_id: str, message: dict[str, Any]) -> None:
+        room, slot = await self.room_manager.create_room(
+            room_name=message.get("room_name"),
+            password=str(message.get("password") or ""),
+            client_id=client_id,
+            generation=message.get("generation"),
+            game=message.get("game"),
+        )
+        self._remember_client(room.room_name, slot, client_id)
+        logger.info("room_created room=%s generation=%s slot=%s", room.room_name, room.generation, slot)
+        await self._send(
+            client_id,
+            {
+                "type": "room_created",
+                "client_id": client_id,
+                "slot": slot,
+                "room": room.to_public_dict(),
+            },
+        )
+        await self._send(client_id, {"type": "room_waiting", "message": "Aguardando segundo jogador."})
+
+    async def _join_room(self, client_id: str, message: dict[str, Any]) -> None:
+        room, slot = await self.room_manager.join_room(
+            room_name=message.get("room_name"),
+            password=str(message.get("password") or ""),
+            client_id=client_id,
+            generation=message.get("generation"),
+            game=message.get("game"),
+        )
+        self._remember_client(room.room_name, slot, client_id)
+        logger.info("room_joined room=%s generation=%s slot=%s", room.room_name, room.generation, slot)
+        await self._send(client_id, {"type": "room_joined", "client_id": client_id, "slot": slot, "room": room.to_public_dict()})
+        peer_offer = room.offers.get(room.peer_slot(slot))
+        if peer_offer is not None:
+            await self._send(client_id, {"type": "peer_offer_received", "offer": peer_offer.to_public_dict()})
+        await self._broadcast(room, {"type": "room_ready", "room": room.to_public_dict()})
+
+    async def _offer_pokemon(self, client_id: str, message: dict[str, Any]) -> None:
+        payload = message.get("payload")
+        if not isinstance(payload, dict):
+            raise RoomError("invalid_payload", "offer_pokemon precisa conter payload JSON.")
+        room, slot, offer = await self.room_manager.offer_pokemon(client_id=client_id, payload=payload)
+        logger.info("offer_received room=%s slot=%s offer=%s", room.room_name, slot, json.dumps(offer.log_summary()))
+        await self._send(client_id, {"type": "offer_received", "slot": slot, "offer": offer.log_summary()})
+        peer_slot = room.peer_slot(slot)
+        peer_client_id = self.room_clients.get(room.room_name, {}).get(peer_slot)
+        if peer_client_id:
+            await self._send(peer_client_id, {"type": "peer_offer_received", "offer": offer.to_public_dict()})
+        if room.has_both_offers():
+            await self._broadcast(room, {"type": "offers_ready", "message": "Os dois Pokemon foram oferecidos."})
+
+    async def _confirm_trade(self, client_id: str) -> None:
+        room, slot, committed = await self.room_manager.confirm_trade(client_id=client_id)
+        logger.info("trade_confirmed room=%s slot=%s committed=%s", room.room_name, slot, committed)
+        await self._send(client_id, {"type": "trade_confirmed", "slot": slot})
+        if committed:
+            offers = {slot_name: offer.to_public_dict() for slot_name, offer in room.offers.items() if offer is not None}
+            await self._send_committed(room, offers)
+            await self.room_manager.remove_room_after_commit(room.room_name)
+            self.room_clients.pop(room.room_name, None)
+        else:
+            peer_slot = room.peer_slot(slot)
+            peer_client_id = self.room_clients.get(room.room_name, {}).get(peer_slot)
+            if peer_client_id:
+                await self._send(peer_client_id, {"type": "peer_confirmed", "slot": slot})
+
+    async def _send_committed(self, room: Room, offers: dict[str, dict[str, Any]]) -> None:
+        clients = self.room_clients.get(room.room_name, {})
+        for slot, client_id in clients.items():
+            peer_slot = room.peer_slot(slot)
+            await self._send(
+                client_id,
+                {
+                    "type": "trade_committed",
+                    "received_payload": offers[peer_slot],
+                    "sent_payload": offers[slot],
+                    "message": "Troca confirmada pelos dois jogadores.",
+                },
+            )
+
+    async def _cancel_trade(self, client_id: str, reason: str) -> None:
+        known = self.room_manager.client_rooms.get(client_id)
+        room_name = known[0] if known else None
+        room = await self.room_manager.cancel_room(client_id=client_id, reason=reason)
+        if room_name:
+            await self._broadcast_room_name(room_name, {"type": "trade_cancelled", "reason": reason})
+            self.room_clients.pop(room_name, None)
+
+    async def _disconnect(self, client_id: str) -> None:
+        self.connections.pop(client_id, None)
+        known = self.room_manager.client_rooms.get(client_id)
+        room_name = known[0] if known else None
+        slot = known[1] if known else None
+        room = await self.room_manager.disconnect(client_id)
+        if room_name:
+            clients = self.room_clients.get(room_name, {})
+            if slot:
+                clients.pop(slot, None)
+            if room is None or not clients:
+                self.room_clients.pop(room_name, None)
+            else:
+                await self._broadcast_room_name(room_name, {"type": "trade_cancelled", "reason": "peer_disconnected"})
+                await self._broadcast_room_name(room_name, {"type": "room_waiting", "message": "Outro usuario desconectou. A sala continua aguardando."})
+        logger.info("client_disconnected client_id=%s room=%s", client_id, room_name)
+
+    def _remember_client(self, room_name: str, slot: PlayerSlot, client_id: str) -> None:
+        self.room_clients.setdefault(room_name, {})[slot] = client_id
+
+    async def _broadcast(self, room: Room, payload: dict[str, Any]) -> None:
+        await self._broadcast_room_name(room.room_name, payload)
+
+    async def _broadcast_room_name(self, room_name: str, payload: dict[str, Any]) -> None:
+        tasks = [self._safe_send(client_id, payload) for client_id in self.room_clients.get(room_name, {}).values()]
+        if tasks:
+            await asyncio.gather(*tasks)
+
+    async def _send(self, client_id: str, payload: dict[str, Any]) -> None:
+        websocket = self.connections.get(client_id)
+        if websocket is None:
+            return
+        await websocket.send_json(payload)
+
+    async def _safe_send(self, client_id: str, payload: dict[str, Any]) -> None:
+        try:
+            await self._send(client_id, payload)
+        except Exception:
+            logger.debug("Failed to send websocket payload to client_id=%s", client_id, exc_info=True)

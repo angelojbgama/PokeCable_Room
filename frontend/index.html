@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PokeCable Room</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar" aria-label="Status do servidor">
+        <div>
+          <p class="eyebrow">Troca por save local</p>
+          <h1>PokeCable Room</h1>
+        </div>
+        <div class="server-pill" id="connectionStatus">Desconectado</div>
+      </section>
+
+      <section class="notice">
+        <strong>Feche o emulador antes de editar o save.</strong>
+        <span>O navegador não envia save completo ao servidor. Depois da troca, ele gera um backup e um novo arquivo para baixar.</span>
+      </section>
+
+      <section class="grid">
+        <form class="panel" id="roomForm">
+          <div class="panel-head">
+            <div>
+              <h2>Sala privada</h2>
+              <p>Crie ou entre usando o mesmo nome e senha nos dois lados.</p>
+            </div>
+          </div>
+
+          <label>
+            Nome da sala
+            <input id="roomName" maxlength="64" required value="poke-room" autocomplete="off" />
+          </label>
+
+          <label>
+            Senha
+            <input id="roomPassword" type="password" required autocomplete="off" />
+          </label>
+
+          <label>
+            Save local .sav/.srm
+            <input id="saveFile" type="file" accept=".sav,.srm" />
+          </label>
+
+          <div class="save-summary" id="saveSummary">
+            <span>Nenhum save carregado</span>
+            <strong>Gen 1, Gen 2 e Gen 3 são detectadas pelo arquivo.</strong>
+          </div>
+
+          <label>
+            Pokémon para enviar
+            <select id="pokemonChoice"></select>
+          </label>
+
+          <div class="actions">
+            <button type="button" id="createRoom">Criar sala</button>
+            <button type="button" id="joinRoom" class="secondary">Entrar</button>
+          </div>
+        </form>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Troca</h2>
+              <p>O servidor recebe somente o payload do Pokémon selecionado.</p>
+            </div>
+          </div>
+
+          <div class="status-box">
+            <span>Status</span>
+            <strong id="tradeStatus">Carregue um save para começar.</strong>
+          </div>
+
+          <div class="pokemon-row">
+            <div class="pokemon-card">
+              <span>Você oferece</span>
+              <strong id="localOffer">-</strong>
+            </div>
+            <div class="pokemon-card">
+              <span>Você recebe</span>
+              <strong id="peerOffer">-</strong>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button type="button" id="confirmTrade" disabled>Confirmar troca</button>
+            <button type="button" id="cancelTrade" class="secondary" disabled>Cancelar</button>
+          </div>
+          <div id="downloadArea" class="download-area"></div>
+        </section>
+      </section>
+
+      <section class="log-panel" aria-label="Eventos">
+        <div class="panel-head compact">
+          <h2>Eventos</h2>
+          <button type="button" class="ghost" id="clearLog">Limpar</button>
+        </div>
+        <pre id="eventLog"></pre>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
