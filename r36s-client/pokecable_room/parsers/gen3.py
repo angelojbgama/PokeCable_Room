@@ -6,6 +6,9 @@ from pathlib import Path
 
 from pokecable_room.canonical import CanonicalItem, CanonicalMove, CanonicalOriginalData, CanonicalPokemon
 from pokecable_room.compatibility import CompatibilityReport, build_compatibility_report
+from pokecable_room.data.items import equivalent_item_id, item_exists
+from pokecable_room.data.moves import move_exists
+from pokecable_room.data.species import native_to_national, national_to_native
 
 from .base import PokemonPayload, PokemonSummary, SaveData
 from .gen2 import GEN2_SPECIES
@@ -369,7 +372,7 @@ class Gen3Parser:
         return CanonicalPokemon(
             source_generation=3,
             source_game=self.game_id,
-            species_national_id=summary.species_id,
+            species_national_id=native_to_national(3, summary.species_id),
             species_name=summary.species_name,
             nickname=summary.nickname,
             level=summary.level,
@@ -387,31 +390,68 @@ class Gen3Parser:
                 location=location,
                 metadata={"layout": self._require_layout().name},
             ),
-            metadata={"source_species_id_space": "gen3_species"},
+            metadata={"source_species_id_space": "gen3_internal", "source_species_id": summary.species_id},
         )
 
     def import_pokemon(self, location: str, payload: PokemonPayload) -> None:
         self.remove_or_replace_sent_pokemon(location, payload)
 
     def import_canonical(self, location: str, canonical_pokemon: CanonicalPokemon) -> None:
-        if not self.can_import_canonical(canonical_pokemon):
-            report = self.compatibility_report_for(canonical_pokemon)
-            raise ValueError("; ".join(report.blocking_reasons) or "Pokemon canonico nao pode ser importado em Gen 3.")
-        if canonical_pokemon.original_data is None or canonical_pokemon.original_data.raw_data_base64 is None:
-            raise ValueError("Importacao canonica Gen 3 exige raw original enquanto conversor seguro nao esta habilitado.")
-        payload = PokemonPayload(
-            generation=3,
-            game=canonical_pokemon.source_game,
-            species_id=canonical_pokemon.species_national_id,
-            species_name=canonical_pokemon.species_name,
-            level=canonical_pokemon.level,
-            nickname=canonical_pokemon.nickname,
-            ot_name=canonical_pokemon.ot_name,
-            trainer_id=canonical_pokemon.trainer_id,
-            raw_data_base64=canonical_pokemon.original_data.raw_data_base64,
-            display_summary=f"{canonical_pokemon.species_name} Lv. {canonical_pokemon.level}",
-        )
-        self.import_pokemon(location, payload)
+        built = self.build_party_mon_from_canonical(canonical_pokemon)
+        self.write_party_mon(location, built)
+
+    def build_party_mon_from_canonical(self, canonical_pokemon: CanonicalPokemon) -> bytes:
+        self.validate_can_write("party:0", canonical_pokemon)
+        personality = self._deterministic_personality(canonical_pokemon)
+        trainer_id = int(canonical_pokemon.trainer_id) & 0xFFFFFFFF
+        species_id = national_to_native(3, canonical_pokemon.species.national_dex_id)
+        secure = bytearray(SECURE_SIZE)
+        growth = SUBSTRUCT_ORDERS[personality % 24][0] * 12
+        attacks = SUBSTRUCT_ORDERS[personality % 24][1] * 12
+        secure[growth : growth + 2] = species_id.to_bytes(2, "little")
+        if canonical_pokemon.held_item and canonical_pokemon.held_item.item_id:
+            item_id = canonical_pokemon.held_item.item_id
+            if canonical_pokemon.held_item.source_generation and canonical_pokemon.held_item.source_generation != 3:
+                item_id = equivalent_item_id(item_id, canonical_pokemon.held_item.source_generation, 3) or 0
+            if item_exists(item_id, 3):
+                secure[growth + 2 : growth + 4] = int(item_id).to_bytes(2, "little")
+        secure[growth + 4 : growth + 8] = int(canonical_pokemon.experience or 0).to_bytes(4, "little", signed=False)
+        for offset, move in enumerate(canonical_pokemon.moves[:4]):
+            if move_exists(move.move_id, 3):
+                secure[attacks + offset * 2 : attacks + offset * 2 + 2] = int(move.move_id).to_bytes(2, "little")
+                secure[attacks + 8 + offset] = min(99, int(move.pp or move.max_pp or 0))
+        checksum = self._box_checksum(bytes(secure))
+        encrypted = self._encrypt_secure(bytes(secure), personality, trainer_id)
+        raw = bytearray(PARTY_MON_SIZE)
+        raw[0:4] = personality.to_bytes(4, "little")
+        raw[4:8] = trainer_id.to_bytes(4, "little")
+        raw[8:18] = self._encode_text(canonical_pokemon.nickname or canonical_pokemon.species.name, NICKNAME_SIZE)
+        raw[18] = 2
+        raw[20:27] = self._encode_text(canonical_pokemon.ot_name or "TRAINER", OT_NAME_SIZE)
+        raw[28:30] = checksum.to_bytes(2, "little")
+        raw[32:80] = encrypted
+        raw[84] = max(1, min(100, canonical_pokemon.level))
+        return bytes(raw)
+
+    def write_party_mon(self, location: str, built_mon: bytes) -> None:
+        if len(built_mon) != PARTY_MON_SIZE:
+            raise ValueError("Struct Gen 3 canonico tem tamanho invalido.")
+        index = self._party_index(location)
+        if index >= self._party_count():
+            raise ValueError("Localizacao de party fora da quantidade atual.")
+        self._parse_pokemon(built_mon)
+        offset = self._party_mon_offset(index)
+        self._require_data()[offset : offset + PARTY_MON_SIZE] = built_mon
+        self.recalculate_checksums()
+
+    def validate_can_write(self, location: str, canonical_pokemon: CanonicalPokemon) -> None:
+        self._party_index(location)
+        if canonical_pokemon.metadata.get("is_egg"):
+            raise ValueError("Egg nao pode ser importado para Gen 3.")
+        national_to_native(3, canonical_pokemon.species.national_dex_id)
+        invalid_moves = [move.move_id for move in canonical_pokemon.moves if not move_exists(move.move_id, 3)]
+        if invalid_moves:
+            raise ValueError(f"Moves incompatíveis com Gen 3: {invalid_moves}")
 
     def can_import_canonical(self, canonical_pokemon: CanonicalPokemon) -> bool:
         return self.compatibility_report_for(canonical_pokemon).compatible
@@ -632,6 +672,14 @@ class Gen3Parser:
             secure[offset : offset + 4] = value.to_bytes(4, "little")
         return bytes(secure)
 
+    def _encrypt_secure(self, secure: bytes, personality: int, trainer_id: int) -> bytes:
+        key = personality ^ trainer_id
+        encrypted = bytearray(secure)
+        for offset in range(0, SECURE_SIZE, 4):
+            value = int.from_bytes(encrypted[offset : offset + 4], "little") ^ key
+            encrypted[offset : offset + 4] = value.to_bytes(4, "little")
+        return bytes(encrypted)
+
     def _box_checksum(self, secure: bytes) -> int:
         value = 0
         for offset in range(0, SECURE_SIZE, 2):
@@ -665,6 +713,24 @@ class Gen3Parser:
                 break
             chars.append(GEN3_TEXT.get(byte, "?"))
         return "".join(chars).strip()
+
+    def _encode_text(self, value: str, size: int) -> bytes:
+        reverse = {value: key for key, value in GEN3_TEXT.items()}
+        encoded = bytearray([0xFF] * size)
+        for index, char in enumerate(value[:size]):
+            encoded[index] = reverse.get(char, 0xFF)
+        return bytes(encoded)
+
+    def _deterministic_personality(self, canonical_pokemon: CanonicalPokemon) -> int:
+        seed = (
+            f"{canonical_pokemon.source_generation}|{canonical_pokemon.source_game}|"
+            f"{canonical_pokemon.species.national_dex_id}|{canonical_pokemon.nickname}|"
+            f"{canonical_pokemon.trainer_id}|{canonical_pokemon.level}"
+        ).encode("utf-8")
+        value = 0xA5A5A5A5
+        for byte in seed:
+            value = ((value * 33) ^ byte) & 0xFFFFFFFF
+        return value or 1
 
     def _require_data(self) -> bytearray:
         if self.data is None:

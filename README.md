@@ -24,6 +24,9 @@ Roadmap:
 - Maximo de dois jogadores por sala.
 - `trade_mode` e `compatibility_status` preparados no contrato de sala.
 - Payload v2 com raw, summary, canonical e compatibility_report.
+- Modelo canonico separando National Dex, ID nativo da geracao e espaco de ID.
+- Tabelas locais de especies, moves e held items usadas pela compatibilidade.
+- Conversores locais para Gen 1 <-> Gen 2, Gen 1/2 -> Gen 3 e Gen 3 -> Gen 1/2, todos atras de feature flag por modo.
 - Client R36S sem desktop, usando dialog/whiptail, terminal e teclado virtual por controle.
 - Frontend web em `https://9kernel.vps-kinghost.net/`.
 - Parser Gen 1 Red/Blue/Yellow para party.
@@ -31,7 +34,7 @@ Roadmap:
 - Parser Gen 3 Ruby/Sapphire/Emerald/FireRed/LeafGreen para party.
 - Backup automatico antes de alterar save.
 - Evolucao simples por troca aplicada localmente depois da troca, quando `auto_trade_evolution` esta ligado.
-- Evolucoes por item preparadas, mas desligadas por `item_trade_evolutions_enabled=false` ate validacao dos IDs de item.
+- Evolucao por item com IDs validados para Gen 2/3, desligada por padrao por `item_trade_evolutions_enabled=false`.
 
 ## O Que Nao Faz
 
@@ -40,16 +43,41 @@ Roadmap:
 - Nao distribui BIOS.
 - Nao armazena ROMs.
 - Nao envia save completo ao servidor.
-- Nao escreve cross-generation enquanto os conversores nao estiverem habilitados.
+- Nao escreve raw de uma geracao em save de outra geracao.
 - Nao aplica evolucao por item por padrao.
 - Nao implementa boxes ainda.
 
 ## Seguranca De Geracao
 
 - Same-generation usa raw payload da propria geracao.
-- Cross-generation usara modelo canonico e conversores locais.
-- O servidor bloqueia cross-generation enquanto a feature guard esta desligada.
+- Cross-generation usa modelo canonico, `CompatibilityReport` e conversores locais.
+- O servidor bloqueia cross-generation enquanto a feature guard global estiver desligada ou o modo nao estiver em `ENABLED_TRADE_MODES`.
 - O client tambem rejeita payload recebido de geracao diferente antes de gravar.
+
+## Feature Flags
+
+Config local do client:
+
+```json
+{
+  "auto_trade_evolution": true,
+  "item_trade_evolutions_enabled": false,
+  "cross_generation": {
+    "enabled": false,
+    "enabled_modes": [],
+    "policy": "safe_default"
+  }
+}
+```
+
+Servidor:
+
+```text
+ALLOW_CROSS_GENERATION=false
+ENABLED_TRADE_MODES=
+```
+
+`ALLOW_CROSS_GENERATION=true` sozinho nao libera tudo. Cada modo precisa aparecer em `ENABLED_TRADE_MODES`, por exemplo `time_capsule_gen1_gen2`.
 
 ## Rodar Servidor
 

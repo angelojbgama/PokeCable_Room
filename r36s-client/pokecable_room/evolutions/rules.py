@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pokecable_room.data.items import ITEM_IDS_BY_GENERATION_AND_NAME
+
 
 @dataclass(frozen=True, slots=True)
 class TradeEvolutionRule:
@@ -43,24 +45,25 @@ SIMPLE_TRADE_EVOLUTION_RULES: tuple[TradeEvolutionRule, ...] = (
 )
 
 
-# Item IDs are intentionally unset until validated against real saves for each
-# generation/game. Keeping these rules declarative lets the UI/reporting know
-# what is planned without mutating saves by guesswork.
+def _item_id(generation: int, name: str) -> int:
+    return ITEM_IDS_BY_GENERATION_AND_NAME[(generation, name.lower())]
+
+
 ITEM_TRADE_EVOLUTION_RULES: tuple[TradeEvolutionRule, ...] = (
-    TradeEvolutionRule(2, 61, 186, "Poliwhirl", "Politoed", required_item_name="King's Rock"),
-    TradeEvolutionRule(2, 79, 199, "Slowpoke", "Slowking", required_item_name="King's Rock"),
-    TradeEvolutionRule(2, 95, 208, "Onix", "Steelix", required_item_name="Metal Coat"),
-    TradeEvolutionRule(2, 123, 212, "Scyther", "Scizor", required_item_name="Metal Coat"),
-    TradeEvolutionRule(2, 117, 230, "Seadra", "Kingdra", required_item_name="Dragon Scale"),
-    TradeEvolutionRule(2, 137, 233, "Porygon", "Porygon2", required_item_name="Up-Grade"),
-    TradeEvolutionRule(3, 61, 186, "Poliwhirl", "Politoed", required_item_name="King's Rock"),
-    TradeEvolutionRule(3, 79, 199, "Slowpoke", "Slowking", required_item_name="King's Rock"),
-    TradeEvolutionRule(3, 95, 208, "Onix", "Steelix", required_item_name="Metal Coat"),
-    TradeEvolutionRule(3, 123, 212, "Scyther", "Scizor", required_item_name="Metal Coat"),
-    TradeEvolutionRule(3, 117, 230, "Seadra", "Kingdra", required_item_name="Dragon Scale"),
-    TradeEvolutionRule(3, 137, 233, "Porygon", "Porygon2", required_item_name="Up-Grade"),
-    TradeEvolutionRule(3, 373, 374, "Clamperl", "Huntail", required_item_name="Deep Sea Tooth"),
-    TradeEvolutionRule(3, 373, 375, "Clamperl", "Gorebyss", required_item_name="Deep Sea Scale"),
+    TradeEvolutionRule(2, 61, 186, "Poliwhirl", "Politoed", _item_id(2, "King's Rock"), "King's Rock"),
+    TradeEvolutionRule(2, 79, 199, "Slowpoke", "Slowking", _item_id(2, "King's Rock"), "King's Rock"),
+    TradeEvolutionRule(2, 95, 208, "Onix", "Steelix", _item_id(2, "Metal Coat"), "Metal Coat"),
+    TradeEvolutionRule(2, 123, 212, "Scyther", "Scizor", _item_id(2, "Metal Coat"), "Metal Coat"),
+    TradeEvolutionRule(2, 117, 230, "Seadra", "Kingdra", _item_id(2, "Dragon Scale"), "Dragon Scale"),
+    TradeEvolutionRule(2, 137, 233, "Porygon", "Porygon2", _item_id(2, "Up-Grade"), "Up-Grade"),
+    TradeEvolutionRule(3, 61, 186, "Poliwhirl", "Politoed", _item_id(3, "King's Rock"), "King's Rock"),
+    TradeEvolutionRule(3, 79, 199, "Slowpoke", "Slowking", _item_id(3, "King's Rock"), "King's Rock"),
+    TradeEvolutionRule(3, 95, 208, "Onix", "Steelix", _item_id(3, "Metal Coat"), "Metal Coat"),
+    TradeEvolutionRule(3, 123, 212, "Scyther", "Scizor", _item_id(3, "Metal Coat"), "Metal Coat"),
+    TradeEvolutionRule(3, 117, 230, "Seadra", "Kingdra", _item_id(3, "Dragon Scale"), "Dragon Scale"),
+    TradeEvolutionRule(3, 137, 233, "Porygon", "Porygon2", _item_id(3, "Up-Grade"), "Up-Grade"),
+    TradeEvolutionRule(3, 373, 374, "Clamperl", "Huntail", _item_id(3, "Deep Sea Tooth"), "Deep Sea Tooth"),
+    TradeEvolutionRule(3, 373, 375, "Clamperl", "Gorebyss", _item_id(3, "Deep Sea Scale"), "Deep Sea Scale"),
 )
 
 

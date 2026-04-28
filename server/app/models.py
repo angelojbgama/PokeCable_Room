@@ -82,10 +82,23 @@ class PokemonOffer:
         raw = dict(payload.get("raw") or {})
         summary = dict(payload.get("summary") or {})
         canonical = dict(payload.get("canonical") or {})
+        canonical_species = dict(canonical.get("species") or {})
         generation = parse_generation(payload.get("generation") or payload.get("source_generation") or canonical.get("source_generation"))
         game = parse_game_id(payload.get("game") or payload.get("source_game") or canonical.get("source_game"), generation)
-        species_id = int(payload.get("species_id") or summary.get("species_id") or canonical.get("species_national_id") or 0)
-        species_name = str(payload.get("species_name") or summary.get("species_name") or canonical.get("species_name") or "")
+        species_id = int(
+            payload.get("species_id")
+            or summary.get("species_id")
+            or canonical.get("species_national_id")
+            or canonical_species.get("national_dex_id")
+            or 0
+        )
+        species_name = str(
+            payload.get("species_name")
+            or summary.get("species_name")
+            or canonical.get("species_name")
+            or canonical_species.get("name")
+            or ""
+        )
         level = int(payload.get("level") or summary.get("level") or canonical.get("level") or 0)
         nickname = str(payload.get("nickname") or summary.get("nickname") or canonical.get("nickname") or species_name)
         trainer_id = int(payload.get("trainer_id") or canonical.get("trainer_id") or 0)

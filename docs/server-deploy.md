@@ -19,9 +19,17 @@ ROOM_TIMEOUT_SECONDS=900
 MAX_ROOMS=200
 LOG_LEVEL=INFO
 ALLOW_CROSS_GENERATION=false
+ENABLED_TRADE_MODES=
 ```
 
-`ALLOW_CROSS_GENERATION` permanece `false`. Alterar a variavel nao habilita a feature.
+`ALLOW_CROSS_GENERATION=false` e o padrao recomendado. Para testar cross-generation em um modo especifico, habilite a flag global e liste somente o modo desejado:
+
+```text
+ALLOW_CROSS_GENERATION=true
+ENABLED_TRADE_MODES=time_capsule_gen1_gen2
+```
+
+Cada modo precisa ser habilitado separadamente. Nao use `legacy_downconvert_experimental` em producao sem revisar os relatórios de perda de dados no client.
 
 ## Nginx Reverse Proxy
 

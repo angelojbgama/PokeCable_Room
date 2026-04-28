@@ -140,6 +140,47 @@ class TradeEvolutionParserTests(unittest.TestCase):
         self.assertFalse(result.evolved)
         self.assertEqual(parser.clear_calls, 0)
 
+    def test_gen2_item_evolutions_use_validated_ids_and_consume_item(self) -> None:
+        cases = [
+            (61, 0x52, 186, "King's Rock"),
+            (79, 0x52, 199, "King's Rock"),
+            (95, 0x8F, 208, "Metal Coat"),
+            (123, 0x8F, 212, "Metal Coat"),
+            (117, 0x97, 230, "Dragon Scale"),
+            (137, 0xAC, 233, "Up-Grade"),
+        ]
+        for source, item_id, target, item_name in cases:
+            with self.subTest(source=source, item=item_name):
+                parser = FakeParser(2, source, held_item_id=item_id)
+                result = apply_trade_evolution_to_parser(
+                    parser,
+                    "party:0",
+                    item_based_evolutions_enabled=True,
+                )
+                self.assertTrue(result.evolved)
+                self.assertEqual(parser.get_species_id("party:0"), target)
+                self.assertEqual(result.consumed_item_id, item_id)
+                self.assertEqual(result.consumed_item_name, item_name)
+                self.assertEqual(parser.clear_calls, 1)
+
+    def test_gen3_clamperl_item_evolutions_use_validated_ids_and_consume_item(self) -> None:
+        cases = [
+            (192, 374, "Deep Sea Tooth"),
+            (193, 375, "Deep Sea Scale"),
+        ]
+        for item_id, target, item_name in cases:
+            with self.subTest(item=item_name):
+                parser = FakeParser(3, 373, held_item_id=item_id)
+                result = apply_trade_evolution_to_parser(
+                    parser,
+                    "party:0",
+                    item_based_evolutions_enabled=True,
+                )
+                self.assertTrue(result.evolved)
+                self.assertEqual(parser.get_species_id("party:0"), target)
+                self.assertEqual(result.consumed_item_name, item_name)
+                self.assertEqual(parser.clear_calls, 1)
+
     def test_evolution_does_not_run_when_target_species_does_not_exist(self) -> None:
         original = engine.simple_trade_rules_for_generation
         try:

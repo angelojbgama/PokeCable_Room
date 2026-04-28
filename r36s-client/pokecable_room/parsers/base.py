@@ -70,13 +70,24 @@ class PokemonPayload:
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "PokemonPayload":
         canonical = dict(payload.get("canonical") or {})
+        canonical_species = dict(canonical.get("species") or {})
         summary = dict(payload.get("summary") or {})
         generation = int(payload.get("generation") or payload.get("source_generation") or canonical.get("source_generation"))
         game = str(payload.get("game") or payload.get("source_game") or canonical.get("source_game"))
         raw = dict(payload.get("raw") or {})
         raw_data_base64 = str(payload.get("raw_data_base64") or raw.get("data_base64") or "")
-        species_id = int(payload.get("species_id") or summary.get("species_id") or canonical.get("species_national_id"))
-        species_name = str(payload.get("species_name") or summary.get("species_name") or canonical.get("species_name"))
+        species_id = int(
+            payload.get("species_id")
+            or summary.get("species_id")
+            or canonical.get("species_national_id")
+            or canonical_species.get("national_dex_id")
+        )
+        species_name = str(
+            payload.get("species_name")
+            or summary.get("species_name")
+            or canonical.get("species_name")
+            or canonical_species.get("name")
+        )
         level = int(payload.get("level") or summary.get("level") or canonical.get("level"))
         nickname = str(payload.get("nickname") or summary.get("nickname") or canonical.get("nickname") or species_name)
         return cls(

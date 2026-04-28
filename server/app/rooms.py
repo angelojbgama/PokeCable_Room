@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import timedelta
+from typing import Iterable
 
 from .models import (
     Player,
@@ -30,11 +31,21 @@ class RoomManager:
         self,
         room_timeout_seconds: int | None = None,
         max_rooms: int | None = None,
-        cross_generation_enabled: bool = False,
+        cross_generation_enabled: bool | None = False,
+        enabled_trade_modes: Iterable[str] | None = None,
     ) -> None:
         self.room_timeout_seconds = room_timeout_seconds or int(os.getenv("ROOM_TIMEOUT_SECONDS", "900"))
         self.max_rooms = max_rooms or int(os.getenv("MAX_ROOMS", "200"))
-        self.cross_generation_enabled = cross_generation_enabled
+        if cross_generation_enabled is None:
+            cross_generation_enabled = os.getenv("ALLOW_CROSS_GENERATION", "false").strip().lower() == "true"
+        self.cross_generation_enabled = bool(cross_generation_enabled)
+        env_modes = os.getenv("ENABLED_TRADE_MODES", "")
+        configured_modes = enabled_trade_modes if enabled_trade_modes is not None else [item for item in env_modes.split(",") if item.strip()]
+        self.enabled_trade_modes = {
+            parse_trade_mode(mode)
+            for mode in configured_modes
+            if parse_trade_mode(mode) != SAME_GENERATION
+        }
         self.rooms: dict[str, Room] = {}
         self.client_rooms: dict[str, tuple[str, PlayerSlot]] = {}
         self._lock = asyncio.Lock()
@@ -56,7 +67,7 @@ class RoomManager:
             generation = parse_generation(generation)
             game = parse_game_id(game, generation)
             requested_trade_mode = parse_trade_mode(trade_mode or SAME_GENERATION)
-            if requested_trade_mode != SAME_GENERATION and not self.cross_generation_enabled:
+            if not self._trade_mode_enabled(requested_trade_mode):
                 raise RoomError(
                     "trade_mode_disabled",
                     "Modo em desenvolvimento. Seu save foi detectado corretamente, mas essa conversao ainda nao esta habilitada.",
@@ -123,24 +134,42 @@ class RoomManager:
                 raise RoomError("invalid_password", "Senha incorreta.")
             if generation != room.generation:
                 mode = trade_mode_for_generations(room.generation, generation)
+                mode_enabled = self._trade_mode_enabled(mode)
                 room.compatibility_status = {
-                    "compatible": False,
+                    "compatible": mode_enabled,
                     "mode": mode,
                     "source_generation": room.generation,
                     "target_generation": generation,
-                    "blocking_reasons": [
+                    "blocking_reasons": []
+                    if mode_enabled
+                    else [
                         "Cross-generation esta protegido por feature guard enquanto os conversores locais estao em desenvolvimento."
                     ],
-                    "warnings": [],
+                    "warnings": ["Conversao e validacao detalhada acontecem localmente no client."]
+                    if mode_enabled
+                    else [],
                     "data_loss": [],
-                    "suggested_actions": ["Use same-generation por enquanto ou aguarde o conversor deste modo."],
+                    "suggested_actions": []
+                    if mode_enabled
+                    else ["Use same-generation por enquanto ou aguarde o conversor deste modo."],
                 }
-                if not self.cross_generation_enabled:
-                    raise RoomError("generation_mismatch", generation_mismatch_message(room.generation, generation))
                 if room.trade_mode != mode:
-                    raise RoomError("game_mismatch", f"Esta sala usa {room.trade_mode}, mas este par exige {mode}.")
-            if room.trade_mode != SAME_GENERATION and not self.cross_generation_enabled:
+                    if room.trade_mode != SAME_GENERATION or mode_enabled:
+                        raise RoomError("game_mismatch", f"Esta sala usa {room.trade_mode}, mas este par exige {mode}.")
+                if not mode_enabled:
+                    raise RoomError("generation_mismatch", generation_mismatch_message(room.generation, generation))
+            elif room.trade_mode != SAME_GENERATION:
+                raise RoomError("game_mismatch", f"Esta sala usa {room.trade_mode}; um segundo jogador Gen {generation} nao corresponde a esse modo.")
+            if not self._trade_mode_enabled(room.trade_mode):
                 raise RoomError("generation_mismatch", generation_mismatch_message(room.generation, generation))
+            peer_slot = "A" if "A" in room.players else "B"
+            peer = room.players.get(peer_slot)
+            entrant_supported_modes = supported_trade_modes or supported_trade_modes_for_generation(generation)
+            if room.trade_mode != SAME_GENERATION:
+                if peer is not None and room.trade_mode not in peer.supported_trade_modes:
+                    raise RoomError("game_mismatch", f"O criador da sala nao anunciou suporte a {room.trade_mode}.")
+                if room.trade_mode not in entrant_supported_modes:
+                    raise RoomError("game_mismatch", f"Este client nao anunciou suporte a {room.trade_mode}.")
             if room.is_full():
                 raise RoomError("room_full", "A sala ja possui dois jogadores.")
             slot: PlayerSlot = "A" if "A" not in room.players else "B"
@@ -149,7 +178,7 @@ class RoomManager:
                 client_id=client_id,
                 generation=generation,
                 game=game,
-                supported_trade_modes=supported_trade_modes or supported_trade_modes_for_generation(generation),
+                supported_trade_modes=entrant_supported_modes,
             )
             self.client_rooms[client_id] = (room_name, slot)
             return room, slot
@@ -167,6 +196,10 @@ class RoomManager:
                 raise RoomError("trade_mode_mismatch", f"Oferta usa {offer.trade_mode}, mas a sala usa {room.trade_mode}.")
             if room.trade_mode == SAME_GENERATION and offer.generation != room.generation:
                 raise RoomError("generation_mismatch", generation_mismatch_message(room.generation, offer.generation))
+            if room.trade_mode == SAME_GENERATION and not offer.raw_data_base64:
+                raise RoomError("invalid_payload", "Troca same-generation exige payload raw.")
+            if room.trade_mode != SAME_GENERATION and not offer.canonical:
+                raise RoomError("invalid_payload", "Troca cross-generation exige payload canonico.")
             room.offers[slot] = offer
             room.confirmations[slot] = False
             return room, slot, offer
@@ -249,3 +282,9 @@ class RoomManager:
             return
         for player in room.players.values():
             self.client_rooms.pop(player.client_id, None)
+
+    def _trade_mode_enabled(self, trade_mode: str) -> bool:
+        trade_mode = parse_trade_mode(trade_mode)
+        if trade_mode == SAME_GENERATION:
+            return True
+        return self.cross_generation_enabled and trade_mode in self.enabled_trade_modes

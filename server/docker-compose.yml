@@ -10,11 +10,11 @@ services:
       ROOM_TIMEOUT_SECONDS: "${ROOM_TIMEOUT_SECONDS:-900}"
       MAX_ROOMS: "${MAX_ROOMS:-200}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
-      ALLOW_CROSS_GENERATION: "false"
+      ALLOW_CROSS_GENERATION: "${ALLOW_CROSS_GENERATION:-false}"
+      ENABLED_TRADE_MODES: "${ENABLED_TRADE_MODES:-}"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
-

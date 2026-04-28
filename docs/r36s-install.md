@@ -44,7 +44,17 @@ wss://9kernel.vps-kinghost.net/ws
 7. Aguarde o backup ser criado antes da gravacao.
 8. Reabra o jogo somente depois da mensagem de sucesso.
 
-Os modos Time Capsule Gen 1/2 e Transfer para Gen 3 aparecem no menu como preparacao do produto. Enquanto a feature guard estiver desligada, eles mostram que a conversao ainda nao esta habilitada.
+Os modos Time Capsule Gen 1/2, Transfer para Gen 3 e Downconvert experimental aparecem no menu como preparacao do produto. Enquanto a feature guard local estiver desligada, eles mostram que a conversao ainda nao esta habilitada. Para testes controlados, edite `config.json` e habilite apenas o modo validado:
+
+```json
+"cross_generation": {
+  "enabled": true,
+  "enabled_modes": ["time_capsule_gen1_gen2"],
+  "policy": "safe_default"
+}
+```
+
+O servidor tambem precisa estar com o mesmo modo em `ENABLED_TRADE_MODES`.
 
 ## Backup E Restore
 

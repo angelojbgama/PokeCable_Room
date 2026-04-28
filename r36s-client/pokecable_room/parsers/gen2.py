@@ -6,6 +6,8 @@ from pathlib import Path
 
 from pokecable_room.canonical import CanonicalItem, CanonicalMove, CanonicalOriginalData, CanonicalPokemon
 from pokecable_room.compatibility import CompatibilityReport, build_compatibility_report
+from pokecable_room.data.items import equivalent_item_id, item_exists
+from pokecable_room.data.moves import move_exists
 
 from .base import PokemonPayload, PokemonSummary, SaveData
 
@@ -480,24 +482,54 @@ class Gen2Parser:
         self.remove_or_replace_sent_pokemon(location, payload)
 
     def import_canonical(self, location: str, canonical_pokemon: CanonicalPokemon) -> None:
-        if not self.can_import_canonical(canonical_pokemon):
-            report = self.compatibility_report_for(canonical_pokemon)
-            raise ValueError("; ".join(report.blocking_reasons) or "Pokemon canonico nao pode ser importado em Gen 2.")
-        if canonical_pokemon.original_data is None or canonical_pokemon.original_data.raw_data_base64 is None:
-            raise ValueError("Importacao canonica Gen 2 exige raw original enquanto conversor seguro nao esta habilitado.")
-        payload = PokemonPayload(
-            generation=2,
-            game=canonical_pokemon.source_game,
-            species_id=canonical_pokemon.species_national_id,
-            species_name=canonical_pokemon.species_name,
-            level=canonical_pokemon.level,
-            nickname=canonical_pokemon.nickname,
-            ot_name=canonical_pokemon.ot_name,
-            trainer_id=canonical_pokemon.trainer_id,
-            raw_data_base64=canonical_pokemon.original_data.raw_data_base64,
-            display_summary=f"{canonical_pokemon.species_name} Lv. {canonical_pokemon.level}",
-        )
-        self.import_pokemon(location, payload)
+        built = self.build_party_mon_from_canonical(canonical_pokemon)
+        self.write_party_mon(location, built)
+
+    def build_party_mon_from_canonical(self, canonical_pokemon: CanonicalPokemon) -> bytes:
+        self.validate_can_write("party:0", canonical_pokemon)
+        mon = bytearray(PARTY_MON_SIZE)
+        species_id = canonical_pokemon.species.national_dex_id
+        mon[0] = species_id
+        if canonical_pokemon.held_item and canonical_pokemon.held_item.item_id:
+            item_id = canonical_pokemon.held_item.item_id
+            if canonical_pokemon.held_item.source_generation and canonical_pokemon.held_item.source_generation != 2:
+                item_id = equivalent_item_id(item_id, canonical_pokemon.held_item.source_generation, 2) or 0
+            mon[0x01] = item_id if item_exists(item_id, 2) else 0
+        for offset, move in enumerate(canonical_pokemon.moves[:4]):
+            mon[0x02 + offset] = move.move_id if move_exists(move.move_id, 2) and move.move_id <= 0xFF else 0
+        mon[0x06:0x08] = (int(canonical_pokemon.trainer_id) & 0xFFFF).to_bytes(2, "big", signed=False)
+        experience = int(canonical_pokemon.experience or 0)
+        mon[0x08:0x0B] = max(0, min(0xFFFFFF, experience)).to_bytes(3, "big")
+        mon[0x1F] = max(1, min(100, canonical_pokemon.level))
+        ot = self._encode_text(canonical_pokemon.ot_name or "TRAINER")
+        nickname = self._encode_text(canonical_pokemon.nickname or canonical_pokemon.species.name)
+        return bytes(mon) + ot + nickname
+
+    def write_party_mon(self, location: str, built_mon: bytes) -> None:
+        if len(built_mon) != RAW_PAYLOAD_SIZE:
+            raise ValueError("Struct Gen 2 canonico tem tamanho invalido.")
+        index = self._party_index(location)
+        data = self._require_data()
+        layout = self._require_layout()
+        if index >= data[layout.party_offset]:
+            raise ValueError("Localizacao de party fora da quantidade atual.")
+        mon = built_mon[:PARTY_MON_SIZE]
+        data[layout.party_offset + 1 + index] = mon[0]
+        self._set_mon_bytes(index, mon)
+        self._set_ot_bytes(index, built_mon[PARTY_MON_SIZE : PARTY_MON_SIZE + NAME_SIZE])
+        self._set_nickname_bytes(index, built_mon[PARTY_MON_SIZE + NAME_SIZE :])
+        self.recalculate_checksums()
+
+    def validate_can_write(self, location: str, canonical_pokemon: CanonicalPokemon) -> None:
+        self._party_index(location)
+        national_id = canonical_pokemon.species.national_dex_id
+        if canonical_pokemon.metadata.get("is_egg"):
+            raise ValueError("Egg nao pode ser importado para Gen 2.")
+        if national_id < 1 or national_id > 251:
+            raise ValueError(f"National Dex #{national_id} nao existe na Gen 2.")
+        invalid_moves = [move.move_id for move in canonical_pokemon.moves if not move_exists(move.move_id, 2)]
+        if invalid_moves:
+            raise ValueError(f"Moves incompatíveis com Gen 2: {invalid_moves}")
 
     def can_import_canonical(self, canonical_pokemon: CanonicalPokemon) -> bool:
         return self.compatibility_report_for(canonical_pokemon).compatible
@@ -674,6 +706,25 @@ class Gen2Parser:
             else:
                 chars.append("?")
         return "".join(chars).strip()
+
+    def _encode_text(self, value: str) -> bytes:
+        encoded = bytearray([0x50] * NAME_SIZE)
+        for index, char in enumerate(value[:10]):
+            if "A" <= char <= "Z":
+                encoded[index] = 0x80 + ord(char) - ord("A")
+            elif "a" <= char <= "z":
+                encoded[index] = 0xA0 + ord(char) - ord("a")
+            elif "0" <= char <= "9":
+                encoded[index] = 0xF6 + int(char)
+            elif char == " ":
+                encoded[index] = 0x7F
+            elif char == "'":
+                encoded[index] = 0xE0
+            elif char == "-":
+                encoded[index] = 0xE3
+            else:
+                encoded[index] = 0x50
+        return bytes(encoded)
 
     def _require_data(self) -> bytearray:
         if self.data is None:

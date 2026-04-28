@@ -23,6 +23,11 @@ DEFAULT_CONFIG = {
     "log_dir": "/roms/tools/pokecable_room/logs",
     "auto_trade_evolution": True,
     "item_trade_evolutions_enabled": False,
+    "cross_generation": {
+        "enabled": False,
+        "enabled_modes": [],
+        "policy": "safe_default",
+    },
     "allow_cross_generation": False,
 }
 
@@ -38,6 +43,9 @@ def load_config() -> dict[str, Any]:
     loaded = json.loads(path.read_text(encoding="utf-8"))
     config = dict(DEFAULT_CONFIG)
     config.update(loaded)
+    cross_generation = dict(DEFAULT_CONFIG["cross_generation"])
+    cross_generation.update(loaded.get("cross_generation") or {})
+    config["cross_generation"] = cross_generation
     config["allow_cross_generation"] = False
     return config
 
@@ -45,6 +53,11 @@ def load_config() -> dict[str, Any]:
 def save_config(config: dict[str, Any]) -> None:
     config = dict(config)
     config["allow_cross_generation"] = False
+    cross_generation = dict(DEFAULT_CONFIG["cross_generation"])
+    cross_generation.update(config.get("cross_generation") or {})
+    if not cross_generation.get("enabled"):
+        cross_generation["enabled_modes"] = []
+    config["cross_generation"] = cross_generation
     config_path().write_text(json.dumps(config, indent=2), encoding="utf-8")
 
 

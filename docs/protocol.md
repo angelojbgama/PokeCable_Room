@@ -108,6 +108,43 @@ Same-generation mantem raw data:
 
 Cross-generation usara o mesmo envelope com `trade_mode` diferente e escrita local por conversor. O servidor nao converte e nao grava save.
 
+Payload cross-generation usa `canonical` como dado principal. `raw_data_base64` nao deve ser usado para escrita direta no destino quando `source_generation != target_generation`:
+
+```json
+{
+  "payload_version": 2,
+  "generation": 2,
+  "game": "pokemon_crystal",
+  "source_generation": 2,
+  "source_game": "pokemon_crystal",
+  "target_generation": 3,
+  "trade_mode": "forward_transfer_to_gen3",
+  "species_id": 64,
+  "species_name": "Kadabra",
+  "summary": {
+    "display_summary": "KADABRA Lv. 32"
+  },
+  "canonical": {
+    "source_generation": 2,
+    "source_game": "pokemon_crystal",
+    "species": {
+      "national_dex_id": 64,
+      "source_species_id": 64,
+      "source_species_id_space": "national_dex",
+      "name": "Kadabra"
+    }
+  },
+  "raw": {},
+  "compatibility_report": {
+    "compatible": true,
+    "mode": "forward_transfer_to_gen3",
+    "warnings": [],
+    "data_loss": [],
+    "transformations": []
+  }
+}
+```
+
 ## Confirmacao
 
 ```json
@@ -152,3 +189,12 @@ Enquanto a feature guard estiver desligada, gerações diferentes retornam:
 ```
 
 O client tambem valida o payload recebido antes de gravar.
+
+Para liberar um modo cross-generation no servidor:
+
+```text
+ALLOW_CROSS_GENERATION=true
+ENABLED_TRADE_MODES=time_capsule_gen1_gen2
+```
+
+Modos que nao aparecem em `ENABLED_TRADE_MODES` continuam bloqueados mesmo com a flag global ligada.

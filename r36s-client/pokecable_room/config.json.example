@@ -14,5 +14,10 @@
   "log_dir": "/roms/tools/pokecable_room/logs",
   "auto_trade_evolution": true,
   "item_trade_evolutions_enabled": false,
+  "cross_generation": {
+    "enabled": false,
+    "enabled_modes": [],
+    "policy": "safe_default"
+  },
   "allow_cross_generation": false
 }

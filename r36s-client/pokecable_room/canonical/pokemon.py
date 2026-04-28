@@ -54,6 +54,30 @@ class CanonicalOriginalData:
 
 
 @dataclass(slots=True)
+class CanonicalSpecies:
+    national_dex_id: int
+    source_species_id: int
+    source_species_id_space: str
+    name: str
+    target_species_id: int | None = None
+    target_species_id_space: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "CanonicalSpecies":
+        return cls(
+            national_dex_id=int(value["national_dex_id"]),
+            source_species_id=int(value["source_species_id"]),
+            source_species_id_space=str(value["source_species_id_space"]),
+            name=str(value["name"]),
+            target_species_id=int(value["target_species_id"]) if value.get("target_species_id") is not None else None,
+            target_species_id_space=str(value["target_species_id_space"]) if value.get("target_species_id_space") else None,
+        )
+
+
+@dataclass(slots=True)
 class CanonicalPokemon:
     source_generation: int
     source_game: str
@@ -72,18 +96,40 @@ class CanonicalPokemon:
     ability: str | None = None
     original_data: CanonicalOriginalData | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    species: CanonicalSpecies | None = None
+
+    def __post_init__(self) -> None:
+        if self.species is None:
+            source_species_id = int(self.metadata.get("source_species_id") or self.species_national_id)
+            source_species_id_space = str(self.metadata.get("source_species_id_space") or "legacy_national_dex")
+            self.species = CanonicalSpecies(
+                national_dex_id=int(self.species_national_id),
+                source_species_id=source_species_id,
+                source_species_id_space=source_species_id_space,
+                name=self.species_name,
+            )
+            self.metadata.setdefault("migration", "species_national_id_promoted_to_species")
+        else:
+            self.species_national_id = self.species.national_dex_id
+            self.species_name = self.species.name
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "CanonicalPokemon":
+        species = CanonicalSpecies.from_dict(value["species"]) if value.get("species") else None
+        species_national_id = int(value.get("species_national_id") or (species.national_dex_id if species else 0))
+        species_name = str(value.get("species_name") or (species.name if species else ""))
+        metadata = dict(value.get("metadata") or {})
+        if species is None and "species_national_id" in value:
+            metadata.setdefault("migration", "legacy_species_national_id_payload")
         return cls(
             source_generation=int(value["source_generation"]),
             source_game=str(value["source_game"]),
-            species_national_id=int(value["species_national_id"]),
-            species_name=str(value["species_name"]),
-            nickname=str(value.get("nickname") or value["species_name"]),
+            species_national_id=species_national_id,
+            species_name=species_name,
+            nickname=str(value.get("nickname") or species_name),
             level=int(value["level"]),
             ot_name=str(value.get("ot_name") or ""),
             trainer_id=int(value.get("trainer_id") or 0),
@@ -95,5 +141,6 @@ class CanonicalPokemon:
             nature=str(value["nature"]) if value.get("nature") else None,
             ability=str(value["ability"]) if value.get("ability") else None,
             original_data=CanonicalOriginalData.from_dict(value["original_data"]) if value.get("original_data") else None,
-            metadata=dict(value.get("metadata") or {}),
+            metadata=metadata,
+            species=species,
         )

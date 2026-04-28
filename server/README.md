@@ -31,5 +31,15 @@ ws://127.0.0.1:8000/ws
 - O servidor recebe apenas o payload do Pokemon selecionado.
 - Payload raw e canonical nao devem ser logados completos.
 - Same-generation e o modo estavel atual.
-- Cross-generation fica protegido por feature guard enquanto os conversores locais estao em desenvolvimento.
+- Cross-generation fica protegido por feature guard global e por `ENABLED_TRADE_MODES`.
 - O servidor mantem `trade_mode` e `compatibility_status`, mas a escrita e conversao acontecem no client.
+
+## Cross-Generation
+
+O servidor nunca converte e nunca grava save. Para liberar um modo em teste:
+
+```bash
+ALLOW_CROSS_GENERATION=true ENABLED_TRADE_MODES=time_capsule_gen1_gen2 docker compose up -d
+```
+
+Se `ALLOW_CROSS_GENERATION=true` mas o modo nao estiver em `ENABLED_TRADE_MODES`, o servidor continua bloqueando a sala.
