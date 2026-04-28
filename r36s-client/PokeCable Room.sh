@@ -150,7 +150,13 @@ default = {
     "backup_dir": backup_dir,
     "log_dir": log_dir,
     "auto_trade_evolution": True,
-    "allow_cross_generation": False,
+    "item_trade_evolutions_enabled": False,
+    "cross_generation": {
+        "enabled": False,
+        "enabled_modes": [],
+        "policy": "safe_default",
+        "unsafe_auto_confirm_data_loss": False,
+    },
 }
 if path.exists():
     try:
@@ -160,7 +166,17 @@ if path.exists():
         pass
 default["backup_dir"] = backup_dir
 default["log_dir"] = log_dir
-default["allow_cross_generation"] = False
+default.pop("allow_cross_generation", None)
+cross_generation = {
+    "enabled": False,
+    "enabled_modes": [],
+    "policy": "safe_default",
+    "unsafe_auto_confirm_data_loss": False,
+}
+cross_generation.update(default.get("cross_generation") or {})
+if not cross_generation.get("enabled"):
+    cross_generation["enabled_modes"] = []
+default["cross_generation"] = cross_generation
 path.write_text(json.dumps(default, indent=2), encoding="utf-8")
 PY
 }
@@ -199,7 +215,13 @@ default = {
     "backup_dir": "/roms/tools/pokecable_room/backups",
     "log_dir": "/roms/tools/pokecable_room/logs",
     "auto_trade_evolution": True,
-    "allow_cross_generation": False,
+    "item_trade_evolutions_enabled": False,
+    "cross_generation": {
+        "enabled": False,
+        "enabled_modes": [],
+        "policy": "safe_default",
+        "unsafe_auto_confirm_data_loss": False,
+    },
 }
 if path.exists():
     try:
@@ -208,7 +230,17 @@ if path.exists():
     except Exception:
         pass
 default["server_url"] = server_url
-default["allow_cross_generation"] = False
+default.pop("allow_cross_generation", None)
+cross_generation = {
+    "enabled": False,
+    "enabled_modes": [],
+    "policy": "safe_default",
+    "unsafe_auto_confirm_data_loss": False,
+}
+cross_generation.update(default.get("cross_generation") or {})
+if not cross_generation.get("enabled"):
+    cross_generation["enabled_modes"] = []
+default["cross_generation"] = cross_generation
 path.write_text(json.dumps(default, indent=2), encoding="utf-8")
 PY
 }

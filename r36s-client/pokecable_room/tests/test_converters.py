@@ -22,6 +22,15 @@ class ConverterTests(unittest.TestCase):
         parser.load(path)
         return parser
 
+    def _mew_canonical(self, parser, location: str = "party:0"):
+        generation = parser.get_generation()
+        parser.set_species_id(location, {1: 21, 2: 151, 3: 151}[generation])
+        if generation in {2, 3}:
+            parser.clear_held_item(location)
+        canonical = parser.export_canonical(location)
+        canonical.moves = [CanonicalMove(33)]
+        return canonical
+
     def test_gen1_to_gen2_creates_valid_gen2_struct(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)
@@ -87,6 +96,19 @@ class ConverterTests(unittest.TestCase):
             self.assertEqual(updated.ot_name, "ASH")
             self.assertEqual(updated.trainer_id, 12345)
 
+    def test_mew_gen1_to_gen3_creates_valid_gen3_struct(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            source = self._parser(Gen1Parser, root / "red.sav", synthetic_gen1_save())
+            target = self._parser(Gen3Parser, root / "emerald.sav", synthetic_gen3_save("rse"))
+
+            result = get_converter(1, 3).apply_to_save(target, "party:1", self._mew_canonical(source))
+
+            self.assertTrue(result.wrote_to_save)
+            self.assertEqual(target.get_species_id("party:1"), 151)
+            self.assertEqual(target.list_party()[1].species_name, "Mew")
+            self.assertTrue(target.validate())
+
     def test_gen2_to_gen3_creates_valid_gen3_struct(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)
@@ -103,6 +125,32 @@ class ConverterTests(unittest.TestCase):
             self.assertEqual(updated.nickname, "ROCKY")
             self.assertEqual(updated.ot_name, "CHRIS")
             self.assertEqual(updated.trainer_id, 12345)
+
+    def test_mew_gen2_to_gen3_creates_valid_gen3_struct(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            source = self._parser(Gen2Parser, root / "crystal.sav", synthetic_gen2_save())
+            target = self._parser(Gen3Parser, root / "emerald.sav", synthetic_gen3_save("rse"))
+
+            result = get_converter(2, 3).apply_to_save(target, "party:1", self._mew_canonical(source))
+
+            self.assertTrue(result.wrote_to_save)
+            self.assertEqual(target.get_species_id("party:1"), 151)
+            self.assertEqual(target.list_party()[1].species_name, "Mew")
+            self.assertTrue(target.validate())
+
+    def test_mew_gen2_to_gen1_creates_valid_gen1_struct(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            source = self._parser(Gen2Parser, root / "crystal.sav", synthetic_gen2_save())
+            target = self._parser(Gen1Parser, root / "red.sav", synthetic_gen1_save())
+
+            result = get_converter(2, 1).apply_to_save(target, "party:1", self._mew_canonical(source))
+
+            self.assertTrue(result.wrote_to_save)
+            self.assertEqual(target.get_species_id("party:1"), 21)
+            self.assertEqual(target.list_party()[1].species_name, "Mew")
+            self.assertTrue(target.validate())
 
     def test_gen3_to_gen2_blocks_incompatible_and_converts_compatible(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -125,6 +173,19 @@ class ConverterTests(unittest.TestCase):
             self.assertEqual(updated.trainer_id, 0x5678)
             self.assertIn("trainer_id_high_bits", result.data_loss)
 
+    def test_mew_gen3_to_gen2_creates_valid_gen2_struct(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            source = self._parser(Gen3Parser, root / "emerald.sav", synthetic_gen3_save("rse"))
+            target = self._parser(Gen2Parser, root / "crystal.sav", synthetic_gen2_save())
+
+            result = get_converter(3, 2).apply_to_save(target, "party:1", self._mew_canonical(source))
+
+            self.assertTrue(result.wrote_to_save)
+            self.assertEqual(target.get_species_id("party:1"), 151)
+            self.assertEqual(target.list_party()[1].species_name, "Mew")
+            self.assertTrue(target.validate())
+
     def test_gen3_to_gen1_blocks_incompatible_and_converts_compatible(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)
@@ -145,6 +206,19 @@ class ConverterTests(unittest.TestCase):
             self.assertEqual(updated.ot_name, "BRENDAN")
             self.assertEqual(updated.trainer_id, 0x5678)
             self.assertIn("trainer_id_high_bits", result.data_loss)
+
+    def test_mew_gen3_to_gen1_creates_valid_gen1_struct(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            source = self._parser(Gen3Parser, root / "emerald.sav", synthetic_gen3_save("rse"))
+            target = self._parser(Gen1Parser, root / "red.sav", synthetic_gen1_save())
+
+            result = get_converter(3, 1).apply_to_save(target, "party:1", self._mew_canonical(source))
+
+            self.assertTrue(result.wrote_to_save)
+            self.assertEqual(target.get_species_id("party:1"), 21)
+            self.assertEqual(target.list_party()[1].species_name, "Mew")
+            self.assertTrue(target.validate())
 
     def test_gen2_to_gen3_converts_held_item_when_equivalent_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

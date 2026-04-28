@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from pokecable_room.canonical import CanonicalPokemon, CanonicalSpecies
 from pokecable_room.parsers.gen3 import (
     LAYOUTS,
     PARTY_MON_SIZE,
@@ -136,6 +137,41 @@ class Gen3ParserTests(unittest.TestCase):
 
             self.assertTrue(canonical.metadata["is_egg"])
             self.assertEqual(canonical.species.national_dex_id, 0)
+
+    def test_import_canonical_mew_and_clamperl_write_native_species_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            save = Path(tempdir) / "Pokemon Emerald.sav"
+            save.write_bytes(synthetic_save("rse"))
+            parser = Gen3Parser()
+            parser.load(save)
+
+            parser.import_canonical("party:0", canonical_pokemon(151, "Mew"))
+            parser.import_canonical("party:1", canonical_pokemon(366, "Clamperl"))
+
+            self.assertEqual(parser.get_species_id("party:0"), 151)
+            self.assertEqual(parser.get_species_id("party:1"), 373)
+            self.assertEqual(parser.list_party()[0].species_name, "Mew")
+            self.assertEqual(parser.list_party()[1].species_name, "Clamperl")
+            self.assertTrue(parser.validate())
+
+
+def canonical_pokemon(national_id: int, name: str) -> CanonicalPokemon:
+    return CanonicalPokemon(
+        source_generation=3,
+        source_game="pokemon_emerald",
+        species_national_id=national_id,
+        species_name=name,
+        nickname=name.upper()[:10],
+        level=30,
+        ot_name="ASH",
+        trainer_id=12345,
+        species=CanonicalSpecies(
+            national_dex_id=national_id,
+            source_species_id=national_id,
+            source_species_id_space="national_dex",
+            name=name,
+        ),
+    )
 
 
 if __name__ == "__main__":

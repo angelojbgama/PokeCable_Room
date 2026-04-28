@@ -529,9 +529,17 @@ def test_compatibility(ui: TerminalUI) -> None:
     location = choose_pokemon(parser, ui, None)
     target_generation = ui.choose("Geracao destino:", [1, 2, 3], ["Gen 1", "Gen 2", "Gen 3"])
     canonical = parser.export_canonical(location)
-    report = build_compatibility_report(canonical, target_generation, cross_generation_enabled=False)
+    report = build_compatibility_report(canonical, target_generation, cross_generation_enabled=True)
     ui.print(f"Modo: {report.mode}")
     ui.print(f"Compatibilidade: {'ok' if report.compatible else 'bloqueada'}")
+    normalized = report.normalized_species
+    if normalized.get("target_species_id") is not None:
+        ui.print(
+            f"{canonical.species.name} existe na Gen {target_generation} e pode ser convertido para "
+            f"{normalized.get('target_species_id_space')} {normalized.get('target_species_id')}."
+        )
+    elif report.blocking_reasons:
+        ui.print(f"{canonical.species.name} nao existe na Gen {target_generation} e sera bloqueado.")
     for reason in report.blocking_reasons:
         ui.print(f"- Bloqueio: {reason}")
     for warning in report.warnings:

@@ -44,15 +44,27 @@ class SpeciesMappingTests(unittest.TestCase):
                 self.assertEqual(national_to_native(generation, national_id), native_id)
 
     def test_requested_species_existence_rules_use_tables(self) -> None:
+        self.assertEqual(native_to_national(1, 21), 151)
+        self.assertEqual(national_to_native(1, 151), 21)
+        self.assertEqual(native_to_national(2, 151), 151)
+        self.assertEqual(national_to_native(2, 151), 151)
+        self.assertEqual(native_to_national(3, 151), 151)
+        self.assertEqual(national_to_native(3, 151), 151)
         self.assertEqual(native_to_national(1, 38), 64)
         self.assertEqual(national_to_native(1, 64), 38)
         self.assertEqual(native_to_national(2, 64), 64)
         self.assertEqual(national_to_native(2, 64), 64)
         self.assertEqual(native_to_national(3, 373), 366)
         self.assertEqual(national_to_native(3, 366), 373)
+        self.assertTrue(species_exists_in_generation(151, 1))
+        self.assertTrue(species_exists_in_generation(151, 2))
+        self.assertTrue(species_exists_in_generation(151, 3))
         self.assertFalse(species_exists_in_generation(152, 1))
         self.assertTrue(species_exists_in_generation(251, 2))
+        self.assertTrue(species_exists_in_generation(152, 2))
+        self.assertTrue(species_exists_in_generation(152, 3))
         self.assertFalse(species_exists_in_generation(366, 2))
+        self.assertFalse(species_exists_in_generation(366, 1))
         self.assertTrue(species_exists_in_generation(386, 3))
 
 

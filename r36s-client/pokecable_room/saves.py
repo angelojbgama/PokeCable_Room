@@ -29,7 +29,6 @@ DEFAULT_CONFIG = {
         "policy": "safe_default",
         "unsafe_auto_confirm_data_loss": False,
     },
-    "allow_cross_generation": False,
 }
 
 
@@ -47,13 +46,13 @@ def load_config() -> dict[str, Any]:
     cross_generation = dict(DEFAULT_CONFIG["cross_generation"])
     cross_generation.update(loaded.get("cross_generation") or {})
     config["cross_generation"] = cross_generation
-    config["allow_cross_generation"] = False
+    config.pop("allow_cross_generation", None)
     return config
 
 
 def save_config(config: dict[str, Any]) -> None:
     config = dict(config)
-    config["allow_cross_generation"] = False
+    config.pop("allow_cross_generation", None)
     cross_generation = dict(DEFAULT_CONFIG["cross_generation"])
     cross_generation.update(config.get("cross_generation") or {})
     if not cross_generation.get("enabled"):

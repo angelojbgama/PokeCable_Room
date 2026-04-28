@@ -44,6 +44,33 @@ def canonical(
 
 
 class CompatibilityTests(unittest.TestCase):
+    def test_mew_cross_generation_species_compatibility(self) -> None:
+        gen3_mew = canonical(source_generation=3, national_id=151, native_id=151, name="Mew")
+        gen1_report = build_compatibility_report(gen3_mew, 1, cross_generation_enabled=True)
+        self.assertTrue(gen1_report.compatible)
+        self.assertEqual(gen1_report.normalized_species["target_species_id"], 21)
+        self.assertEqual(gen1_report.normalized_species["target_species_id_space"], "gen1_internal")
+
+        gen2_report = build_compatibility_report(gen3_mew, 2, cross_generation_enabled=True)
+        self.assertTrue(gen2_report.compatible)
+        self.assertEqual(gen2_report.normalized_species["target_species_id"], 151)
+        self.assertEqual(gen2_report.normalized_species["target_species_id_space"], "national_dex")
+
+        self.assertTrue(
+            build_compatibility_report(
+                canonical(source_generation=1, national_id=151, native_id=21, name="Mew"),
+                3,
+                cross_generation_enabled=True,
+            ).compatible
+        )
+        self.assertTrue(
+            build_compatibility_report(
+                canonical(source_generation=2, national_id=151, name="Mew"),
+                3,
+                cross_generation_enabled=True,
+            ).compatible
+        )
+
     def test_gen2_species_152_to_gen1_blocks(self) -> None:
         report = build_compatibility_report(canonical(source_generation=2, national_id=152, name="Chikorita"), 1, cross_generation_enabled=True)
         self.assertFalse(report.compatible)
@@ -57,6 +84,14 @@ class CompatibilityTests(unittest.TestCase):
         )
         self.assertFalse(report.compatible)
         self.assertTrue(any("National Dex #366" in reason for reason in report.blocking_reasons))
+
+    def test_gen3_treecko_blocks_when_target_is_gen1_or_gen2(self) -> None:
+        candidate = canonical(source_generation=3, national_id=252, native_id=277, name="Treecko")
+        for target_generation in (1, 2):
+            with self.subTest(target_generation=target_generation):
+                report = build_compatibility_report(candidate, target_generation, cross_generation_enabled=True)
+                self.assertFalse(report.compatible)
+                self.assertTrue(any("National Dex #252" in reason for reason in report.blocking_reasons))
 
     def test_gen3_kadabra_to_gen2_and_gen1_allowed(self) -> None:
         candidate = canonical(source_generation=3, national_id=64, native_id=64, name="Kadabra")
@@ -104,6 +139,59 @@ class CompatibilityTests(unittest.TestCase):
         self.assertTrue(report.removed_items)
         self.assertTrue(report.requires_user_confirmation)
 
+    def test_mew_item_rules_for_downconvert(self) -> None:
+        gen2_report = build_compatibility_report(
+            canonical(
+                source_generation=3,
+                national_id=151,
+                native_id=151,
+                name="Mew",
+                held_item=CanonicalItem(item_id=199, name="Metal Coat", source_generation=3),
+            ),
+            2,
+            cross_generation_enabled=True,
+        )
+        self.assertTrue(gen2_report.compatible)
+        self.assertTrue(any("ID 143" in item for item in gen2_report.transformations))
+        self.assertNotIn("held_item", gen2_report.data_loss)
+
+        gen1_report = build_compatibility_report(
+            canonical(
+                source_generation=3,
+                national_id=151,
+                native_id=151,
+                name="Mew",
+                held_item=CanonicalItem(item_id=199, name="Metal Coat", source_generation=3),
+            ),
+            1,
+            cross_generation_enabled=True,
+        )
+        self.assertTrue(gen1_report.compatible)
+        self.assertIn("held_item", gen1_report.data_loss)
+        self.assertTrue(gen1_report.requires_user_confirmation)
+
+        no_item = build_compatibility_report(
+            canonical(source_generation=3, national_id=151, native_id=151, name="Mew"),
+            1,
+            cross_generation_enabled=True,
+        )
+        self.assertNotIn("held_item", no_item.data_loss)
+
+        no_equivalent = build_compatibility_report(
+            canonical(
+                source_generation=3,
+                national_id=151,
+                native_id=151,
+                name="Mew",
+                held_item=CanonicalItem(item_id=999, name="Unknown Item", source_generation=3),
+            ),
+            2,
+            cross_generation_enabled=True,
+        )
+        self.assertTrue(no_equivalent.compatible)
+        self.assertIn("held_item", no_equivalent.data_loss)
+        self.assertTrue(no_equivalent.requires_user_confirmation)
+
     def test_strict_blocks_held_item_and_trainer_id_data_loss(self) -> None:
         held_item_report = build_compatibility_report(
             canonical(
@@ -130,6 +218,37 @@ class CompatibilityTests(unittest.TestCase):
         self.assertFalse(trainer_report.compatible)
         self.assertIn("trainer_id_high_bits", trainer_report.data_loss)
 
+    def test_mew_modern_fields_report_data_loss_to_gen1_and_gen2(self) -> None:
+        for target_generation in (1, 2):
+            with self.subTest(target_generation=target_generation):
+                candidate = canonical(
+                    source_generation=3,
+                    national_id=151,
+                    native_id=151,
+                    name="Mew",
+                    ability="Synchronize",
+                    nature="Timid",
+                )
+                candidate.trainer_id = 0x12345678
+                report = build_compatibility_report(candidate, target_generation, cross_generation_enabled=True)
+                self.assertTrue(report.compatible)
+                self.assertIn("ability", report.data_loss)
+                self.assertIn("nature", report.data_loss)
+                self.assertIn("trainer_id_high_bits", report.data_loss)
+                self.assertTrue(any("16 bits" in item for item in report.transformations))
+
+    def test_mew_gen1_or_gen2_to_gen3_reports_native_field_transformations(self) -> None:
+        for source_generation, native_id in ((1, 21), (2, 151)):
+            with self.subTest(source_generation=source_generation):
+                report = build_compatibility_report(
+                    canonical(source_generation=source_generation, national_id=151, native_id=native_id, name="Mew"),
+                    3,
+                    cross_generation_enabled=True,
+                )
+                self.assertTrue(report.compatible)
+                self.assertTrue(any("Ability Gen 3" in item for item in report.transformations))
+                self.assertTrue(any("Nature Gen 3" in item for item in report.transformations))
+
     def test_safe_default_blocks_moves_missing_from_target(self) -> None:
         gen1_report = build_compatibility_report(
             canonical(source_generation=2, national_id=64, name="Kadabra", moves=[CanonicalMove(166)]),
@@ -146,6 +265,40 @@ class CompatibilityTests(unittest.TestCase):
         )
         self.assertFalse(gen2_report.compatible)
         self.assertTrue(any("Fake Out" in reason for reason in gen2_report.blocking_reasons))
+
+    def test_mew_move_policy_for_gen3_downconvert(self) -> None:
+        compatible = build_compatibility_report(
+            canonical(source_generation=3, national_id=151, native_id=151, name="Mew", moves=[CanonicalMove(33)]),
+            1,
+            cross_generation_enabled=True,
+        )
+        self.assertTrue(compatible.compatible)
+
+        safe_default = build_compatibility_report(
+            canonical(source_generation=3, national_id=151, native_id=151, name="Mew", moves=[CanonicalMove(252)]),
+            1,
+            cross_generation_enabled=True,
+        )
+        self.assertFalse(safe_default.compatible)
+        self.assertTrue(any("Fake Out" in reason for reason in safe_default.blocking_reasons))
+
+        permissive = build_compatibility_report(
+            canonical(source_generation=3, national_id=151, native_id=151, name="Mew", moves=[CanonicalMove(252)]),
+            1,
+            cross_generation_enabled=True,
+            policy="permissive",
+        )
+        self.assertTrue(permissive.compatible)
+        self.assertEqual(permissive.removed_moves, [{"move_id": 252, "name": "Fake Out"}])
+        self.assertIn("moves", permissive.data_loss)
+        self.assertTrue(permissive.requires_user_confirmation)
+
+        gen2 = build_compatibility_report(
+            canonical(source_generation=3, national_id=151, native_id=151, name="Mew", moves=[CanonicalMove(33)]),
+            2,
+            cross_generation_enabled=True,
+        )
+        self.assertTrue(gen2.compatible)
 
     def test_permissive_records_removed_moves_and_requires_confirmation(self) -> None:
         report = build_compatibility_report(

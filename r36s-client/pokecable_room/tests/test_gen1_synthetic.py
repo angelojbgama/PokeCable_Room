@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from pokecable_room.canonical import CanonicalPokemon, CanonicalSpecies
 from pokecable_room.parsers.gen1 import (
     CHECKSUM_END,
     CHECKSUM_OFFSET,
@@ -77,6 +78,37 @@ class Gen1SyntheticParserTests(unittest.TestCase):
             updated = reloaded.list_party()
             self.assertEqual(updated[1].species_name, "Kadabra")
             self.assertTrue(reloaded.validate())
+
+    def test_import_canonical_mew_writes_internal_species_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            save = Path(tempdir) / "red.sav"
+            save.write_bytes(synthetic_save())
+            parser = Gen1Parser()
+            parser.load(save)
+            parser.import_canonical("party:1", canonical_mew(1, 21, "gen1_internal"))
+
+            self.assertEqual(parser.get_species_id("party:1"), 21)
+            self.assertEqual(parser.list_party()[1].species_name, "Mew")
+            self.assertTrue(parser.validate())
+
+
+def canonical_mew(source_generation: int, source_species_id: int, source_space: str) -> CanonicalPokemon:
+    return CanonicalPokemon(
+        source_generation=source_generation,
+        source_game={1: "pokemon_red", 2: "pokemon_crystal", 3: "pokemon_emerald"}[source_generation],
+        species_national_id=151,
+        species_name="Mew",
+        nickname="MEW",
+        level=30,
+        ot_name="ASH",
+        trainer_id=12345,
+        species=CanonicalSpecies(
+            national_dex_id=151,
+            source_species_id=source_species_id,
+            source_species_id_space=source_space,
+            name="Mew",
+        ),
+    )
 
 
 if __name__ == "__main__":

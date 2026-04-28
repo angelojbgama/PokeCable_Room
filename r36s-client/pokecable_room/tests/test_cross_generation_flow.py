@@ -34,6 +34,14 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
         parser.load(path)
         return parser
 
+    def _set_mew(self, parser, location: str = "party:0"):
+        parser.set_species_id(location, {1: 21, 2: 151, 3: 151}[parser.get_generation()])
+        if parser.get_generation() in {2, 3}:
+            parser.clear_held_item(location)
+        canonical = parser.export_canonical(location)
+        canonical.moves = []
+        return canonical
+
     def _offer(self, parser, target_generation: int, trade_mode: str) -> dict:
         return _build_offer_payload(
             parser,
@@ -98,6 +106,30 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(gen1.list_party()[0].species_name, "Onix")
             self.assertEqual(gen2.list_party()[0].species_name, "Kadabra")
 
+    def test_mew_gen1_gen2_time_capsule_local_flow(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            gen1_path = root / "red.sav"
+            gen2_path = root / "crystal.sav"
+            gen1 = self._parser(Gen1Parser, gen1_path, synthetic_gen1_save())
+            gen2 = self._parser(Gen2Parser, gen2_path, synthetic_gen2_save())
+
+            gen1_offer = self._set_mew(gen1)
+            gen2_offer = self._set_mew(gen2)
+            get_converter(2, 1).apply_to_save(gen1, "party:0", gen2_offer)
+            get_converter(1, 2).apply_to_save(gen2, "party:0", gen1_offer)
+            gen1.save(gen1_path)
+            gen2.save(gen2_path)
+
+            reloaded_gen1 = Gen1Parser()
+            reloaded_gen2 = Gen2Parser()
+            reloaded_gen1.load(gen1_path)
+            reloaded_gen2.load(gen2_path)
+            self.assertTrue(reloaded_gen1.validate())
+            self.assertTrue(reloaded_gen2.validate())
+            self.assertEqual(reloaded_gen1.get_species_id("party:0"), 21)
+            self.assertEqual(reloaded_gen2.get_species_id("party:0"), 151)
+
     async def test_forward_transfer_rooms_commit_and_apply_older_payload_to_gen3(self) -> None:
         for source_generation, parser_cls, data, filename in [
             (1, Gen1Parser, synthetic_gen1_save(), "red.sav"),
@@ -123,6 +155,34 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
                     get_converter(source_generation, 3).apply_to_save(gen3, "party:1", CanonicalPokemon.from_dict(room.offers["A"].canonical))
                     self.assertTrue(source.validate())
                     self.assertTrue(gen3.validate())
+
+    def test_mew_forward_and_downconvert_local_flows(self) -> None:
+        cases = [
+            (Gen1Parser, synthetic_gen1_save(), "red.sav", Gen3Parser, synthetic_gen3_save("rse"), "emerald.sav", 1, 3, 151),
+            (Gen2Parser, synthetic_gen2_save(), "crystal.sav", Gen3Parser, synthetic_gen3_save("rse"), "emerald.sav", 2, 3, 151),
+            (Gen3Parser, synthetic_gen3_save("rse"), "emerald.sav", Gen1Parser, synthetic_gen1_save(), "red.sav", 3, 1, 21),
+            (Gen3Parser, synthetic_gen3_save("rse"), "emerald.sav", Gen2Parser, synthetic_gen2_save(), "crystal.sav", 3, 2, 151),
+        ]
+        for source_cls, source_data, source_name, target_cls, target_data, target_name, source_generation, target_generation, expected in cases:
+            with self.subTest(source_generation=source_generation, target_generation=target_generation):
+                with tempfile.TemporaryDirectory() as tempdir:
+                    root = Path(tempdir)
+                    source = self._parser(source_cls, root / source_name, source_data)
+                    target_path = root / target_name
+                    target = self._parser(target_cls, target_path, target_data)
+
+                    get_converter(source_generation, target_generation).apply_to_save(
+                        target,
+                        "party:1",
+                        self._set_mew(source),
+                    )
+                    target.save(target_path)
+
+                    reloaded = target_cls()
+                    reloaded.load(target_path)
+                    self.assertTrue(reloaded.validate())
+                    self.assertEqual(reloaded.get_species_id("party:1"), expected)
+                    self.assertEqual(reloaded.list_party()[1].species_name, "Mew")
 
     async def test_legacy_downconvert_converts_compatible_and_blocks_incompatible(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

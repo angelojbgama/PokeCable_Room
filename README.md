@@ -81,6 +81,17 @@ Modos protegidos por flags:
 
 Em uma troca de duas vias entre Gen 1/2 e Gen 3, cada direcao respeita sua propria flag. Por exemplo, para o jogador Gen 1 enviar ao Gen 3 e tambem receber do Gen 3, servidor e clients precisam habilitar `forward_transfer_to_gen3` e `legacy_downconvert_experimental`.
 
+Compatibilidade por National Dex:
+
+- Um Pokemon cross-generation so e aceito se seu National Dex existir na geracao destino.
+- Mew Gen 3 -> Gen 1 e permitido: Mew e National Dex #151 e vira species interno Gen 1 `21`.
+- Mew Gen 3 -> Gen 2 e permitido: Mew e National Dex #151 e continua `151`.
+- Kadabra Gen 3 -> Gen 1/2 e permitido porque Kadabra #64 existe nessas geracoes.
+- Mew Gen 1 -> Gen 3 e Mew Gen 2 -> Gen 3 sao permitidos quando moves e campos removiveis passam pela politica escolhida.
+- Chikorita Gen 2 -> Gen 1 e bloqueado porque Chikorita #152 nao existe na Gen 1.
+- Clamperl Gen 3 -> Gen 2 e bloqueado porque Clamperl #366 nao existe na Gen 2.
+- Treecko Gen 3 -> Gen 1/2 e bloqueado porque Treecko #252 nao existe nesses destinos.
+
 Servidor:
 
 ```text
