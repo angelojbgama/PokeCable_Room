@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pokecable_room.canonical import CanonicalPokemon
 from pokecable_room.data.items import equivalent_item_id, item_exists, item_name
-from pokecable_room.data.moves import move_exists
+from pokecable_room.data.moves import move_exists, move_name
 from pokecable_room.data.species import national_to_native, species_exists_in_generation
 
 from .matrix import (
@@ -91,7 +91,7 @@ def _apply_move_rules(report: CompatibilityReport, canonical: CanonicalPokemon, 
             continue
         if move_exists(move.move_id, report.target_generation):
             continue
-        removed = {"move_id": move.move_id, "name": move.name or f"Move #{move.move_id}"}
+        removed = {"move_id": move.move_id, "name": move.name or move_name(move.move_id) or f"Move #{move.move_id}"}
         if policy in {"strict", "safe_default"}:
             report.compatible = False
             report.blocking_reasons.append(f"Move {removed['name']} nao existe na Gen {report.target_generation}.")
@@ -160,5 +160,5 @@ def _apply_mode_rules(report: CompatibilityReport, canonical: CanonicalPokemon) 
         report.warnings.append("Transfer para Gen 3 exigira recriar campos nativos Gen 3 localmente no client.")
     elif report.mode == LEGACY_DOWNCONVERT_EXPERIMENTAL:
         report.warnings.append("Downconvert de Gen 3 para Gen 1/2 e experimental e pode perder dados modernos.")
-        if canonical.held_item is not None and report.target_generation == 1:
+        if canonical.held_item is not None and report.target_generation == 1 and "held_item" not in report.data_loss:
             report.data_loss.append("held_item")

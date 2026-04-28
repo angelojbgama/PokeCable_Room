@@ -17,7 +17,8 @@
   "cross_generation": {
     "enabled": false,
     "enabled_modes": [],
-    "policy": "safe_default"
+    "policy": "safe_default",
+    "unsafe_auto_confirm_data_loss": false
   },
   "allow_cross_generation": false
 }

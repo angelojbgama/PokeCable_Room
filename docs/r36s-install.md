@@ -50,7 +50,8 @@ Os modos Time Capsule Gen 1/2, Transfer para Gen 3 e Downconvert experimental ap
 "cross_generation": {
   "enabled": true,
   "enabled_modes": ["time_capsule_gen1_gen2"],
-  "policy": "safe_default"
+  "policy": "safe_default",
+  "unsafe_auto_confirm_data_loss": false
 }
 ```
 

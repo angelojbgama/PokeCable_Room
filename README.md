@@ -19,21 +19,28 @@ Roadmap:
 
 ## Suporte Atual
 
+Estavel:
+
 - Servidor FastAPI/WebSocket em `/ws`.
 - Salas privadas com nome e senha.
 - Maximo de dois jogadores por sala.
-- `trade_mode` e `compatibility_status` preparados no contrato de sala.
-- Payload v2 com raw, summary, canonical e compatibility_report.
-- Modelo canonico separando National Dex, ID nativo da geracao e espaco de ID.
-- Tabelas locais de especies, moves e held items usadas pela compatibilidade.
-- Conversores locais para Gen 1 <-> Gen 2, Gen 1/2 -> Gen 3 e Gen 3 -> Gen 1/2, todos atras de feature flag por modo.
 - Client R36S sem desktop, usando dialog/whiptail, terminal e teclado virtual por controle.
 - Frontend web em `https://9kernel.vps-kinghost.net/`.
 - Parser Gen 1 Red/Blue/Yellow para party.
 - Parser Gen 2 Gold/Silver/Crystal para party.
 - Parser Gen 3 Ruby/Sapphire/Emerald/FireRed/LeafGreen para party.
 - Backup automatico antes de alterar save.
+- Same-generation trade usando raw payload somente entre saves da mesma geracao.
 - Evolucao simples por troca aplicada localmente depois da troca, quando `auto_trade_evolution` esta ligado.
+
+Experimental protegido por flags:
+
+- `trade_mode` e `compatibility_status` no contrato de sala.
+- Payload v2 com raw, summary, canonical e compatibility_report.
+- Modelo canonico separando National Dex, ID nativo da geracao e espaco de ID.
+- Tabelas locais de especies, moves e held items usadas pela compatibilidade.
+- Conversores locais para Gen 1 <-> Gen 2, Gen 1/2 -> Gen 3 e Gen 3 -> Gen 1/2.
+- Cross-generation usando canonical payload, `CompatibilityReport` e conversor local.
 - Evolucao por item com IDs validados para Gen 2/3, desligada por padrao por `item_trade_evolutions_enabled=false`.
 
 ## O Que Nao Faz
@@ -46,6 +53,14 @@ Roadmap:
 - Nao escreve raw de uma geracao em save de outra geracao.
 - Nao aplica evolucao por item por padrao.
 - Nao implementa boxes ainda.
+
+## Limitacoes Conhecidas
+
+- Boxes ainda nao estao implementadas; o fluxo atual opera em party.
+- Validacao completa de learnset nao e objetivo inicial; moves sao validados por existencia na geracao destino.
+- Cross-generation deve ser testado com backup e feature flags por modo.
+- Downconvert Gen 3 -> Gen 1/2 pode perder ability, nature, parte do trainer ID, held item e moves modernos.
+- O jogo/emulador precisa estar fechado antes de gravar no save.
 
 ## Seguranca De Geracao
 
@@ -65,7 +80,8 @@ Config local do client:
   "cross_generation": {
     "enabled": false,
     "enabled_modes": [],
-    "policy": "safe_default"
+    "policy": "safe_default",
+    "unsafe_auto_confirm_data_loss": false
   }
 }
 ```
@@ -78,6 +94,16 @@ ENABLED_TRADE_MODES=
 ```
 
 `ALLOW_CROSS_GENERATION=true` sozinho nao libera tudo. Cada modo precisa aparecer em `ENABLED_TRADE_MODES`, por exemplo `time_capsule_gen1_gen2`.
+
+Variaveis e opcoes:
+
+- `ALLOW_CROSS_GENERATION`: liga a feature guard global do servidor.
+- `ENABLED_TRADE_MODES`: lista os modos cross-generation permitidos no servidor.
+- `item_trade_evolutions_enabled`: liga evolucoes por item no client; padrao `false`.
+- `cross_generation.enabled`: liga cross-generation no client.
+- `cross_generation.enabled_modes`: modos cross-generation permitidos no client.
+- `cross_generation.policy`: `safe_default`, `strict` ou `permissive`.
+- `cross_generation.unsafe_auto_confirm_data_loss`: permite auto-confirm com perda de dados; padrao `false` e nao recomendado.
 
 ## Rodar Servidor
 

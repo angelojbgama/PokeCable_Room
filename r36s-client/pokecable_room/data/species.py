@@ -32,6 +32,7 @@ SPECIES_NAMES_BY_NATIONAL.update(
         137: "Porygon",
         186: "Politoed",
         199: "Slowking",
+        201: "Unown",
         208: "Steelix",
         212: "Scizor",
         230: "Kingdra",
@@ -339,6 +340,7 @@ _GEN3_INTERNAL_NAMES = {
 _NATIONAL_BY_NAME = {name: national_id for national_id, name in SPECIES_NAMES_BY_NATIONAL.items()}
 
 GEN3_INTERNAL_TO_NATIONAL: dict[int, int] = {species_id: species_id for species_id in range(1, 252)}
+GEN3_INTERNAL_TO_NATIONAL.update({species_id: 201 for species_id in range(252, 277)})
 GEN3_INTERNAL_TO_NATIONAL.update(
     {
         internal_id: _NATIONAL_BY_NAME[name]

@@ -1,0 +1,24 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile Python
+        run: python -m compileall server r36s-client
+
+      - name: Run server tests
+        run: PYTHONPATH=server python -m unittest discover -s server/tests -v
+
+      - name: Run R36S client tests
+        run: PYTHONPATH=r36s-client python -m unittest discover -s r36s-client/pokecable_room/tests -v

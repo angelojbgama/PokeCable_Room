@@ -18,6 +18,7 @@ from pokecable_room.compatibility.matrix import (
     LEGACY_DOWNCONVERT_EXPERIMENTAL,
     SAME_GENERATION,
     TIME_CAPSULE_GEN1_GEN2,
+    UNSUPPORTED,
     get_trade_mode,
 )
 from pokecable_room.converters import get_converter
@@ -55,6 +56,7 @@ async def run_trade(
     cross_generation_enabled: bool = False,
     enabled_cross_generation_modes: list[str] | None = None,
     cross_generation_policy: str = "safe_default",
+    unsafe_auto_confirm_data_loss: bool = False,
 ) -> PokemonPayload:
     local_generation = parser.get_generation()
     local_game = parser.get_game_id()
@@ -99,7 +101,7 @@ async def run_trade(
                 raise RuntimeError("Modo em desenvolvimento. Seu save foi detectado corretamente, mas essa conversao ainda nao esta habilitada.")
         target_generation = _peer_generation(room_info, network.client_id) if trade_mode != SAME_GENERATION else local_generation
         expected_mode = get_trade_mode(local_generation, target_generation)
-        if expected_mode != trade_mode:
+        if action == "create" and expected_mode != trade_mode:
             raise RuntimeError(f"Modo da sala ({trade_mode}) nao corresponde ao par Gen {local_generation} -> Gen {target_generation} ({expected_mode}).")
         offer = _build_offer_payload(
             parser,
@@ -122,6 +124,16 @@ async def run_trade(
         ui.print(f"Pokemon do outro jogador: {received_preview.display_summary}")
         if received_report is not None:
             _print_report(ui, received_report.to_dict())
+            if received_report.requires_user_confirmation:
+                if auto_confirm and not unsafe_auto_confirm_data_loss:
+                    await network.send({"type": "cancel_trade"})
+                    raise RuntimeError(
+                        "A compatibilidade indica perda de dados e exige confirmacao manual. "
+                        "auto_confirm foi bloqueado por seguranca."
+                    )
+                if not ui.confirm("A conversao tem avisos/perdas. Confirmar mesmo assim?", default=False):
+                    await network.send({"type": "cancel_trade"})
+                    raise RuntimeError("Troca cancelada pelo usuario apos relatorio de compatibilidade.")
         preview = preview_trade_evolution(
             local_generation,
             _preview_species_id_for_local_generation(received_preview, local_generation),
@@ -261,10 +273,12 @@ def _validate_received_payload_for_mode(
         return None
     if not payload.canonical:
         raise RuntimeError("Payload cross-generation recebido sem modelo canonico.")
+    if payload.trade_mode != trade_mode:
+        raise RuntimeError(f"Payload recebido usa sala {payload.trade_mode}, mas a sala local usa {trade_mode}.")
     canonical = CanonicalPokemon.from_dict(payload.canonical)
-    expected_mode = get_trade_mode(canonical.source_generation, local_generation)
-    if expected_mode != trade_mode:
-        raise RuntimeError(f"Payload recebido usa modo {expected_mode}, mas a sala usa {trade_mode}.")
+    conversion_mode = get_trade_mode(canonical.source_generation, local_generation)
+    if conversion_mode == UNSUPPORTED:
+        raise RuntimeError(f"Par de geracoes nao suportado: Gen {canonical.source_generation} -> Gen {local_generation}.")
     report = build_compatibility_report(
         canonical,
         local_generation,
@@ -307,6 +321,12 @@ def _print_report(ui: TerminalUI, report: dict) -> None:
         ui.print(f"Aviso: {warning}")
     for data_loss in report.get("data_loss") or []:
         ui.print(f"Perda de dados: {data_loss}")
+    for move in report.get("removed_moves") or []:
+        ui.print(f"Move removido: {move.get('name') or move.get('move_id')}")
+    for item in report.get("removed_items") or []:
+        ui.print(f"Item removido: {item.get('name') or item.get('item_id')}")
+    for field in report.get("removed_fields") or []:
+        ui.print(f"Campo removido: {field}")
     for transformation in report.get("transformations") or []:
         ui.print(f"Conversao: {transformation}")
 
@@ -367,6 +387,7 @@ async def automated_or_prompted_trade(args: argparse.Namespace) -> int:
             cross_generation_enabled=bool(cross_generation_config.get("enabled", False)),
             enabled_cross_generation_modes=list(cross_generation_config.get("enabled_modes") or []),
             cross_generation_policy=str(cross_generation_config.get("policy") or "safe_default"),
+            unsafe_auto_confirm_data_loss=bool(cross_generation_config.get("unsafe_auto_confirm_data_loss", False)),
         )
     except Exception as exc:
         logger.exception("Trade failed")

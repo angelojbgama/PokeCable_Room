@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import unittest
+from unittest.mock import patch
 
 from app.models import RoomError
 from app.models import FORWARD_TRANSFER_TO_GEN3, SAME_GENERATION, TIME_CAPSULE_GEN1_GEN2
@@ -201,6 +202,38 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(raised.exception.code, "trade_mode_disabled")
 
+    async def test_cross_generation_global_flag_without_enabled_modes_does_not_release_mode(self) -> None:
+        manager = RoomManager(
+            room_timeout_seconds=60,
+            max_rooms=10,
+            cross_generation_enabled=True,
+            enabled_trade_modes=[],
+        )
+        with self.assertRaises(RoomError) as raised:
+            await manager.create_room(
+                room_name="time",
+                password="pw",
+                client_id="a",
+                generation=1,
+                game="pokemon_red",
+                trade_mode=TIME_CAPSULE_GEN1_GEN2,
+            )
+        self.assertEqual(raised.exception.code, "trade_mode_disabled")
+
+    async def test_env_allow_cross_generation_without_enabled_modes_does_not_release_mode(self) -> None:
+        with patch.dict("os.environ", {"ALLOW_CROSS_GENERATION": "true", "ENABLED_TRADE_MODES": ""}):
+            manager = RoomManager(room_timeout_seconds=60, max_rooms=10, cross_generation_enabled=None)
+        with self.assertRaises(RoomError) as raised:
+            await manager.create_room(
+                room_name="time",
+                password="pw",
+                client_id="a",
+                generation=1,
+                game="pokemon_red",
+                trade_mode=TIME_CAPSULE_GEN1_GEN2,
+            )
+        self.assertEqual(raised.exception.code, "trade_mode_disabled")
+
     async def test_trade_mode_mismatch_blocks_cross_generation_join(self) -> None:
         manager = RoomManager(
             room_timeout_seconds=60,
@@ -263,6 +296,17 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(slot, "A")
         self.assertIsNotNone(offer.canonical)
         self.assertEqual(room.trade_mode, TIME_CAPSULE_GEN1_GEN2)
+
+    async def test_same_generation_offer_requires_raw_even_with_canonical_payload(self) -> None:
+        manager = RoomManager(room_timeout_seconds=60, max_rooms=10)
+        await manager.create_room(room_name="room", password="pw", client_id="a", generation=2, game="pokemon_crystal")
+        await manager.join_room(room_name="room", password="pw", client_id="b", generation=2, game="pokemon_crystal")
+        payload = synthetic_payload_v2(2)
+        payload["raw_data_base64"] = ""
+        payload["raw"] = {}
+        with self.assertRaises(RoomError) as raised:
+            await manager.offer_pokemon(client_id="a", payload=payload)
+        self.assertEqual(raised.exception.code, "invalid_payload")
 
     async def test_timeout_cleanup(self) -> None:
         manager = RoomManager(room_timeout_seconds=1, max_rooms=10)

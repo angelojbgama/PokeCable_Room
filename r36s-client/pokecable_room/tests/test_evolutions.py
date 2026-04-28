@@ -163,6 +163,37 @@ class TradeEvolutionParserTests(unittest.TestCase):
                 self.assertEqual(result.consumed_item_name, item_name)
                 self.assertEqual(parser.clear_calls, 1)
 
+    def test_gen2_item_evolutions_with_real_parser(self) -> None:
+        cases = [
+            (123, 0x8F, 212, "Metal Coat"),
+            (95, 0x8F, 208, "Metal Coat"),
+            (117, 0x97, 230, "Dragon Scale"),
+            (137, 0xAC, 233, "Up-Grade"),
+            (61, 0x52, 186, "King's Rock"),
+            (79, 0x52, 199, "King's Rock"),
+        ]
+        for source, item_id, target, item_name in cases:
+            with self.subTest(source=source, item=item_name):
+                with tempfile.TemporaryDirectory() as tempdir:
+                    save = Path(tempdir) / "Pokemon Crystal.sav"
+                    save.write_bytes(synthetic_gen2_save())
+                    parser = Gen2Parser()
+                    parser.load(save)
+                    parser.set_species_id("party:0", source)
+                    parser.set_held_item_id("party:0", item_id)
+
+                    result = apply_trade_evolution_to_parser(
+                        parser,
+                        "party:0",
+                        item_based_evolutions_enabled=True,
+                    )
+
+                    self.assertTrue(result.evolved)
+                    self.assertEqual(result.consumed_item_name, item_name)
+                    self.assertEqual(parser.get_species_id("party:0"), target)
+                    self.assertIsNone(parser.get_held_item_id("party:0"))
+                    self.assertTrue(parser.validate())
+
     def test_gen3_clamperl_item_evolutions_use_validated_ids_and_consume_item(self) -> None:
         cases = [
             (192, 374, "Deep Sea Tooth"),
@@ -180,6 +211,40 @@ class TradeEvolutionParserTests(unittest.TestCase):
                 self.assertEqual(parser.get_species_id("party:0"), target)
                 self.assertEqual(result.consumed_item_name, item_name)
                 self.assertEqual(parser.clear_calls, 1)
+
+    def test_gen3_item_evolutions_with_real_parser_and_valid_internal_checksum(self) -> None:
+        cases = [
+            (373, 192, 374, "Deep Sea Tooth"),
+            (373, 193, 375, "Deep Sea Scale"),
+            (123, 199, 212, "Metal Coat"),
+            (95, 199, 208, "Metal Coat"),
+            (117, 201, 230, "Dragon Scale"),
+            (137, 218, 233, "Up-Grade"),
+            (61, 187, 186, "King's Rock"),
+            (79, 187, 199, "King's Rock"),
+        ]
+        for source, item_id, target, item_name in cases:
+            with self.subTest(source=source, item=item_name):
+                with tempfile.TemporaryDirectory() as tempdir:
+                    save = Path(tempdir) / "Pokemon Emerald.sav"
+                    save.write_bytes(synthetic_gen3_save("rse"))
+                    parser = Gen3Parser()
+                    parser.load(save)
+                    parser.set_species_id("party:0", source)
+                    parser.set_held_item_id("party:0", item_id)
+
+                    result = apply_trade_evolution_to_parser(
+                        parser,
+                        "party:0",
+                        item_based_evolutions_enabled=True,
+                    )
+
+                    self.assertTrue(result.evolved)
+                    self.assertEqual(result.consumed_item_name, item_name)
+                    self.assertEqual(parser.get_species_id("party:0"), target)
+                    self.assertIsNone(parser.get_held_item_id("party:0"))
+                    parser.export_pokemon("party:0")
+                    self.assertTrue(parser.validate())
 
     def test_evolution_does_not_run_when_target_species_does_not_exist(self) -> None:
         original = engine.simple_trade_rules_for_generation

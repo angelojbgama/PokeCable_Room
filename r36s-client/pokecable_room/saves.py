@@ -27,6 +27,7 @@ DEFAULT_CONFIG = {
         "enabled": False,
         "enabled_modes": [],
         "policy": "safe_default",
+        "unsafe_auto_confirm_data_loss": False,
     },
     "allow_cross_generation": False,
 }
