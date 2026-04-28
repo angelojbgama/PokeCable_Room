@@ -48,6 +48,8 @@ class ConnectionHub:
                 await self._join_room(client_id, message)
             elif message_type == "offer_pokemon":
                 await self._offer_pokemon(client_id, message)
+            elif message_type == "preflight_result":
+                await self._preflight_result(client_id, message)
             elif message_type == "confirm_trade":
                 await self._confirm_trade(client_id)
             elif message_type == "cancel_trade":
@@ -67,6 +69,7 @@ class ConnectionHub:
             game=message.get("game"),
             trade_mode=message.get("trade_mode"),
             supported_trade_modes=list(message.get("supported_trade_modes") or []),
+            supported_protocols=list(message.get("supported_protocols") or []),
         )
         self._remember_client(room.room_name, slot, client_id)
         logger.info("room_created room=%s generation=%s trade_mode=%s slot=%s", room.room_name, room.generation, room.trade_mode, slot)
@@ -89,6 +92,7 @@ class ConnectionHub:
             generation=message.get("generation"),
             game=message.get("game"),
             supported_trade_modes=list(message.get("supported_trade_modes") or []),
+            supported_protocols=list(message.get("supported_protocols") or []),
         )
         self._remember_client(room.room_name, slot, client_id)
         logger.info("room_joined room=%s generation=%s trade_mode=%s slot=%s", room.room_name, room.generation, room.trade_mode, slot)
@@ -111,6 +115,29 @@ class ConnectionHub:
             await self._send(peer_client_id, {"type": "peer_offer_received", "offer": offer.to_public_dict()})
         if room.has_both_offers():
             await self._broadcast(room, {"type": "offers_ready", "message": "Os dois Pokemon foram oferecidos."})
+            await self._send_preflight_requests(room)
+
+    async def _preflight_result(self, client_id: str, message: dict[str, Any]) -> None:
+        room, slot, blocked, ready, reports = await self.room_manager.submit_preflight_result(
+            client_id=client_id,
+            compatible=bool(message.get("compatible")),
+            report=dict(message.get("report") or {}),
+            error=str(message.get("error") or ""),
+        )
+        logger.info("preflight_result room=%s slot=%s compatible=%s blocked=%s ready=%s", room.room_name, slot, message.get("compatible"), blocked, ready)
+        await self._send(client_id, {"type": "preflight_received", "slot": slot})
+        if blocked:
+            await self._broadcast(
+                room,
+                {
+                    "type": "trade_blocked",
+                    "message": "Troca bloqueada no preflight.",
+                    "reports": reports,
+                    "room": room.to_public_dict(),
+                },
+            )
+        elif ready:
+            await self._broadcast(room, {"type": "preflight_ready", "reports": reports, "room": room.to_public_dict()})
 
     async def _confirm_trade(self, client_id: str) -> None:
         room, slot, committed = await self.room_manager.confirm_trade(client_id=client_id)
@@ -140,6 +167,14 @@ class ConnectionHub:
                     "message": "Troca confirmada pelos dois jogadores.",
                 },
             )
+
+    async def _send_preflight_requests(self, room: Room) -> None:
+        requests = self.room_manager.preflight_requests(room)
+        clients = self.room_clients.get(room.room_name, {})
+        for slot, payload in requests.items():
+            client_id = clients.get(slot)
+            if client_id:
+                await self._send(client_id, payload)
 
     async def _cancel_trade(self, client_id: str, reason: str) -> None:
         known = self.room_manager.client_rooms.get(client_id)

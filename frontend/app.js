@@ -736,18 +736,28 @@ function handleMessage(message) {
     case "peer_offer_received":
       peerPayload = message.offer;
       peerOfferEl.textContent = peerPayload.display_summary || (peerPayload.summary && peerPayload.summary.display_summary) || "-";
-      if (loadedSave && peerPayload.generation !== loadedSave.generation) {
-        setStatus(`Payload recebido e Gen ${peerPayload.generation}; este save e Gen ${loadedSave.generation}. Cross-generation esta protegido por feature guard.`);
-        confirmButton.disabled = true;
-        log("Payload bloqueado por feature guard cross-generation.");
-        break;
-      }
-      setStatus("Oferta do outro usuario recebida. Confirme para concluir.");
-      confirmButton.disabled = false;
+      setStatus("Oferta do outro usuario recebida. Validando compatibilidade.");
+      confirmButton.disabled = true;
       log(`Outro usuario oferece: ${peerOfferEl.textContent}`);
       break;
     case "offers_ready":
       log("As duas ofertas estao prontas.");
+      break;
+    case "preflight_required":
+      handlePreflightRequired(message);
+      break;
+    case "preflight_received":
+      log("Preflight enviado ao servidor.");
+      break;
+    case "preflight_ready":
+      setStatus("Compatibilidade validada nos dois lados. Confirme para concluir.");
+      confirmButton.disabled = false;
+      log("Preflight aprovado pelos dois usuarios.");
+      break;
+    case "trade_blocked":
+      setStatus(message.message || "Troca bloqueada no preflight.");
+      confirmButton.disabled = true;
+      log(`Troca bloqueada: ${message.message || "preflight"}`);
       break;
     case "trade_confirmed":
       setStatus("Sua confirmacao foi enviada. Aguardando o outro usuario.");
@@ -806,9 +816,60 @@ function sendOffer() {
   send({ type: "offer_pokemon", payload: localPayload });
 }
 
+function handlePreflightRequired(message) {
+  const payload = message.received_payload;
+  peerPayload = payload;
+  peerOfferEl.textContent = payload.display_summary || (payload.summary && payload.summary.display_summary) || "-";
+  const report = {
+    compatible: true,
+    mode: message.derived_mode || "same_generation",
+    source_generation: message.source_generation,
+    target_generation: message.target_generation,
+    blocking_reasons: [],
+    warnings: [],
+    data_loss: [],
+    suggested_actions: [],
+    transformations: [],
+    removed_moves: [],
+    removed_items: [],
+    removed_fields: [],
+    normalized_species: {},
+    requires_user_confirmation: false
+  };
+  if (!loadedSave) {
+    report.compatible = false;
+    report.blocking_reasons.push("Nenhum save carregado.");
+  } else if (payload.generation !== loadedSave.generation) {
+    report.compatible = false;
+    report.blocking_reasons.push(`Frontend web ainda nao aplica cross-generation localmente: payload Gen ${payload.generation}, save Gen ${loadedSave.generation}.`);
+  } else if (!(payload.raw_data_base64 || (payload.raw && payload.raw.data_base64))) {
+    report.compatible = false;
+    report.blocking_reasons.push("Payload same-generation sem raw data.");
+  }
+  send({
+    type: "preflight_result",
+    compatible: report.compatible,
+    requires_user_confirmation: false,
+    report,
+    error: report.blocking_reasons.join("; ")
+  });
+  if (report.compatible) {
+    setStatus("Preflight local aprovado. Aguardando o outro usuario.");
+    log("Preflight local aprovado.");
+  } else {
+    setStatus(report.blocking_reasons.join(" "));
+    confirmButton.disabled = true;
+    log(`Preflight local bloqueado: ${report.blocking_reasons.join("; ")}`);
+  }
+}
+
 function supportedTradeModes(generation) {
   void generation;
   return ["same_generation"];
+}
+
+function supportedProtocols() {
+  return ["raw_same_generation"];
 }
 
 async function startRoom(action) {
@@ -835,8 +896,8 @@ async function startRoom(action) {
     password,
     generation: loadedSave.generation,
     game: loadedSave.game,
-    trade_mode: "same_generation",
-    supported_trade_modes: supportedTradeModes(loadedSave.generation)
+    supported_trade_modes: supportedTradeModes(loadedSave.generation),
+    supported_protocols: supportedProtocols()
   });
 }
 

@@ -38,24 +38,26 @@ wss://9kernel.vps-kinghost.net/ws
 1. Salve dentro do jogo.
 2. Feche o emulador.
 3. Abra PokeCable Room.
-4. Escolha `Criar sala same-generation` ou `Entrar em sala`.
+4. Escolha `Criar sala` ou `Entrar em sala`.
 5. Escolha o save.
 6. Escolha o Pokemon da party.
 7. Aguarde o backup ser criado antes da gravacao.
 8. Reabra o jogo somente depois da mensagem de sucesso.
 
-Os modos Time Capsule Gen 1/2, Transfer para Gen 3 e Downconvert experimental aparecem no menu como preparacao do produto. Enquanto a feature guard local estiver desligada, eles mostram que a conversao ainda nao esta habilitada. Para testes controlados, edite `config.json` e habilite apenas o modo validado:
+O menu nao pede para escolher Time Capsule, Transfer ou Downconvert. A sala e unica: cada jogador escolhe o save e o Pokemon, e o sistema valida automaticamente se a troca e same-generation ou cross-generation.
+
+Para testes cross-generation, edite `config.json` e habilite somente os modos validados:
 
 ```json
 "cross_generation": {
   "enabled": true,
-  "enabled_modes": ["time_capsule_gen1_gen2"],
+  "enabled_modes": ["time_capsule_gen1_gen2", "forward_transfer_to_gen3", "legacy_downconvert_experimental"],
   "policy": "safe_default",
   "unsafe_auto_confirm_data_loss": false
 }
 ```
 
-O servidor tambem precisa estar com o mesmo modo em `ENABLED_TRADE_MODES`.
+O servidor tambem precisa estar com os mesmos modos em `ENABLED_TRADE_MODES`. Se qualquer lado falhar no preflight, a troca inteira e bloqueada antes de gravar save.
 
 ## Backup E Restore
 

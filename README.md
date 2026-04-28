@@ -6,16 +6,17 @@ Nao e emulacao de cabo link. A troca e feita por edicao local e segura do arquiv
 
 ## Direcao Do Produto
 
-Same-generation trade e o modo estavel inicial: Gen 1 com Gen 1, Gen 2 com Gen 2 e Gen 3 com Gen 3 usando payload raw da mesma geracao.
+Same-generation trade e o modo estavel: Gen 1 com Gen 1, Gen 2 com Gen 2 e Gen 3 com Gen 3 usando payload raw da mesma geracao.
 
-Cross-generation trade e objetivo do projeto. Ele fica protegido por feature guard enquanto a camada de modelo canonico e conversores locais seguros esta em desenvolvimento. Nenhum raw payload de uma geracao deve ser escrito diretamente em save de outra geracao.
+Cross-generation trade tambem faz parte do produto. A sala e unica: o usuario cria ou entra em uma sala, escolhe o save e o Pokemon, e o sistema deriva automaticamente o caminho de conversao necessario para cada direcao. Cross-generation continua protegido por feature flags no client e no servidor. Nenhum raw payload de uma geracao deve ser escrito diretamente em save de outra geracao.
 
 Roadmap:
 
 - Same-generation stable mode.
-- Gen 1 <-> Gen 2 Time Capsule mode.
-- Gen 1/2 -> Gen 3 Transfer mode.
-- Gen 3 -> Gen 1/2 Experimental downconvert mode.
+- Sala unica com preflight automatico.
+- Gen 1 <-> Gen 2 via conversor canonico.
+- Gen 1/2 -> Gen 3 via conversor canonico.
+- Gen 3 -> Gen 1/2 com downconvert protegido por relatorio de perda de dados.
 
 ## Suporte Atual
 
@@ -30,17 +31,19 @@ Estavel:
 - Parser Gen 2 Gold/Silver/Crystal para party.
 - Parser Gen 3 Ruby/Sapphire/Emerald/FireRed/LeafGreen para party.
 - Backup automatico antes de alterar save.
+- Sala unica: criar sala, entrar sala, escolher save e Pokemon.
 - Same-generation trade usando raw payload somente entre saves da mesma geracao.
+- Cross-generation trade usando payload canonico, preflight local e conversores locais quando as flags estao habilitadas.
 - Evolucao simples por troca aplicada localmente depois da troca, quando `auto_trade_evolution` esta ligado.
 
 Experimental protegido por flags:
 
-- `trade_mode` e `compatibility_status` no contrato de sala.
+- Modos derivados por direcao no contrato interno da sala.
+- Preflight obrigatorio antes de confirmar troca.
 - Payload v2 com raw, summary, canonical e compatibility_report.
 - Modelo canonico separando National Dex, ID nativo da geracao e espaco de ID.
 - Tabelas locais de especies, moves e held items usadas pela compatibilidade.
 - Conversores locais para Gen 1 <-> Gen 2, Gen 1/2 -> Gen 3 e Gen 3 -> Gen 1/2.
-- Cross-generation usando canonical payload, `CompatibilityReport` e conversor local.
 - Evolucao por item com IDs validados para Gen 2/3, desligada por padrao por `item_trade_evolutions_enabled=false`.
 
 ## O Que Nao Faz
@@ -66,16 +69,22 @@ Experimental protegido por flags:
 
 - Same-generation usa raw payload da propria geracao.
 - Cross-generation usa modelo canonico, `CompatibilityReport` e conversores locais.
-- O servidor bloqueia cross-generation enquanto a feature guard global estiver desligada ou o modo nao estiver em `ENABLED_TRADE_MODES`.
-- O client tambem rejeita payload recebido de geracao diferente antes de gravar.
+- O servidor bloqueia cross-generation enquanto a feature guard global estiver desligada ou algum modo derivado da troca nao estiver em `ENABLED_TRADE_MODES`.
+- O client tambem rejeita cross-generation se `cross_generation.enabled=false` ou se o modo derivado nao estiver habilitado localmente.
+- A compatibilidade e calculada por Pokemon recebido durante o preflight, antes da confirmacao final.
 
 ## Cross-Generation Trade
 
-Same-generation e o modo estavel: os dois saves sao da mesma geracao e o client escreve o raw payload daquela mesma geracao. Cross-generation usa payload canonico e conversores locais; o servidor apenas valida sala, senha, modo, ofertas e confirmacoes.
+Same-generation e o modo estavel: os dois saves sao da mesma geracao e o client escreve o raw payload daquela mesma geracao. Cross-generation usa payload canonico e conversores locais; o servidor apenas valida sala, senha, ofertas, preflight e confirmacoes.
 
-No app R36S, a criacao de sala usa deteccao automatica: o usuario cria a sala, o segundo jogador entra, e o servidor escolhe `same_generation`, `time_capsule_gen1_gen2`, `forward_transfer_to_gen3` ou `legacy_downconvert_experimental` conforme o par de geracoes. A troca ainda bloqueia no ato da oferta se o Pokemon, os moves ou as perdas de dados nao passarem pelo `CompatibilityReport`.
+A sala e unica. O usuario nao escolhe Time Capsule, Transfer ou Downconvert ao criar a sala. Depois que os dois jogadores oferecem seus Pokemon, o servidor solicita preflight para os dois clients:
 
-Modos protegidos por flags:
+- Cada client valida localmente o Pokemon que vai receber.
+- Se qualquer lado falhar, o servidor envia `trade_blocked` e ninguem grava save.
+- Se os dois lados passarem, o servidor envia `preflight_ready`.
+- `trade_committed` so acontece depois de `preflight_ready` e da confirmacao dos dois jogadores.
+
+Modos derivados internamente e protegidos por flags:
 
 - `time_capsule_gen1_gen2`: Gen 1 <-> Gen 2 para Pokemon compativeis.
 - `forward_transfer_to_gen3`: Gen 1 -> Gen 3 e Gen 2 -> Gen 3.
@@ -94,11 +103,16 @@ Compatibilidade por National Dex:
 - Clamperl Gen 3 -> Gen 2 e bloqueado porque Clamperl #366 nao existe na Gen 2.
 - Treecko Gen 3 -> Gen 1/2 e bloqueado porque Treecko #252 nao existe nesses destinos.
 
+Exemplos:
+
+- Permitido: Gen 1 Pikachu <-> Gen 3 Mew, se moves e perdas passarem pela politica.
+- Bloqueado: Gen 1 Pikachu <-> Gen 3 Treecko, porque Treecko #252 nao existe na Gen 1.
+
 Servidor:
 
 ```text
 ALLOW_CROSS_GENERATION=true
-ENABLED_TRADE_MODES=time_capsule_gen1_gen2
+ENABLED_TRADE_MODES=time_capsule_gen1_gen2,forward_transfer_to_gen3,legacy_downconvert_experimental
 ```
 
 Client:
@@ -107,7 +121,7 @@ Client:
 {
   "cross_generation": {
     "enabled": true,
-    "enabled_modes": ["time_capsule_gen1_gen2"],
+    "enabled_modes": ["time_capsule_gen1_gen2", "forward_transfer_to_gen3", "legacy_downconvert_experimental"],
     "policy": "safe_default",
     "unsafe_auto_confirm_data_loss": false
   }
@@ -134,6 +148,7 @@ Seguranca:
 
 - Backup antes de salvar.
 - Se o save mudar enquanto a sala esta aberta, a troca e abortada antes da gravacao.
+- A atomicidade e de protocolo: se algum preflight falhar, nenhum client recebe commit; depois do commit, cada client protege seu arquivo local com backup.
 - Nenhum save completo vai ao servidor.
 - Nenhuma ROM e usada.
 - Nenhum raw payload cross-generation e escrito em save local.

@@ -14,10 +14,7 @@ if __package__ is None or __package__ == "":
 from pokecable_room.canonical import CanonicalPokemon
 from pokecable_room.compatibility import build_compatibility_report, supported_modes_for_generation
 from pokecable_room.compatibility.matrix import (
-    FORWARD_TRANSFER_TO_GEN3,
-    LEGACY_DOWNCONVERT_EXPERIMENTAL,
     SAME_GENERATION,
-    TIME_CAPSULE_GEN1_GEN2,
     UNSUPPORTED,
     get_trade_mode,
 )
@@ -35,6 +32,9 @@ from pokecable_room.ui import TerminalUI
 
 
 logger = logging.getLogger("pokecable.client")
+
+RAW_SAME_GENERATION_PROTOCOL = "raw_same_generation"
+CANONICAL_CROSS_GENERATION_PROTOCOL = "canonical_cross_generation"
 
 
 async def run_trade(
@@ -66,21 +66,23 @@ async def run_trade(
         cross_generation_enabled=cross_generation_enabled,
         enabled_cross_generation_modes=enabled_cross_generation_modes,
     )
-    if trade_mode != SAME_GENERATION and not (cross_generation_enabled and trade_mode in enabled_cross_generation_modes):
-        raise RuntimeError("Este modo de troca entre geracoes nao esta habilitado neste client.")
+    announced_protocols = _client_supported_protocols(cross_generation_enabled=cross_generation_enabled)
+    if trade_mode != SAME_GENERATION:
+        ui.print(f"Aviso: --trade-mode={trade_mode} e legado/debug; o modo real sera derivado automaticamente.")
     async with PokeCableNetworkClient(server_url) as network:
         if action == "create":
-            await network.send(
-                {
-                    "type": "create_room",
-                    "room_name": room_name,
-                    "password": password,
-                    "generation": local_generation,
-                    "game": local_game,
-                    "trade_mode": trade_mode,
-                    "supported_trade_modes": announced_trade_modes,
-                }
-            )
+            create_message = {
+                "type": "create_room",
+                "room_name": room_name,
+                "password": password,
+                "generation": local_generation,
+                "game": local_game,
+                "supported_trade_modes": announced_trade_modes,
+                "supported_protocols": announced_protocols,
+            }
+            if trade_mode != SAME_GENERATION:
+                create_message["trade_mode"] = trade_mode
+            await network.send(create_message)
             await network.wait_for({"room_created"})
             ui.print("Sala criada. Aguardando segundo jogador.")
             ready = await network.wait_for({"room_ready"})
@@ -94,23 +96,20 @@ async def run_trade(
                     "generation": local_generation,
                     "game": local_game,
                     "supported_trade_modes": announced_trade_modes,
+                    "supported_protocols": announced_protocols,
                 }
             )
             joined = await network.wait_for({"room_joined"})
             ui.print("Sala encontrada. Aguardando ofertas.")
             room_info = dict(joined.get("room") or {})
 
-        trade_mode = str(room_info.get("trade_mode") or trade_mode)
-        if trade_mode != SAME_GENERATION and not (cross_generation_enabled and trade_mode in enabled_cross_generation_modes):
+        target_generation = _peer_generation(room_info, network.client_id)
+        offer_mode = get_trade_mode(local_generation, target_generation)
+        if offer_mode != SAME_GENERATION and not (cross_generation_enabled and offer_mode in enabled_cross_generation_modes):
             raise RuntimeError("Este modo de troca entre geracoes nao esta habilitado neste client.")
-        target_generation = _peer_generation(room_info, network.client_id) if trade_mode != SAME_GENERATION else local_generation
-        expected_mode = get_trade_mode(local_generation, target_generation)
-        if trade_mode != SAME_GENERATION and expected_mode != trade_mode:
-            raise RuntimeError(f"Modo da sala ({trade_mode}) nao corresponde ao par Gen {local_generation} -> Gen {target_generation} ({expected_mode}).")
         offer = _build_offer_payload(
             parser,
             pokemon_location,
-            trade_mode=trade_mode,
             target_generation=target_generation,
             cross_generation_policy=cross_generation_policy,
             enabled_cross_generation_modes=enabled_cross_generation_modes,
@@ -118,32 +117,30 @@ async def run_trade(
         ui.print(f"Pokemon selecionado: {offer.display_summary} ({local_game}, Gen {local_generation})")
 
         await network.send({"type": "offer_pokemon", "payload": offer.to_dict()})
-        peer_offer_message = await network.wait_for({"peer_offer_received"})
-        received_preview = PokemonPayload.from_dict(peer_offer_message["offer"])
-        received_report = _validate_received_payload_for_mode(
+        preflight_message = await _wait_for_preflight_required(network)
+        received_preview = PokemonPayload.from_dict(preflight_message["received_payload"])
+        ui.print(f"Pokemon do outro jogador: {received_preview.display_summary}")
+        preflight_ok, received_report = _preflight_result_for_payload(
             received_preview,
             local_generation,
-            trade_mode=trade_mode,
-            cross_generation_policy=cross_generation_policy,
+            cross_generation_enabled=cross_generation_enabled,
             enabled_cross_generation_modes=enabled_cross_generation_modes,
+            cross_generation_policy=cross_generation_policy,
+            auto_confirm=auto_confirm,
+            unsafe_auto_confirm_data_loss=unsafe_auto_confirm_data_loss,
+            ui=ui,
         )
-        ui.print(f"Pokemon do outro jogador: {received_preview.display_summary}")
-        if received_report is not None:
-            _print_report(ui, received_report.to_dict())
-            if received_report.requires_user_confirmation:
-                if not _can_continue_with_report(
-                    received_report,
-                    auto_confirm=auto_confirm,
-                    unsafe_auto_confirm_data_loss=unsafe_auto_confirm_data_loss,
-                ):
-                    await network.send({"type": "cancel_trade"})
-                    raise RuntimeError(
-                        "A compatibilidade indica perda de dados e exige confirmacao manual. "
-                        "auto_confirm foi bloqueado por seguranca."
-                    )
-                if not auto_confirm and not ui.confirm("A conversao tem avisos/perdas. Confirmar mesmo assim?", default=False):
-                    await network.send({"type": "cancel_trade"})
-                    raise RuntimeError("Troca cancelada pelo usuario apos relatorio de compatibilidade.")
+        await network.send(
+            {
+                "type": "preflight_result",
+                "compatible": preflight_ok,
+                "report": received_report,
+                "error": "" if preflight_ok else "; ".join(received_report.get("blocking_reasons") or []),
+            }
+        )
+        preflight_status = await network.wait_for({"preflight_ready", "trade_blocked"})
+        if preflight_status["type"] == "trade_blocked":
+            raise RuntimeError(preflight_status.get("message") or "Troca bloqueada no preflight.")
         preview = preview_trade_evolution(
             local_generation,
             _preview_species_id_for_local_generation(received_preview, local_generation),
@@ -165,13 +162,18 @@ async def run_trade(
         await network.send({"type": "confirm_trade"})
         committed = await network.wait_for({"trade_committed"})
         received_payload = PokemonPayload.from_dict(committed["received_payload"])
-        conversion_report = _validate_received_payload_for_mode(
+        _committed_ok, conversion_report_dict = _preflight_result_for_payload(
             received_payload,
             local_generation,
-            trade_mode=trade_mode,
-            cross_generation_policy=cross_generation_policy,
+            cross_generation_enabled=cross_generation_enabled,
             enabled_cross_generation_modes=enabled_cross_generation_modes,
+            cross_generation_policy=cross_generation_policy,
+            auto_confirm=False,
+            unsafe_auto_confirm_data_loss=True,
+            ui=ui,
+            prompt_user=False,
         )
+        conversion_report = None
         if save_path is not None:
             current_signature = (save_path.stat().st_size, int(save_path.stat().st_mtime))
             if initial_save_signature is not None and current_signature != initial_save_signature:
@@ -199,7 +201,7 @@ async def run_trade(
                     },
                 },
             )
-            if trade_mode == SAME_GENERATION:
+            if received_payload.generation == local_generation:
                 parser.remove_or_replace_sent_pokemon(pokemon_location, received_payload)
             else:
                 if not received_payload.canonical:
@@ -222,8 +224,10 @@ async def run_trade(
                 )
             parser.save(save_path)
             ui.print(f"Troca aplicada no save: {save_path}")
-            if conversion_report is not None and trade_mode != SAME_GENERATION:
+            if conversion_report is not None:
                 _print_report(ui, conversion_report.to_dict())
+            elif received_payload.generation != local_generation:
+                _print_report(ui, conversion_report_dict)
             if evolution_result is not None and evolution_result.evolved:
                 ui.print(f"{evolution_result.source_name} evoluiu para {evolution_result.target_name}!")
                 if evolution_result.consumed_item_name:
@@ -237,16 +241,14 @@ def _build_offer_payload(
     parser,
     location: str,
     *,
-    trade_mode: str,
+    trade_mode: str | None = None,
     target_generation: int,
     cross_generation_policy: str,
     enabled_cross_generation_modes: list[str] | None = None,
 ) -> PokemonPayload:
-    if trade_mode == SAME_GENERATION:
-        offer = parser.export_pokemon(location)
-        offer.trade_mode = trade_mode
-        offer.target_generation = target_generation
-        return offer
+    local_generation = parser.get_generation()
+    trade_mode = get_trade_mode(local_generation, target_generation)
+    offer = parser.export_pokemon(location)
     canonical = parser.export_canonical(location)
     report = build_compatibility_report(
         canonical,
@@ -254,69 +256,144 @@ def _build_offer_payload(
         cross_generation_enabled=True,
         policy=cross_generation_policy,
     )
-    if not report.compatible:
-        raise RuntimeError("; ".join(report.blocking_reasons))
-    if report.mode != SAME_GENERATION and report.mode not in set(enabled_cross_generation_modes or []):
-        raise RuntimeError(f"Este Pokemon exige modo {report.mode}, mas esse modo nao esta habilitado neste client.")
-    return PokemonPayload(
-        generation=canonical.source_generation,
-        game=canonical.source_game,
-        species_id=canonical.species.national_dex_id,
-        species_name=canonical.species.name,
-        level=canonical.level,
-        nickname=canonical.nickname,
-        ot_name=canonical.ot_name,
-        trainer_id=canonical.trainer_id,
-        raw_data_base64="",
-        display_summary=f"{canonical.nickname or canonical.species.name} Lv. {canonical.level}",
-        metadata={"payload_kind": "canonical"},
-        source_generation=canonical.source_generation,
-        source_game=canonical.source_game,
-        target_generation=target_generation,
-        trade_mode=trade_mode,
-        summary={
-            "species_id": canonical.species.national_dex_id,
-            "species_name": canonical.species.name,
-            "level": canonical.level,
-            "nickname": canonical.nickname,
-            "display_summary": f"{canonical.nickname or canonical.species.name} Lv. {canonical.level}",
-        },
-        canonical=canonical.to_dict(),
-        raw={},
-        compatibility_report=report.to_dict(),
-    )
+    if trade_mode != SAME_GENERATION:
+        if report.mode != SAME_GENERATION and report.mode not in set(enabled_cross_generation_modes or []):
+            raise RuntimeError(f"Este Pokemon exige modo {report.mode}, mas esse modo nao esta habilitado neste client.")
+    offer.source_generation = canonical.source_generation
+    offer.source_game = canonical.source_game
+    offer.target_generation = target_generation
+    offer.trade_mode = trade_mode
+    offer.canonical = canonical.to_dict()
+    offer.compatibility_report = report.to_dict()
+    offer.summary = {
+        "species_id": canonical.species.national_dex_id,
+        "species_name": canonical.species.name,
+        "level": canonical.level,
+        "nickname": canonical.nickname,
+        "display_summary": offer.display_summary,
+    }
+    return offer
 
 
-def _validate_received_payload_for_mode(
+async def _wait_for_preflight_required(network: PokeCableNetworkClient) -> dict:
+    while True:
+        message = await network.wait_for({"peer_offer_received", "offers_ready", "preflight_required", "trade_blocked"})
+        message_type = message.get("type")
+        if message_type == "preflight_required":
+            return message
+        if message_type == "trade_blocked":
+            raise RuntimeError(message.get("message") or "Troca bloqueada no preflight.")
+
+
+def _preflight_result_for_payload(
     payload: PokemonPayload,
     local_generation: int,
     *,
-    trade_mode: str,
+    cross_generation_enabled: bool,
+    enabled_cross_generation_modes: list[str],
     cross_generation_policy: str,
-    enabled_cross_generation_modes: list[str] | None = None,
-):
-    if trade_mode == SAME_GENERATION:
-        validate_payload_for_local_save(payload, local_generation)
-        return None
+    auto_confirm: bool,
+    unsafe_auto_confirm_data_loss: bool,
+    ui: TerminalUI,
+    prompt_user: bool = True,
+) -> tuple[bool, dict]:
+    if payload.generation == local_generation:
+        try:
+            validate_payload_for_local_save(payload, local_generation)
+        except Exception as exc:
+            return False, _simple_preflight_report(
+                compatible=False,
+                mode=SAME_GENERATION,
+                source_generation=payload.generation,
+                target_generation=local_generation,
+                blocking_reasons=[str(exc)],
+            )
+        return True, _simple_preflight_report(
+            compatible=True,
+            mode=SAME_GENERATION,
+            source_generation=payload.generation,
+            target_generation=local_generation,
+        )
+    if not cross_generation_enabled:
+        return False, _simple_preflight_report(
+            compatible=False,
+            mode=get_trade_mode(payload.generation, local_generation),
+            source_generation=payload.generation,
+            target_generation=local_generation,
+            blocking_reasons=["Cross-generation esta desligado neste client."],
+        )
     if not payload.canonical:
-        raise RuntimeError("Payload cross-generation recebido sem modelo canonico.")
-    if payload.trade_mode != trade_mode:
-        raise RuntimeError(f"Payload recebido usa sala {payload.trade_mode}, mas a sala local usa {trade_mode}.")
+        return False, _simple_preflight_report(
+            compatible=False,
+            mode=get_trade_mode(payload.generation, local_generation),
+            source_generation=payload.generation,
+            target_generation=local_generation,
+            blocking_reasons=["Payload cross-generation recebido sem modelo canonico."],
+        )
     canonical = CanonicalPokemon.from_dict(payload.canonical)
     conversion_mode = get_trade_mode(canonical.source_generation, local_generation)
     if conversion_mode == UNSUPPORTED:
-        raise RuntimeError(f"Par de geracoes nao suportado: Gen {canonical.source_generation} -> Gen {local_generation}.")
-    if conversion_mode != SAME_GENERATION and conversion_mode not in set(enabled_cross_generation_modes or []):
-        raise RuntimeError(f"Payload recebido exige modo {conversion_mode}, mas esse modo nao esta habilitado neste client.")
+        return False, _simple_preflight_report(
+            compatible=False,
+            mode=conversion_mode,
+            source_generation=canonical.source_generation,
+            target_generation=local_generation,
+            blocking_reasons=[f"Par de geracoes nao suportado: Gen {canonical.source_generation} -> Gen {local_generation}."],
+        )
+    if conversion_mode not in set(enabled_cross_generation_modes or []):
+        return False, _simple_preflight_report(
+            compatible=False,
+            mode=conversion_mode,
+            source_generation=canonical.source_generation,
+            target_generation=local_generation,
+            blocking_reasons=[f"Payload recebido exige modo {conversion_mode}, mas esse modo nao esta habilitado neste client."],
+        )
     report = build_compatibility_report(
         canonical,
         local_generation,
         cross_generation_enabled=True,
         policy=cross_generation_policy,
     )
+    report_dict = report.to_dict()
+    _print_report(ui, report_dict)
     if not report.compatible:
-        raise RuntimeError("; ".join(report.blocking_reasons))
-    return report
+        return False, report_dict
+    if report.requires_user_confirmation:
+        if auto_confirm and not unsafe_auto_confirm_data_loss:
+            report_dict.setdefault("blocking_reasons", []).append(
+                "Esta conversao possui perda de dados e exige confirmacao manual."
+            )
+            return False, report_dict
+        if prompt_user and not auto_confirm and not ui.confirm("A conversao tem avisos/perdas. Confirmar mesmo assim?", default=False):
+            report_dict.setdefault("blocking_reasons", []).append("Troca recusada pelo usuario apos relatorio de compatibilidade.")
+            return False, report_dict
+    return True, report_dict
+
+
+def _simple_preflight_report(
+    *,
+    compatible: bool,
+    mode: str,
+    source_generation: int,
+    target_generation: int,
+    blocking_reasons: list[str] | None = None,
+) -> dict:
+    return {
+        "compatible": compatible,
+        "mode": mode,
+        "source_generation": source_generation,
+        "target_generation": target_generation,
+        "blocking_reasons": blocking_reasons or [],
+        "warnings": [],
+        "data_loss": [],
+        "suggested_actions": [],
+        "transformations": [],
+        "removed_moves": [],
+        "removed_items": [],
+        "removed_fields": [],
+        "normalized_species": {},
+        "requires_user_confirmation": False,
+    }
 
 
 def _client_supported_trade_modes(
@@ -331,6 +408,13 @@ def _client_supported_trade_modes(
     enabled = set(enabled_cross_generation_modes)
     modes.extend(mode for mode in supported_modes_for_generation(generation) if mode != SAME_GENERATION and mode in enabled)
     return sorted(set(modes))
+
+
+def _client_supported_protocols(*, cross_generation_enabled: bool) -> list[str]:
+    protocols = [RAW_SAME_GENERATION_PROTOCOL]
+    if cross_generation_enabled:
+        protocols.append(CANONICAL_CROSS_GENERATION_PROTOCOL)
+    return protocols
 
 
 def _can_continue_with_report(report, *, auto_confirm: bool, unsafe_auto_confirm_data_loss: bool) -> bool:
@@ -498,21 +582,6 @@ def choose_save_flow(ui: TerminalUI) -> None:
         ui.print(f"- {item.location}: {item.display_summary} ({item.nickname})")
 
 
-def mode_in_development(ui: TerminalUI, mode_label: str) -> None:
-    config = load_config()
-    saves = find_save_files(config["default_save_dirs"])
-    if saves:
-        selected = ui.choose("Escolha um save para validar deteccao:", saves, [str(path) for path in saves])
-        parser = detect_parser(selected)
-        ui.print(f"Detectado: {parser.get_game_id()} Gen {parser.get_generation()}")
-    ui.print(f"{mode_label}: Modo em desenvolvimento. Seu save foi detectado corretamente, mas essa conversao ainda nao esta habilitada.")
-
-
-def _local_mode_enabled(config: dict, trade_mode: str) -> bool:
-    cross_generation_config = dict(config.get("cross_generation") or {})
-    return bool(cross_generation_config.get("enabled", False)) and trade_mode in set(cross_generation_config.get("enabled_modes") or [])
-
-
 def view_party(ui: TerminalUI) -> None:
     choose_save_flow(ui)
 
@@ -555,7 +624,7 @@ def interactive_menu() -> int:
         choice = ui.choose(
             "PokeCable Room",
             [
-                "create_same",
+                "create",
                 "join",
                 "save",
                 "party",
@@ -577,7 +646,7 @@ def interactive_menu() -> int:
                 "Sair",
             ],
         )
-        if choice == "create_same":
+        if choice == "create":
             args = argparse.Namespace(
                 action="create",
                 server=None,
@@ -589,7 +658,7 @@ def interactive_menu() -> int:
                 trade_mode=SAME_GENERATION,
             )
             return asyncio.run(automated_or_prompted_trade(args))
-        if choice == "join":
+        elif choice == "join":
             args = argparse.Namespace(
                 action="join",
                 server=None,
@@ -601,48 +670,6 @@ def interactive_menu() -> int:
                 trade_mode=SAME_GENERATION,
             )
             return asyncio.run(automated_or_prompted_trade(args))
-        if choice == "create_time_capsule":
-            if _local_mode_enabled(config, TIME_CAPSULE_GEN1_GEN2):
-                args = argparse.Namespace(
-                    action="create",
-                    server=None,
-                    room=None,
-                    password=None,
-                    save=None,
-                    pokemon_location=None,
-                    auto_confirm=False,
-                    trade_mode=TIME_CAPSULE_GEN1_GEN2,
-                )
-                return asyncio.run(automated_or_prompted_trade(args))
-            mode_in_development(ui, "Time Capsule Gen 1/2")
-        elif choice == "create_transfer_gen3":
-            if _local_mode_enabled(config, FORWARD_TRANSFER_TO_GEN3):
-                args = argparse.Namespace(
-                    action="create",
-                    server=None,
-                    room=None,
-                    password=None,
-                    save=None,
-                    pokemon_location=None,
-                    auto_confirm=False,
-                    trade_mode=FORWARD_TRANSFER_TO_GEN3,
-                )
-                return asyncio.run(automated_or_prompted_trade(args))
-            mode_in_development(ui, "Transfer para Gen 3")
-        elif choice == "create_downconvert":
-            if _local_mode_enabled(config, LEGACY_DOWNCONVERT_EXPERIMENTAL):
-                args = argparse.Namespace(
-                    action="create",
-                    server=None,
-                    room=None,
-                    password=None,
-                    save=None,
-                    pokemon_location=None,
-                    auto_confirm=False,
-                    trade_mode=LEGACY_DOWNCONVERT_EXPERIMENTAL,
-                )
-                return asyncio.run(automated_or_prompted_trade(args))
-            mode_in_development(ui, "Downconvert experimental Gen 3 -> Gen 1/2")
         elif choice == "save":
             choose_save_flow(ui)
         elif choice == "party":

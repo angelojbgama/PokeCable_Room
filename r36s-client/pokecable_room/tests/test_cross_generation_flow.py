@@ -9,11 +9,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "server"))
 
-from app.models import FORWARD_TRANSFER_TO_GEN3, LEGACY_DOWNCONVERT_EXPERIMENTAL, TIME_CAPSULE_GEN1_GEN2
+from app.models import (
+    CANONICAL_CROSS_GENERATION,
+    FORWARD_TRANSFER_TO_GEN3,
+    LEGACY_DOWNCONVERT_EXPERIMENTAL,
+    RAW_SAME_GENERATION,
+    TIME_CAPSULE_GEN1_GEN2,
+)
 from app.rooms import RoomManager
 
 from pokecable_room.canonical import CanonicalPokemon
 from pokecable_room.client import _build_offer_payload
+from pokecable_room.compatibility import build_compatibility_report
 from pokecable_room.converters import get_converter
 from pokecable_room.parsers.gen1 import Gen1Parser
 from pokecable_room.parsers.gen2 import Gen2Parser
@@ -42,7 +49,17 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
         canonical.moves = []
         return canonical
 
-    def _offer(self, parser, target_generation: int, trade_mode: str) -> dict:
+    def _set_national_species(self, parser, national_id: int, location: str = "party:0"):
+        native_by_generation = {
+            1: {25: 84, 151: 21},
+            2: {25: 25, 151: 151, 152: 152},
+            3: {25: 25, 151: 151, 252: 277, 366: 373},
+        }
+        parser.set_species_id(location, native_by_generation[parser.get_generation()][national_id])
+        if parser.get_generation() in {2, 3}:
+            parser.clear_held_item(location)
+
+    def _offer(self, parser, target_generation: int, trade_mode: str | None = None) -> dict:
         return _build_offer_payload(
             parser,
             "party:0",
@@ -63,13 +80,7 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
             client_id="a",
             generation=creator_generation,
             game={1: "pokemon_red", 2: "pokemon_crystal", 3: "pokemon_emerald"}[creator_generation],
-            trade_mode=mode,
-            supported_trade_modes=[
-                mode,
-                TIME_CAPSULE_GEN1_GEN2,
-                FORWARD_TRANSFER_TO_GEN3,
-                LEGACY_DOWNCONVERT_EXPERIMENTAL,
-            ],
+            supported_protocols=[RAW_SAME_GENERATION, CANONICAL_CROSS_GENERATION],
         )
         await manager.join_room(
             room_name=room_name,
@@ -77,13 +88,51 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
             client_id="b",
             generation=join_generation,
             game={1: "pokemon_red", 2: "pokemon_crystal", 3: "pokemon_emerald"}[join_generation],
-            supported_trade_modes=[
-                mode,
-                TIME_CAPSULE_GEN1_GEN2,
-                FORWARD_TRANSFER_TO_GEN3,
-                LEGACY_DOWNCONVERT_EXPERIMENTAL,
-            ],
+            supported_protocols=[RAW_SAME_GENERATION, CANONICAL_CROSS_GENERATION],
         )
+
+    async def _submit_preflight_ok(self, manager: RoomManager, room) -> None:
+        for slot, client_id in {"A": "a", "B": "b"}.items():
+            peer_slot = "B" if slot == "A" else "A"
+            peer_offer = room.offers[peer_slot]
+            local_generation = room.players[slot].generation
+            if peer_offer.generation == local_generation:
+                report = {"compatible": True, "mode": "same_generation"}
+            else:
+                report = build_compatibility_report(
+                    CanonicalPokemon.from_dict(peer_offer.canonical),
+                    local_generation,
+                    cross_generation_enabled=True,
+                    policy="safe_default",
+                ).to_dict()
+            self.assertTrue(report["compatible"])
+            await manager.submit_preflight_result(client_id=client_id, compatible=True, report=report)
+
+    async def _submit_preflight_from_reports(self, manager: RoomManager, room) -> tuple[bool, dict]:
+        blocked = False
+        reports = {}
+        for slot, client_id in {"A": "a", "B": "b"}.items():
+            peer_slot = "B" if slot == "A" else "A"
+            peer_offer = room.offers[peer_slot]
+            local_generation = room.players[slot].generation
+            if peer_offer.generation == local_generation:
+                report = {"compatible": True, "mode": "same_generation"}
+            else:
+                report = build_compatibility_report(
+                    CanonicalPokemon.from_dict(peer_offer.canonical),
+                    local_generation,
+                    cross_generation_enabled=True,
+                    policy="safe_default",
+                ).to_dict()
+            reports[slot] = report
+            _room, _slot, blocked, _ready, _reports = await manager.submit_preflight_result(
+                client_id=client_id,
+                compatible=bool(report["compatible"]),
+                report=report,
+            )
+            if blocked:
+                break
+        return blocked, reports
 
     async def test_time_capsule_gen1_gen2_room_commits_and_converts_both_saves(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -94,7 +143,8 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
             await self._commit_room(manager, "time", TIME_CAPSULE_GEN1_GEN2, 1, 2)
 
             await manager.offer_pokemon(client_id="a", payload=self._offer(gen1, 2, TIME_CAPSULE_GEN1_GEN2))
-            await manager.offer_pokemon(client_id="b", payload=self._offer(gen2, 1, TIME_CAPSULE_GEN1_GEN2))
+            room, _slot, _offer = await manager.offer_pokemon(client_id="b", payload=self._offer(gen2, 1, TIME_CAPSULE_GEN1_GEN2))
+            await self._submit_preflight_ok(manager, room)
             await manager.confirm_trade(client_id="a")
             room, _slot, committed = await manager.confirm_trade(client_id="b")
 
@@ -147,7 +197,8 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
                     await self._commit_room(manager, f"forward-{source_generation}", FORWARD_TRANSFER_TO_GEN3, source_generation, 3)
 
                     await manager.offer_pokemon(client_id="a", payload=self._offer(source, 3, FORWARD_TRANSFER_TO_GEN3))
-                    await manager.offer_pokemon(client_id="b", payload=self._offer(gen3, source_generation, FORWARD_TRANSFER_TO_GEN3))
+                    room, _slot, _offer = await manager.offer_pokemon(client_id="b", payload=self._offer(gen3, source_generation, FORWARD_TRANSFER_TO_GEN3))
+                    await self._submit_preflight_ok(manager, room)
                     await manager.confirm_trade(client_id="a")
                     room, _slot, committed = await manager.confirm_trade(client_id="b")
 
@@ -197,7 +248,8 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
             await self._commit_room(manager, "legacy", LEGACY_DOWNCONVERT_EXPERIMENTAL, 3, 1)
 
             await manager.offer_pokemon(client_id="a", payload=self._offer(gen3, 1, LEGACY_DOWNCONVERT_EXPERIMENTAL))
-            await manager.offer_pokemon(client_id="b", payload=self._offer(gen1, 3, LEGACY_DOWNCONVERT_EXPERIMENTAL))
+            room, _slot, _offer = await manager.offer_pokemon(client_id="b", payload=self._offer(gen1, 3, LEGACY_DOWNCONVERT_EXPERIMENTAL))
+            await self._submit_preflight_ok(manager, room)
             await manager.confirm_trade(client_id="a")
             room, _slot, committed = await manager.confirm_trade(client_id="b")
 
@@ -216,6 +268,113 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
 
             gen2.set_species_id("party:0", 152)
             self.assertFalse(get_converter(2, 1).can_convert(gen2.export_canonical("party:0")).compatible)
+
+    async def test_gen1_pikachu_gen3_mew_protocol_flow_converts_both_saves(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            gen1 = self._parser(Gen1Parser, root / "red.sav", synthetic_gen1_save())
+            gen3 = self._parser(Gen3Parser, root / "emerald.sav", synthetic_gen3_save("rse"))
+            self._set_national_species(gen1, 25)
+            self._set_national_species(gen3, 151)
+            manager = RoomManager(cross_generation_enabled=True, enabled_trade_modes=[FORWARD_TRANSFER_TO_GEN3, LEGACY_DOWNCONVERT_EXPERIMENTAL])
+            await self._commit_room(manager, "pikachu-mew", FORWARD_TRANSFER_TO_GEN3, 1, 3)
+            await manager.offer_pokemon(client_id="a", payload=self._offer(gen1, 3))
+            room, _slot, _offer = await manager.offer_pokemon(client_id="b", payload=self._offer(gen3, 1))
+            blocked, reports = await self._submit_preflight_from_reports(manager, room)
+            self.assertFalse(blocked)
+            self.assertTrue(reports["A"]["compatible"])
+            self.assertTrue(reports["B"]["compatible"])
+            await manager.confirm_trade(client_id="a")
+            room, _slot, committed = await manager.confirm_trade(client_id="b")
+            self.assertTrue(committed)
+            get_converter(3, 1).apply_to_save(gen1, "party:0", CanonicalPokemon.from_dict(room.offers["B"].canonical), policy="safe_default")
+            get_converter(1, 3).apply_to_save(gen3, "party:0", CanonicalPokemon.from_dict(room.offers["A"].canonical), policy="safe_default")
+            self.assertTrue(gen1.validate())
+            self.assertTrue(gen3.validate())
+            self.assertEqual(gen1.get_species_id("party:0"), 21)
+            self.assertEqual(gen3.get_species_id("party:0"), 25)
+
+    async def test_gen1_pikachu_gen3_treecko_blocks_entire_trade(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            gen1 = self._parser(Gen1Parser, root / "red.sav", synthetic_gen1_save())
+            gen3 = self._parser(Gen3Parser, root / "emerald.sav", synthetic_gen3_save("rse"))
+            self._set_national_species(gen1, 25)
+            self._set_national_species(gen3, 252)
+            manager = RoomManager(cross_generation_enabled=True, enabled_trade_modes=[FORWARD_TRANSFER_TO_GEN3, LEGACY_DOWNCONVERT_EXPERIMENTAL])
+            await self._commit_room(manager, "treecko-block", FORWARD_TRANSFER_TO_GEN3, 1, 3)
+            await manager.offer_pokemon(client_id="a", payload=self._offer(gen1, 3))
+            room, _slot, _offer = await manager.offer_pokemon(client_id="b", payload=self._offer(gen3, 1))
+            blocked, reports = await self._submit_preflight_from_reports(manager, room)
+            self.assertTrue(blocked)
+            self.assertFalse(reports["A"]["compatible"])
+            self.assertIn("252", " ".join(reports["A"]["blocking_reasons"]))
+            with self.assertRaises(Exception):
+                await manager.confirm_trade(client_id="a")
+
+    async def test_gen2_mew_gen3_mew_protocol_flow_converts_both_saves(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            gen2 = self._parser(Gen2Parser, root / "crystal.sav", synthetic_gen2_save())
+            gen3 = self._parser(Gen3Parser, root / "emerald.sav", synthetic_gen3_save("rse"))
+            self._set_national_species(gen2, 151)
+            self._set_national_species(gen3, 151)
+            manager = RoomManager(cross_generation_enabled=True, enabled_trade_modes=[FORWARD_TRANSFER_TO_GEN3, LEGACY_DOWNCONVERT_EXPERIMENTAL])
+            await self._commit_room(manager, "mew-2-3", FORWARD_TRANSFER_TO_GEN3, 2, 3)
+            await manager.offer_pokemon(client_id="a", payload=self._offer(gen2, 3))
+            room, _slot, _offer = await manager.offer_pokemon(client_id="b", payload=self._offer(gen3, 2))
+            blocked, reports = await self._submit_preflight_from_reports(manager, room)
+            self.assertFalse(blocked)
+            self.assertTrue(reports["A"]["compatible"])
+            self.assertTrue(reports["B"]["compatible"])
+
+    async def test_gen2_chikorita_gen1_pikachu_blocks_entire_trade(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            gen2 = self._parser(Gen2Parser, root / "crystal.sav", synthetic_gen2_save())
+            gen1 = self._parser(Gen1Parser, root / "red.sav", synthetic_gen1_save())
+            self._set_national_species(gen2, 152)
+            self._set_national_species(gen1, 25)
+            manager = RoomManager(cross_generation_enabled=True, enabled_trade_modes=[TIME_CAPSULE_GEN1_GEN2])
+            await self._commit_room(manager, "chikorita-block", TIME_CAPSULE_GEN1_GEN2, 2, 1)
+            await manager.offer_pokemon(client_id="a", payload=self._offer(gen2, 1))
+            room, _slot, _offer = await manager.offer_pokemon(client_id="b", payload=self._offer(gen1, 2))
+            blocked, reports = await self._submit_preflight_from_reports(manager, room)
+            self.assertTrue(blocked)
+            self.assertFalse(reports["B"]["compatible"])
+
+    async def test_gen3_clamperl_gen2_mew_blocks_entire_trade(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            gen3 = self._parser(Gen3Parser, root / "emerald.sav", synthetic_gen3_save("rse"))
+            gen2 = self._parser(Gen2Parser, root / "crystal.sav", synthetic_gen2_save())
+            self._set_national_species(gen3, 366)
+            self._set_national_species(gen2, 151)
+            manager = RoomManager(cross_generation_enabled=True, enabled_trade_modes=[FORWARD_TRANSFER_TO_GEN3, LEGACY_DOWNCONVERT_EXPERIMENTAL])
+            await self._commit_room(manager, "clamperl-block", LEGACY_DOWNCONVERT_EXPERIMENTAL, 3, 2)
+            await manager.offer_pokemon(client_id="a", payload=self._offer(gen3, 2))
+            room, _slot, _offer = await manager.offer_pokemon(client_id="b", payload=self._offer(gen2, 3))
+            blocked, reports = await self._submit_preflight_from_reports(manager, room)
+            self.assertTrue(blocked)
+            self.assertFalse(reports["B"]["compatible"])
+
+    async def test_same_generation_gen2_raw_flow_still_commits_after_preflight(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            gen2_a = self._parser(Gen2Parser, root / "a.sav", synthetic_gen2_save())
+            gen2_b = self._parser(Gen2Parser, root / "b.sav", synthetic_gen2_save())
+            manager = RoomManager(cross_generation_enabled=False)
+            await manager.create_room(room_name="same-gen2", password="pw", client_id="a", generation=2, game="pokemon_crystal")
+            await manager.join_room(room_name="same-gen2", password="pw", client_id="b", generation=2, game="pokemon_crystal")
+            await manager.offer_pokemon(client_id="a", payload=self._offer(gen2_a, 2))
+            room, _slot, _offer = await manager.offer_pokemon(client_id="b", payload=self._offer(gen2_b, 2))
+            blocked, reports = await self._submit_preflight_from_reports(manager, room)
+            self.assertFalse(blocked)
+            self.assertTrue(reports["A"]["compatible"])
+            self.assertTrue(reports["B"]["compatible"])
+            await manager.confirm_trade(client_id="a")
+            _room, _slot, committed = await manager.confirm_trade(client_id="b")
+            self.assertTrue(committed)
 
 
 if __name__ == "__main__":

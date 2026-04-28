@@ -24,10 +24,12 @@ Criar:
   "password": "senha",
   "generation": 2,
   "game": "pokemon_crystal",
-  "trade_mode": "same_generation",
+  "supported_protocols": ["raw_same_generation", "canonical_cross_generation"],
   "supported_trade_modes": ["same_generation", "time_capsule_gen1_gen2", "forward_transfer_to_gen3"]
 }
 ```
+
+`trade_mode` nao e necessario para criar sala. Se um client legado enviar esse campo, o servidor trata apenas como debug/compatibilidade; a logica real deriva os modos quando os dois jogadores estao na sala.
 
 Entrar:
 
@@ -38,6 +40,7 @@ Entrar:
   "password": "senha",
   "generation": 2,
   "game": "pokemon_crystal",
+  "supported_protocols": ["raw_same_generation", "canonical_cross_generation"],
   "supported_trade_modes": ["same_generation", "time_capsule_gen1_gen2", "forward_transfer_to_gen3"]
 }
 ```
@@ -61,12 +64,33 @@ Respostas principais:
   "room_name": "crystal-paqueta",
   "generation": 2,
   "trade_mode": "same_generation",
+  "derived_modes": {
+    "A": "same_generation",
+    "B": "same_generation"
+  },
+  "preflight_ok": {
+    "A": false,
+    "B": false
+  },
   "compatibility_status": {
     "compatible": true,
     "mode": "same_generation",
     "blocking_reasons": []
   },
   "players": {}
+}
+```
+
+`derived_modes["A"]` representa o modo necessario para o Pokemon que o jogador A vai receber. `derived_modes["B"]` representa o modo necessario para o Pokemon que o jogador B vai receber.
+
+Exemplo Gen 1 <-> Gen 3:
+
+```json
+{
+  "derived_modes": {
+    "A": "legacy_downconvert_experimental",
+    "B": "forward_transfer_to_gen3"
+  }
 }
 ```
 
@@ -106,7 +130,7 @@ Same-generation mantem raw data:
 }
 ```
 
-Cross-generation usara o mesmo envelope com `trade_mode` diferente e escrita local por conversor. O servidor nao converte e nao grava save.
+Cross-generation usa o mesmo envelope com escrita local por conversor. `payload.trade_mode` e opcional/legado; o servidor deriva o modo pela geracao de origem e destino. O servidor nao converte e nao grava save.
 
 Payload cross-generation usa `canonical` como dado principal. `raw_data_base64` nao deve ser usado para escrita direta no destino quando `source_generation != target_generation`:
 
@@ -118,7 +142,6 @@ Payload cross-generation usa `canonical` como dado principal. `raw_data_base64` 
   "source_generation": 2,
   "source_game": "pokemon_crystal",
   "target_generation": 3,
-  "trade_mode": "forward_transfer_to_gen3",
   "species_id": 64,
   "species_name": "Kadabra",
   "summary": {
@@ -145,13 +168,56 @@ Payload cross-generation usa `canonical` como dado principal. `raw_data_base64` 
 }
 ```
 
+## Preflight
+
+Depois que os dois jogadores enviam oferta, o servidor envia `preflight_required` para cada client com o Pokemon que aquele client receberia:
+
+```json
+{
+  "type": "preflight_required",
+  "received_payload": {},
+  "source_generation": 3,
+  "target_generation": 1,
+  "derived_mode": "legacy_downconvert_experimental"
+}
+```
+
+O client valida localmente o payload recebido. Same-generation valida raw da mesma geracao. Cross-generation exige `canonical`, gera `CompatibilityReport` e verifica moves, items, species e perdas de dados.
+
+Resultado compativel:
+
+```json
+{
+  "type": "preflight_result",
+  "compatible": true,
+  "requires_user_confirmation": false,
+  "report": {}
+}
+```
+
+Resultado bloqueado:
+
+```json
+{
+  "type": "preflight_result",
+  "compatible": false,
+  "report": {
+    "blocking_reasons": [
+      "Treecko National Dex #252 nao existe na Gen 1."
+    ]
+  }
+}
+```
+
+Se qualquer lado falhar, o servidor envia `trade_blocked` para os dois jogadores e ninguem recebe commit. Se os dois lados passarem, o servidor envia `preflight_ready` e somente entao aceita `confirm_trade`.
+
 ## Confirmacao
 
 ```json
 {"type": "confirm_trade"}
 ```
 
-Quando os dois confirmam:
+Quando os dois preflights passam e os dois confirmam:
 
 ```json
 {
@@ -178,13 +244,13 @@ Ou desconexao de um jogador:
 
 ## Feature Guard Cross-Generation
 
-Enquanto a feature guard estiver desligada, gerações diferentes retornam:
+Enquanto a feature guard estiver desligada, gerações diferentes retornam erro claro no join:
 
 ```json
 {
   "type": "generation_mismatch",
   "code": "generation_mismatch",
-  "message": "Esta sala e Gen 2. Seu save e Gen 3. Cross-generation esta protegido por bloqueio de seguranca enquanto a camada de conversao local esta em desenvolvimento."
+  "message": "Este servidor nao habilitou troca entre geracoes."
 }
 ```
 
@@ -194,7 +260,7 @@ Para liberar um modo cross-generation no servidor:
 
 ```text
 ALLOW_CROSS_GENERATION=true
-ENABLED_TRADE_MODES=time_capsule_gen1_gen2
+ENABLED_TRADE_MODES=time_capsule_gen1_gen2,forward_transfer_to_gen3,legacy_downconvert_experimental
 ```
 
 Modos que nao aparecem em `ENABLED_TRADE_MODES` continuam bloqueados mesmo com a flag global ligada.

@@ -29,6 +29,8 @@ TIME_CAPSULE_GEN1_GEN2 = "time_capsule_gen1_gen2"
 FORWARD_TRANSFER_TO_GEN3 = "forward_transfer_to_gen3"
 LEGACY_DOWNCONVERT_EXPERIMENTAL = "legacy_downconvert_experimental"
 UNSUPPORTED = "unsupported"
+RAW_SAME_GENERATION = "raw_same_generation"
+CANONICAL_CROSS_GENERATION = "canonical_cross_generation"
 TRADE_MODE_MATRIX = {
     (1, 1): SAME_GENERATION,
     (2, 2): SAME_GENERATION,
@@ -185,6 +187,7 @@ class Player:
     generation: int
     game: str
     supported_trade_modes: list[str] = field(default_factory=list)
+    supported_protocols: list[str] = field(default_factory=list)
     status: str = "connected"
 
     def to_public_dict(self) -> dict[str, Any]:
@@ -193,6 +196,7 @@ class Player:
             "generation": self.generation,
             "game": self.game,
             "supported_trade_modes": self.supported_trade_modes,
+            "supported_protocols": self.supported_protocols,
             "status": self.status,
         }
 
@@ -204,9 +208,13 @@ class Room:
     generation: int
     game_family: str
     trade_mode: str = SAME_GENERATION
+    derived_modes: dict[PlayerSlot, str] = field(default_factory=dict)
     compatibility_status: dict[str, Any] = field(default_factory=dict)
     players: dict[PlayerSlot, Player] = field(default_factory=dict)
     offers: dict[PlayerSlot, PokemonOffer | None] = field(default_factory=lambda: {"A": None, "B": None})
+    preflight_reports: dict[PlayerSlot, dict[str, Any] | None] = field(default_factory=lambda: {"A": None, "B": None})
+    preflight_ok: dict[PlayerSlot, bool] = field(default_factory=lambda: {"A": False, "B": False})
+    preflight_errors: dict[PlayerSlot, str] = field(default_factory=lambda: {"A": "", "B": ""})
     confirmations: dict[PlayerSlot, bool] = field(default_factory=lambda: {"A": False, "B": False})
     max_players: int = 2
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -224,12 +232,29 @@ class Room:
     def has_both_offers(self) -> bool:
         return self.offers["A"] is not None and self.offers["B"] is not None
 
+    def has_both_preflight_results(self) -> bool:
+        return self.preflight_reports["A"] is not None and self.preflight_reports["B"] is not None
+
+    def has_both_preflight_ok(self) -> bool:
+        return self.preflight_ok["A"] and self.preflight_ok["B"]
+
     def is_committed(self) -> bool:
-        return self.confirmations["A"] and self.confirmations["B"] and self.has_both_offers()
+        return self.confirmations["A"] and self.confirmations["B"] and self.has_both_offers() and self.has_both_preflight_ok()
+
+    def reset_preflight(self) -> None:
+        self.preflight_reports = {"A": None, "B": None}
+        self.preflight_ok = {"A": False, "B": False}
+        self.preflight_errors = {"A": "", "B": ""}
+        self.confirmations = {"A": False, "B": False}
+
+    def reset_trade_state(self, reason: str = "") -> None:
+        self.offers = {"A": None, "B": None}
+        self.reset_preflight()
+        if reason:
+            self.compatibility_status["last_reset_reason"] = reason
 
     def scrub_sensitive_data(self) -> None:
-        self.offers = {"A": None, "B": None}
-        self.confirmations = {"A": False, "B": False}
+        self.reset_trade_state()
 
     def to_public_dict(self) -> dict[str, Any]:
         return {
@@ -238,9 +263,12 @@ class Room:
             "generation": self.generation,
             "game_family": self.game_family,
             "trade_mode": self.trade_mode,
+            "derived_modes": self.derived_modes,
             "compatibility_status": self.compatibility_status,
             "players": {slot: player.to_public_dict() for slot, player in self.players.items()},
             "offers": {slot: offer.log_summary() if offer else None for slot, offer in self.offers.items()},
+            "preflight_ok": self.preflight_ok,
+            "preflight_errors": self.preflight_errors,
             "created_at": self.created_at.isoformat(),
             "expires_at": self.expires_at.isoformat(),
         }
@@ -297,6 +325,13 @@ def supported_trade_modes_for_generation(generation: int) -> list[str]:
     generation = int(generation)
     modes = {mode for pair, mode in TRADE_MODE_MATRIX.items() if generation in pair}
     return sorted(modes)
+
+
+def default_supported_protocols(*, cross_generation_enabled: bool = True) -> list[str]:
+    protocols = [RAW_SAME_GENERATION]
+    if cross_generation_enabled:
+        protocols.append(CANONICAL_CROSS_GENERATION)
+    return protocols
 
 
 def parse_trade_mode(value: Any) -> str:

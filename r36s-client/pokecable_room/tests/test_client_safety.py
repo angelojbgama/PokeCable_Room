@@ -5,7 +5,13 @@ import unittest
 from pathlib import Path
 
 from pokecable_room.backups import create_backup, restore_backup
-from pokecable_room.client import _can_continue_with_report, _client_supported_trade_modes, _print_report
+from pokecable_room.client import (
+    _can_continue_with_report,
+    _client_supported_protocols,
+    _client_supported_trade_modes,
+    _preflight_result_for_payload,
+    _print_report,
+)
 from pokecable_room.compatibility.matrix import SAME_GENERATION, TIME_CAPSULE_GEN1_GEN2
 from pokecable_room.compatibility.report import CompatibilityReport
 from pokecable_room.parsers.base import PokemonPayload
@@ -15,9 +21,14 @@ from pokecable_room.trade import validate_payload_for_local_save
 class FakeUI:
     def __init__(self) -> None:
         self.messages: list[str] = []
+        self.confirm_response = True
 
     def print(self, message: str) -> None:
         self.messages.append(message)
+
+    def confirm(self, message: str, default: bool = False) -> bool:
+        self.messages.append(message)
+        return self.confirm_response
 
 
 class ClientSafetyTests(unittest.TestCase):
@@ -93,6 +104,73 @@ class ClientSafetyTests(unittest.TestCase):
         self.assertIn(SAME_GENERATION, modes)
         self.assertIn(TIME_CAPSULE_GEN1_GEN2, modes)
 
+    def test_client_announces_canonical_protocol_only_when_cross_generation_is_enabled(self) -> None:
+        self.assertEqual(_client_supported_protocols(cross_generation_enabled=False), ["raw_same_generation"])
+        self.assertEqual(
+            _client_supported_protocols(cross_generation_enabled=True),
+            ["raw_same_generation", "canonical_cross_generation"],
+        )
+
+    def test_preflight_mew_gen3_to_gen1_allows_with_manual_confirmation(self) -> None:
+        payload = canonical_payload(3, 1, 151, "Mew", native_id=151)
+        ok, report = _preflight_result_for_payload(
+            payload,
+            1,
+            cross_generation_enabled=True,
+            enabled_cross_generation_modes=["legacy_downconvert_experimental"],
+            cross_generation_policy="safe_default",
+            auto_confirm=False,
+            unsafe_auto_confirm_data_loss=False,
+            ui=FakeUI(),
+        )
+        self.assertTrue(ok)
+        self.assertTrue(report["compatible"])
+
+    def test_preflight_treecko_gen3_to_gen1_blocks(self) -> None:
+        payload = canonical_payload(3, 1, 252, "Treecko", native_id=277)
+        ok, report = _preflight_result_for_payload(
+            payload,
+            1,
+            cross_generation_enabled=True,
+            enabled_cross_generation_modes=["legacy_downconvert_experimental"],
+            cross_generation_policy="safe_default",
+            auto_confirm=False,
+            unsafe_auto_confirm_data_loss=False,
+            ui=FakeUI(),
+        )
+        self.assertFalse(ok)
+        self.assertFalse(report["compatible"])
+
+    def test_preflight_pikachu_gen1_to_gen3_allows(self) -> None:
+        payload = canonical_payload(1, 3, 25, "Pikachu", native_id=84)
+        ok, report = _preflight_result_for_payload(
+            payload,
+            3,
+            cross_generation_enabled=True,
+            enabled_cross_generation_modes=["forward_transfer_to_gen3"],
+            cross_generation_policy="safe_default",
+            auto_confirm=True,
+            unsafe_auto_confirm_data_loss=False,
+            ui=FakeUI(),
+        )
+        self.assertTrue(ok)
+        self.assertTrue(report["compatible"])
+
+    def test_preflight_data_loss_blocks_auto_confirm_without_unsafe_flag(self) -> None:
+        payload = canonical_payload(3, 1, 151, "Mew", native_id=151, ability="Synchronize", nature="Timid")
+        ok, report = _preflight_result_for_payload(
+            payload,
+            1,
+            cross_generation_enabled=True,
+            enabled_cross_generation_modes=["legacy_downconvert_experimental"],
+            cross_generation_policy="safe_default",
+            auto_confirm=True,
+            unsafe_auto_confirm_data_loss=False,
+            ui=FakeUI(),
+        )
+        self.assertFalse(ok)
+        self.assertIn("confirmacao manual", " ".join(report["blocking_reasons"]))
+
     def test_print_report_includes_data_loss_and_removed_entries(self) -> None:
         ui = FakeUI()
         _print_report(
@@ -112,6 +190,56 @@ class ClientSafetyTests(unittest.TestCase):
         self.assertIn("Item removido: King's Rock", output)
         self.assertIn("Campo removido: ability", output)
         self.assertIn("Conversao: Trainer ID sera reduzido para 16 bits.", output)
+
+
+def canonical_payload(
+    source_generation: int,
+    target_generation: int,
+    national_id: int,
+    name: str,
+    *,
+    native_id: int,
+    ability: str | None = None,
+    nature: str | None = None,
+) -> PokemonPayload:
+    source_space = {1: "gen1_internal", 2: "national_dex", 3: "gen3_internal"}[source_generation]
+    canonical = {
+        "source_generation": source_generation,
+        "source_game": {1: "pokemon_red", 2: "pokemon_crystal", 3: "pokemon_emerald"}[source_generation],
+        "species": {
+            "national_dex_id": national_id,
+            "source_species_id": native_id,
+            "source_species_id_space": source_space,
+            "name": name,
+        },
+        "species_national_id": national_id,
+        "species_name": name,
+        "nickname": name.upper(),
+        "level": 30,
+        "ot_name": "TEST",
+        "trainer_id": 12345,
+        "moves": [{"move_id": 33, "source_generation": source_generation}],
+        "ability": ability,
+        "nature": nature,
+        "metadata": {},
+    }
+    return PokemonPayload(
+        generation=source_generation,
+        game=canonical["source_game"],
+        species_id=national_id,
+        species_name=name,
+        level=30,
+        nickname=name.upper(),
+        ot_name="TEST",
+        trainer_id=12345,
+        raw_data_base64="",
+        display_summary=f"{name} Lv. 30",
+        source_generation=source_generation,
+        source_game=canonical["source_game"],
+        target_generation=target_generation,
+        canonical=canonical,
+        raw={},
+    )
 
 
 if __name__ == "__main__":
