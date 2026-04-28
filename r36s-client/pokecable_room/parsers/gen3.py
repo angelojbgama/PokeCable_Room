@@ -4,6 +4,9 @@ import base64
 from dataclasses import dataclass
 from pathlib import Path
 
+from pokecable_room.canonical import CanonicalItem, CanonicalMove, CanonicalOriginalData, CanonicalPokemon
+from pokecable_room.compatibility import CompatibilityReport, build_compatibility_report
+
 from .base import PokemonPayload, PokemonSummary, SaveData
 from .gen2 import GEN2_SPECIES
 
@@ -325,6 +328,9 @@ class Gen3Parser:
         if details["is_egg"]:
             raise ValueError("Ovos ainda nao sao suportados para troca real.")
         summary = self.list_party()[index]
+        raw_data_base64 = base64.b64encode(raw).decode("ascii")
+        canonical = self.export_canonical(location)
+        compatibility = self.compatibility_report_for(canonical)
         return PokemonPayload(
             generation=3,
             game=self.game_id,
@@ -334,20 +340,122 @@ class Gen3Parser:
             nickname=summary.nickname,
             ot_name=summary.ot_name,
             trainer_id=summary.trainer_id,
-            raw_data_base64=base64.b64encode(raw).decode("ascii"),
+            raw_data_base64=raw_data_base64,
             display_summary=summary.display_summary,
             checksum=f"{int(details['checksum']):04x}",
             metadata={"location": location, "format": "gen3-party-v1", "layout": self._require_layout().name},
+            canonical=canonical.to_dict(),
+            raw={"format": "gen3-party-v1", "data_base64": raw_data_base64, "checksum": f"{int(details['checksum']):04x}"},
+            compatibility_report=compatibility.to_dict(),
+        )
+
+    def export_canonical(self, location: str) -> CanonicalPokemon:
+        index = self._party_index(location)
+        if index >= self._party_count():
+            raise ValueError("Localizacao de party fora da quantidade atual.")
+        start = self._party_mon_offset(index)
+        raw = bytes(self._require_data()[start : start + PARTY_MON_SIZE])
+        details = self._parse_pokemon(raw)
+        summary = self.list_party()[index]
+        secure = self._decrypt_secure(raw[:BOX_MON_SIZE])
+        growth = self._substruct_offset(raw[:BOX_MON_SIZE], 0)
+        attacks = self._substruct_offset(raw[:BOX_MON_SIZE], 1)
+        held_item_id = int.from_bytes(secure[growth + 2 : growth + 4], "little") or None
+        moves = []
+        for offset in range(0, 8, 2):
+            move_id = int.from_bytes(secure[attacks + offset : attacks + offset + 2], "little")
+            if move_id:
+                moves.append(CanonicalMove(move_id=move_id, source_generation=3))
+        return CanonicalPokemon(
+            source_generation=3,
+            source_game=self.game_id,
+            species_national_id=summary.species_id,
+            species_name=summary.species_name,
+            nickname=summary.nickname,
+            level=summary.level,
+            ot_name=summary.ot_name,
+            trainer_id=summary.trainer_id,
+            experience=int.from_bytes(secure[growth + 4 : growth + 8], "little"),
+            moves=moves,
+            held_item=CanonicalItem(item_id=held_item_id, source_generation=3) if held_item_id is not None else None,
+            original_data=CanonicalOriginalData(
+                generation=3,
+                game=self.game_id,
+                format="gen3-party-v1",
+                raw_data_base64=base64.b64encode(raw).decode("ascii"),
+                checksum=f"{int(details['checksum']):04x}",
+                location=location,
+                metadata={"layout": self._require_layout().name},
+            ),
+            metadata={"source_species_id_space": "gen3_species"},
         )
 
     def import_pokemon(self, location: str, payload: PokemonPayload) -> None:
         self.remove_or_replace_sent_pokemon(location, payload)
 
+    def import_canonical(self, location: str, canonical_pokemon: CanonicalPokemon) -> None:
+        if not self.can_import_canonical(canonical_pokemon):
+            report = self.compatibility_report_for(canonical_pokemon)
+            raise ValueError("; ".join(report.blocking_reasons) or "Pokemon canonico nao pode ser importado em Gen 3.")
+        if canonical_pokemon.original_data is None or canonical_pokemon.original_data.raw_data_base64 is None:
+            raise ValueError("Importacao canonica Gen 3 exige raw original enquanto conversor seguro nao esta habilitado.")
+        payload = PokemonPayload(
+            generation=3,
+            game=canonical_pokemon.source_game,
+            species_id=canonical_pokemon.species_national_id,
+            species_name=canonical_pokemon.species_name,
+            level=canonical_pokemon.level,
+            nickname=canonical_pokemon.nickname,
+            ot_name=canonical_pokemon.ot_name,
+            trainer_id=canonical_pokemon.trainer_id,
+            raw_data_base64=canonical_pokemon.original_data.raw_data_base64,
+            display_summary=f"{canonical_pokemon.species_name} Lv. {canonical_pokemon.level}",
+        )
+        self.import_pokemon(location, payload)
+
+    def can_import_canonical(self, canonical_pokemon: CanonicalPokemon) -> bool:
+        return self.compatibility_report_for(canonical_pokemon).compatible
+
+    def compatibility_report_for(self, canonical_pokemon: CanonicalPokemon) -> CompatibilityReport:
+        return build_compatibility_report(canonical_pokemon, self.generation, cross_generation_enabled=False)
+
+    def get_species_id(self, location: str) -> int:
+        index = self._party_index(location)
+        start = self._party_mon_offset(index)
+        raw = bytes(self._require_data()[start : start + PARTY_MON_SIZE])
+        secure = self._decrypt_secure(raw[:BOX_MON_SIZE])
+        growth = self._substruct_offset(raw[:BOX_MON_SIZE], 0)
+        return int.from_bytes(secure[growth : growth + 2], "little")
+
+    def set_species_id(self, location: str, species_id: int) -> None:
+        species_id = int(species_id)
+        if species_id < 1 or species_id > 412:
+            raise ValueError("Species Gen 3 precisa estar no intervalo suportado 1..412.")
+        self._edit_growth_field(location, 0, species_id.to_bytes(2, "little"))
+
+    def get_held_item_id(self, location: str) -> int | None:
+        index = self._party_index(location)
+        start = self._party_mon_offset(index)
+        raw = bytes(self._require_data()[start : start + PARTY_MON_SIZE])
+        secure = self._decrypt_secure(raw[:BOX_MON_SIZE])
+        growth = self._substruct_offset(raw[:BOX_MON_SIZE], 0)
+        value = int.from_bytes(secure[growth + 2 : growth + 4], "little")
+        return value or None
+
+    def set_held_item_id(self, location: str, item_id: int) -> None:
+        item_id = int(item_id)
+        if item_id < 0 or item_id > 0xFFFF:
+            raise ValueError("Held item Gen 3 precisa caber em 16 bits.")
+        self._edit_growth_field(location, 2, item_id.to_bytes(2, "little"))
+
+    def clear_held_item(self, location: str) -> None:
+        self.set_held_item_id(location, 0)
+
     def remove_or_replace_sent_pokemon(self, location: str, received_payload: PokemonPayload) -> None:
         if received_payload.generation != 3:
             raise ValueError(
                 f"Payload recebido e Gen {received_payload.generation}, mas o save local e Gen 3. "
-                "Trocas entre geracoes diferentes nao sao suportadas."
+                "Cross-generation esta protegido por feature guard enquanto o conversor local Gen 3 esta em desenvolvimento."
             )
         index = self._party_index(location)
         if index >= self._party_count():
@@ -481,6 +589,38 @@ class Gen3Parser:
             "checksum": checksum,
             "is_egg": is_egg,
         }
+
+    def _substruct_offset(self, box: bytes, logical_index: int) -> int:
+        personality = int.from_bytes(box[0:4], "little")
+        return SUBSTRUCT_ORDERS[personality % 24][logical_index] * 12
+
+    def _edit_growth_field(self, location: str, relative_offset: int, value: bytes) -> None:
+        index = self._party_index(location)
+        if index >= self._party_count():
+            raise ValueError("Localizacao de party fora da quantidade atual.")
+        start = self._party_mon_offset(index)
+        raw = bytearray(self._require_data()[start : start + PARTY_MON_SIZE])
+        secure = bytearray(self._decrypt_secure(bytes(raw[:BOX_MON_SIZE])))
+        growth = self._substruct_offset(bytes(raw[:BOX_MON_SIZE]), 0)
+        secure[growth + relative_offset : growth + relative_offset + len(value)] = value
+        self._write_secure_party_pokemon(index, raw, secure)
+
+    def _write_secure_party_pokemon(self, index: int, raw: bytearray, secure: bytearray) -> None:
+        box = bytearray(raw[:BOX_MON_SIZE])
+        personality = int.from_bytes(box[0:4], "little")
+        trainer_id = int.from_bytes(box[4:8], "little")
+        checksum = self._box_checksum(bytes(secure))
+        box[0x1C:0x1E] = checksum.to_bytes(2, "little")
+        key = personality ^ trainer_id
+        encrypted = bytearray(secure)
+        for offset in range(0, SECURE_SIZE, 4):
+            current = int.from_bytes(encrypted[offset : offset + 4], "little") ^ key
+            encrypted[offset : offset + 4] = current.to_bytes(4, "little")
+        box[SECURE_OFFSET : SECURE_OFFSET + SECURE_SIZE] = encrypted
+        raw[:BOX_MON_SIZE] = box
+        start = self._party_mon_offset(index)
+        self._require_data()[start : start + PARTY_MON_SIZE] = raw
+        self.recalculate_checksums()
 
     def _decrypt_secure(self, box: bytes) -> bytes:
         personality = int.from_bytes(box[0:4], "little")

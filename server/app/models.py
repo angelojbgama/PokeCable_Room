@@ -24,6 +24,23 @@ MAX_ROOM_NAME_LENGTH = 64
 MAX_GAME_ID_LENGTH = 64
 MAX_CLIENT_ID_LENGTH = 80
 MAX_PAYLOAD_JSON_BYTES = 32 * 1024
+SAME_GENERATION = "same_generation"
+TIME_CAPSULE_GEN1_GEN2 = "time_capsule_gen1_gen2"
+FORWARD_TRANSFER_TO_GEN3 = "forward_transfer_to_gen3"
+LEGACY_DOWNCONVERT_EXPERIMENTAL = "legacy_downconvert_experimental"
+UNSUPPORTED = "unsupported"
+TRADE_MODE_MATRIX = {
+    (1, 1): SAME_GENERATION,
+    (2, 2): SAME_GENERATION,
+    (3, 3): SAME_GENERATION,
+    (1, 2): TIME_CAPSULE_GEN1_GEN2,
+    (2, 1): TIME_CAPSULE_GEN1_GEN2,
+    (1, 3): FORWARD_TRANSFER_TO_GEN3,
+    (2, 3): FORWARD_TRANSFER_TO_GEN3,
+    (3, 1): LEGACY_DOWNCONVERT_EXPERIMENTAL,
+    (3, 2): LEGACY_DOWNCONVERT_EXPERIMENTAL,
+}
+VALID_TRADE_MODES = set(TRADE_MODE_MATRIX.values())
 
 
 class RoomError(Exception):
@@ -35,6 +52,7 @@ class RoomError(Exception):
 
 @dataclass(slots=True)
 class PokemonOffer:
+    payload_version: int
     generation: int
     game: str
     species_id: int
@@ -47,51 +65,63 @@ class PokemonOffer:
     display_summary: str
     checksum: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    source_generation: int | None = None
+    source_game: str | None = None
+    target_generation: int | None = None
+    trade_mode: str = SAME_GENERATION
+    summary: dict[str, Any] = field(default_factory=dict)
+    canonical: dict[str, Any] | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
+    compatibility_report: dict[str, Any] | None = None
 
     @classmethod
     def from_message(cls, payload: dict[str, Any]) -> "PokemonOffer":
-        required = [
-            "generation",
-            "game",
-            "species_id",
-            "species_name",
-            "level",
-            "nickname",
-            "ot_name",
-            "trainer_id",
-            "raw_data_base64",
-            "display_summary",
-        ]
-        missing = [key for key in required if key not in payload]
-        if missing:
-            raise RoomError("invalid_payload", f"Payload sem campos obrigatorios: {', '.join(missing)}")
-        generation = parse_generation(payload["generation"])
-        game = parse_game_id(payload["game"], generation)
-        species_id = int(payload["species_id"])
-        level = int(payload["level"])
-        trainer_id = int(payload["trainer_id"])
+        payload_bytes = len(json_dumps_compact(payload).encode("utf-8"))
+        if payload_bytes > MAX_PAYLOAD_JSON_BYTES:
+            raise RoomError("payload_too_large", "Payload do Pokemon excede o limite permitido.")
+        raw = dict(payload.get("raw") or {})
+        summary = dict(payload.get("summary") or {})
+        canonical = dict(payload.get("canonical") or {})
+        generation = parse_generation(payload.get("generation") or payload.get("source_generation") or canonical.get("source_generation"))
+        game = parse_game_id(payload.get("game") or payload.get("source_game") or canonical.get("source_game"), generation)
+        species_id = int(payload.get("species_id") or summary.get("species_id") or canonical.get("species_national_id") or 0)
+        species_name = str(payload.get("species_name") or summary.get("species_name") or canonical.get("species_name") or "")
+        level = int(payload.get("level") or summary.get("level") or canonical.get("level") or 0)
+        nickname = str(payload.get("nickname") or summary.get("nickname") or canonical.get("nickname") or species_name)
+        trainer_id = int(payload.get("trainer_id") or canonical.get("trainer_id") or 0)
         if species_id < 1 or level < 1 or level > 100:
             raise RoomError("invalid_payload", "Pokemon oferecido tem species_id ou level invalido.")
-        raw_data = str(payload["raw_data_base64"])
-        if len(raw_data.encode("utf-8")) > MAX_PAYLOAD_JSON_BYTES:
-            raise RoomError("payload_too_large", "Payload do Pokemon excede o limite permitido.")
+        raw_data = str(payload.get("raw_data_base64") or raw.get("data_base64") or "")
+        if not raw_data and not canonical:
+            raise RoomError("invalid_payload", "Payload sem dados raw ou canonical utilizaveis.")
+        trade_mode = parse_trade_mode(payload.get("trade_mode") or SAME_GENERATION)
         return cls(
+            payload_version=int(payload.get("payload_version") or 1),
             generation=generation,
             game=game,
             species_id=species_id,
-            species_name=str(payload["species_name"])[:80],
+            species_name=species_name[:80],
             level=level,
-            nickname=str(payload["nickname"])[:32],
-            ot_name=str(payload["ot_name"])[:32],
+            nickname=nickname[:32],
+            ot_name=str(payload.get("ot_name") or summary.get("ot_name") or "")[:32],
             trainer_id=trainer_id,
             raw_data_base64=raw_data,
-            display_summary=str(payload["display_summary"])[:120],
+            display_summary=str(payload.get("display_summary") or summary.get("display_summary") or f"{species_name} Lv. {level}")[:120],
             checksum=str(payload["checksum"])[:128] if payload.get("checksum") else None,
             metadata=dict(payload.get("metadata") or {}),
+            source_generation=int(payload["source_generation"]) if payload.get("source_generation") is not None else generation,
+            source_game=str(payload["source_game"]) if payload.get("source_game") is not None else game,
+            target_generation=int(payload["target_generation"]) if payload.get("target_generation") is not None else None,
+            trade_mode=trade_mode,
+            summary=summary,
+            canonical=canonical or None,
+            raw=raw,
+            compatibility_report=dict(payload["compatibility_report"]) if payload.get("compatibility_report") else None,
         )
 
     def to_public_dict(self) -> dict[str, Any]:
         return {
+            "payload_version": self.payload_version,
             "generation": self.generation,
             "game": self.game,
             "species_id": self.species_id,
@@ -104,16 +134,28 @@ class PokemonOffer:
             "checksum": self.checksum,
             "metadata": self.metadata,
             "display_summary": self.display_summary,
+            "source_generation": self.source_generation or self.generation,
+            "source_game": self.source_game or self.game,
+            "target_generation": self.target_generation,
+            "trade_mode": self.trade_mode,
+            "summary": self.summary,
+            "canonical": self.canonical,
+            "raw": self.raw or {"format": self.metadata.get("format"), "data_base64": self.raw_data_base64, "checksum": self.checksum},
+            "compatibility_report": self.compatibility_report,
         }
 
     def log_summary(self) -> dict[str, Any]:
         return {
+            "payload_version": self.payload_version,
             "generation": self.generation,
             "game": self.game,
             "species_id": self.species_id,
             "level": self.level,
+            "trade_mode": self.trade_mode,
             "display_summary": self.display_summary,
             "raw_data_base64": "<redacted>",
+            "raw": "<redacted>",
+            "canonical": "<redacted>" if self.canonical else None,
         }
 
 
@@ -123,6 +165,7 @@ class Player:
     client_id: str
     generation: int
     game: str
+    supported_trade_modes: list[str] = field(default_factory=list)
     status: str = "connected"
 
     def to_public_dict(self) -> dict[str, Any]:
@@ -130,6 +173,7 @@ class Player:
             "client_id": self.client_id,
             "generation": self.generation,
             "game": self.game,
+            "supported_trade_modes": self.supported_trade_modes,
             "status": self.status,
         }
 
@@ -140,6 +184,8 @@ class Room:
     password_hash: str
     generation: int
     game_family: str
+    trade_mode: str = SAME_GENERATION
+    compatibility_status: dict[str, Any] = field(default_factory=dict)
     players: dict[PlayerSlot, Player] = field(default_factory=dict)
     offers: dict[PlayerSlot, PokemonOffer | None] = field(default_factory=lambda: {"A": None, "B": None})
     confirmations: dict[PlayerSlot, bool] = field(default_factory=lambda: {"A": False, "B": False})
@@ -172,6 +218,8 @@ class Room:
             "max_players": self.max_players,
             "generation": self.generation,
             "game_family": self.game_family,
+            "trade_mode": self.trade_mode,
+            "compatibility_status": self.compatibility_status,
             "players": {slot: player.to_public_dict() for slot, player in self.players.items()},
             "offers": {slot: offer.log_summary() if offer else None for slot, offer in self.offers.items()},
             "created_at": self.created_at.isoformat(),
@@ -218,6 +266,23 @@ def game_family_for_generation(generation: int) -> str:
     return f"gen{generation}"
 
 
+def trade_mode_for_generations(source_generation: int, target_generation: int) -> str:
+    return TRADE_MODE_MATRIX.get((int(source_generation), int(target_generation)), UNSUPPORTED)
+
+
+def supported_trade_modes_for_generation(generation: int) -> list[str]:
+    generation = int(generation)
+    modes = {mode for pair, mode in TRADE_MODE_MATRIX.items() if generation in pair}
+    return sorted(modes)
+
+
+def parse_trade_mode(value: Any) -> str:
+    trade_mode = str(value or SAME_GENERATION).strip().lower()
+    if trade_mode not in VALID_TRADE_MODES:
+        raise RoomError("invalid_trade_mode", f"Modo de troca nao suportado: {trade_mode}.")
+    return trade_mode
+
+
 def parse_game_id(value: Any, generation: int) -> str:
     game = str(value or "").strip().lower()
     if not game:
@@ -236,5 +301,12 @@ def parse_game_id(value: Any, generation: int) -> str:
 def generation_mismatch_message(room_generation: int, client_generation: int) -> str:
     return (
         f"Esta sala e Gen {room_generation}. Seu save e Gen {client_generation}. "
-        "Trocas entre geracoes diferentes ainda nao sao suportadas."
+        "Cross-generation esta protegido por bloqueio de seguranca enquanto a camada de conversao local "
+        "esta em desenvolvimento."
     )
+
+
+def json_dumps_compact(value: Any) -> str:
+    import json
+
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))

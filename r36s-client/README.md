@@ -24,10 +24,17 @@ Abra em `Options -> Tools`.
 1. Salve dentro do jogo.
 2. Feche o emulador.
 3. Abra PokeCable Room.
-4. Escolha criar ou entrar em troca.
+4. Escolha criar sala same-generation ou entrar em sala.
 5. Escolha o save `.sav/.srm`.
 6. Escolha um Pokemon da party.
 7. Aguarde o outro jogador.
 8. Confirme e deixe a tool criar o backup.
 
-Suporte atual: party de Gen 1, party de Gen 2 Gold/Silver/Crystal e party de Gen 3. Boxes e troca entre geracoes ainda nao estao habilitadas.
+## Modos
+
+- Criar sala same-generation: modo estavel atual.
+- Criar sala Time Capsule Gen 1/2: preparado no menu, protegido por feature guard.
+- Criar sala Transfer para Gen 3: preparado no menu, protegido por feature guard.
+- Testar compatibilidade: mostra o modo planejado, bloqueios, avisos e perdas esperadas.
+
+Suporte atual: party de Gen 1, party de Gen 2 Gold/Silver/Crystal e party de Gen 3. Boxes ainda nao estao habilitadas. Cross-generation e objetivo do produto, mas a escrita fica bloqueada ate os conversores locais serem validados.

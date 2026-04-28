@@ -11,6 +11,8 @@ from pathlib import Path
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from pokecable_room.compatibility import build_compatibility_report, supported_modes_for_generation
+from pokecable_room.compatibility.matrix import SAME_GENERATION
 from pokecable_room.logs import setup_logging
 from pokecable_room.network import PokeCableNetworkClient
 from pokecable_room.parsers.base import PokemonPayload
@@ -36,10 +38,15 @@ async def run_trade(
     save_path: Path | None,
     initial_save_signature: tuple[int, int] | None,
     ui: TerminalUI,
+    trade_mode: str = SAME_GENERATION,
 ) -> PokemonPayload:
     local_generation = parser.get_generation()
     local_game = parser.get_game_id()
+    if trade_mode != SAME_GENERATION:
+        raise RuntimeError("Modo em desenvolvimento. Seu save foi detectado corretamente, mas essa conversao ainda nao esta habilitada.")
     offer = parser.export_pokemon(pokemon_location)
+    offer.trade_mode = trade_mode
+    offer.target_generation = local_generation
     ui.print(f"Pokemon selecionado: {offer.display_summary} ({local_game}, Gen {local_generation})")
     async with PokeCableNetworkClient(server_url) as network:
         if action == "create":
@@ -50,6 +57,8 @@ async def run_trade(
                     "password": password,
                     "generation": local_generation,
                     "game": local_game,
+                    "trade_mode": trade_mode,
+                    "supported_trade_modes": supported_modes_for_generation(local_generation),
                 }
             )
             await network.wait_for({"room_created"})
@@ -63,6 +72,7 @@ async def run_trade(
                     "password": password,
                     "generation": local_generation,
                     "game": local_game,
+                    "supported_trade_modes": supported_modes_for_generation(local_generation),
                 }
             )
             await network.wait_for({"room_joined"})
@@ -167,6 +177,7 @@ async def automated_or_prompted_trade(args: argparse.Namespace) -> int:
             save_path=save_path,
             initial_save_signature=initial_signature,
             ui=ui,
+            trade_mode=args.trade_mode,
         )
     except Exception as exc:
         logger.exception("Trade failed")
@@ -227,6 +238,42 @@ def choose_save_placeholder(ui: TerminalUI) -> None:
         ui.print(f"- {item.location}: {item.display_summary} ({item.nickname})")
 
 
+def mode_in_development(ui: TerminalUI, mode_label: str) -> None:
+    config = load_config()
+    saves = find_save_files(config["default_save_dirs"])
+    if saves:
+        selected = ui.choose("Escolha um save para validar deteccao:", saves, [str(path) for path in saves])
+        parser = detect_parser(selected)
+        ui.print(f"Detectado: {parser.get_game_id()} Gen {parser.get_generation()}")
+    ui.print(f"{mode_label}: Modo em desenvolvimento. Seu save foi detectado corretamente, mas essa conversao ainda nao esta habilitada.")
+
+
+def view_party(ui: TerminalUI) -> None:
+    choose_save_placeholder(ui)
+
+
+def test_compatibility(ui: TerminalUI) -> None:
+    config = load_config()
+    saves = find_save_files(config["default_save_dirs"])
+    if not saves:
+        ui.print("Nenhum .sav/.srm encontrado nos diretorios configurados.")
+        return
+    selected = ui.choose("Escolha o save local:", saves, [str(path) for path in saves])
+    parser = detect_parser(selected)
+    location = choose_pokemon(parser, ui, None)
+    target_generation = ui.choose("Geracao destino:", [1, 2, 3], ["Gen 1", "Gen 2", "Gen 3"])
+    canonical = parser.export_canonical(location)
+    report = build_compatibility_report(canonical, target_generation, cross_generation_enabled=False)
+    ui.print(f"Modo: {report.mode}")
+    ui.print(f"Compatibilidade: {'ok' if report.compatible else 'bloqueada'}")
+    for reason in report.blocking_reasons:
+        ui.print(f"- Bloqueio: {reason}")
+    for warning in report.warnings:
+        ui.print(f"- Aviso: {warning}")
+    for data_loss in report.data_loss:
+        ui.print(f"- Perda de dados: {data_loss}")
+
+
 def interactive_menu() -> int:
     ui = TerminalUI()
     config = load_config()
@@ -234,30 +281,67 @@ def interactive_menu() -> int:
     while True:
         choice = ui.choose(
             "PokeCable Room",
-            ["create", "join", "save", "server", "restore", "logs", "exit"],
             [
-                "Criar sala",
+                "create_same",
+                "create_time_capsule",
+                "create_transfer_gen3",
+                "join",
+                "save",
+                "party",
+                "compatibility",
+                "server",
+                "restore",
+                "logs",
+                "exit",
+            ],
+            [
+                "Criar sala same-generation",
+                "Criar sala Time Capsule Gen 1/2",
+                "Criar sala Transfer para Gen 3",
                 "Entrar em sala",
                 "Escolher save",
+                "Ver party",
+                "Testar compatibilidade",
                 "Configurar servidor VPS",
                 "Restaurar backup",
                 "Ver logs",
                 "Sair",
             ],
         )
-        if choice in {"create", "join"}:
+        if choice == "create_same":
             args = argparse.Namespace(
-                action=choice,
+                action="create",
                 server=None,
                 room=None,
                 password=None,
                 save=None,
                 pokemon_location=None,
                 auto_confirm=False,
+                trade_mode=SAME_GENERATION,
             )
             return asyncio.run(automated_or_prompted_trade(args))
+        if choice == "join":
+            args = argparse.Namespace(
+                action="join",
+                server=None,
+                room=None,
+                password=None,
+                save=None,
+                pokemon_location=None,
+                auto_confirm=False,
+                trade_mode=SAME_GENERATION,
+            )
+            return asyncio.run(automated_or_prompted_trade(args))
+        if choice == "create_time_capsule":
+            mode_in_development(ui, "Time Capsule Gen 1/2")
+        elif choice == "create_transfer_gen3":
+            mode_in_development(ui, "Transfer para Gen 3")
         if choice == "save":
             choose_save_placeholder(ui)
+        elif choice == "party":
+            view_party(ui)
+        elif choice == "compatibility":
+            test_compatibility(ui)
         elif choice == "server":
             configure_server(ui)
         elif choice == "restore":
@@ -276,6 +360,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--password", help="Senha da sala.")
     parser.add_argument("--save", help="Caminho para .sav/.srm local.")
     parser.add_argument("--pokemon-location", default="party:0", help="Localizacao do Pokemon, padrao party:0.")
+    parser.add_argument("--trade-mode", default=SAME_GENERATION, help="Modo de troca. Same-generation e o unico modo habilitado.")
     parser.add_argument("--auto-confirm", action="store_true", help="Confirma automaticamente apos receber a oferta do outro jogador.")
     parser.add_argument("--list-party", action="store_true", help="Lista party do save em JSON e sai.")
     return parser.parse_args(argv)

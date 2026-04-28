@@ -13,7 +13,7 @@ from .websocket import ConnectionHub
 
 def build_app() -> FastAPI:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
-    app = FastAPI(title="PokeCable Room", version="0.1.0")
+    app = FastAPI(title="PokeCable Room", version="0.2.0")
     room_manager = RoomManager()
     hub = ConnectionHub(room_manager)
     app.state.room_manager = room_manager
@@ -41,4 +41,3 @@ def build_app() -> FastAPI:
 
 
 app = build_app()
-

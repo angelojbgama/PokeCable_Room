@@ -4,6 +4,7 @@ import asyncio
 import unittest
 
 from app.models import RoomError
+from app.models import SAME_GENERATION, TIME_CAPSULE_GEN1_GEN2
 from app.rooms import RoomManager
 
 
@@ -23,6 +24,38 @@ def synthetic_payload(generation: int, game: str | None = None) -> dict:
     }
 
 
+def synthetic_payload_v2(generation: int, game: str | None = None) -> dict:
+    payload = synthetic_payload(generation, game)
+    payload.update(
+        {
+            "payload_version": 2,
+            "source_generation": generation,
+            "source_game": payload["game"],
+            "target_generation": generation,
+            "trade_mode": SAME_GENERATION,
+            "summary": {"display_summary": payload["display_summary"]},
+            "canonical": {
+                "source_generation": generation,
+                "source_game": payload["game"],
+                "species_national_id": payload["species_id"],
+                "species_name": payload["species_name"],
+                "nickname": payload["nickname"],
+                "level": payload["level"],
+                "ot_name": payload["ot_name"],
+                "trainer_id": payload["trainer_id"],
+            },
+            "raw": {"format": f"gen{generation}-party-v1", "data_base64": payload["raw_data_base64"]},
+            "compatibility_report": {
+                "compatible": True,
+                "mode": SAME_GENERATION,
+                "source_generation": generation,
+                "target_generation": generation,
+            },
+        }
+    )
+    return payload
+
+
 class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         asyncio.get_running_loop().slow_callback_duration = 10
@@ -38,6 +71,8 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(slot, "A")
         self.assertEqual(room.generation, 2)
+        self.assertEqual(room.trade_mode, SAME_GENERATION)
+        self.assertIn(TIME_CAPSULE_GEN1_GEN2, room.players["A"].supported_trade_modes)
 
         room, slot = await manager.join_room(
             room_name="crystal-paqueta",
@@ -71,6 +106,11 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
             await manager.join_room(room_name="room", password="pw", client_id="b", generation=3, game="pokemon_emerald")
         self.assertEqual(raised.exception.code, "generation_mismatch")
         self.assertIn("Esta sala e Gen 2", raised.exception.message)
+        self.assertIn("Cross-generation", raised.exception.message)
+        room = await manager.get_room("room")
+        self.assertIsNotNone(room)
+        self.assertFalse(room.compatibility_status["compatible"])
+        self.assertEqual(room.compatibility_status["mode"], "forward_transfer_to_gen3")
 
     async def test_exchanges_synthetic_payloads_when_generation_matches(self) -> None:
         manager = RoomManager(room_timeout_seconds=60, max_rooms=10)
@@ -85,6 +125,17 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(committed)
         self.assertEqual(room.offers["A"].generation, 2)
         self.assertEqual(room.offers["B"].generation, 2)
+
+    async def test_accepts_payload_version_2_for_same_generation(self) -> None:
+        manager = RoomManager(room_timeout_seconds=60, max_rooms=10)
+        await manager.create_room(room_name="room", password="pw", client_id="a", generation=2, game="pokemon_crystal")
+        await manager.join_room(room_name="room", password="pw", client_id="b", generation=2, game="pokemon_crystal")
+
+        room, slot, offer = await manager.offer_pokemon(client_id="a", payload=synthetic_payload_v2(2))
+        self.assertEqual(slot, "A")
+        self.assertEqual(room.trade_mode, SAME_GENERATION)
+        self.assertEqual(offer.payload_version, 2)
+        self.assertEqual(offer.raw["format"], "gen2-party-v1")
 
     async def test_rejects_generation_mismatch_payload(self) -> None:
         manager = RoomManager(room_timeout_seconds=60, max_rooms=10)

@@ -6,10 +6,11 @@ Regras obrigatorias:
 - Sempre crie backup antes de escrever.
 - Verifique se o backup foi gravado corretamente.
 - Nunca sobrescreva save sem backup.
-- Rejeite payload recebido de outra geracao.
-- Nao converta automaticamente entre geracoes.
+- Rejeite payload recebido de outra geracao enquanto a feature guard cross-generation estiver desligada.
+- Nao converta automaticamente entre geracoes sem `CanonicalPokemon`, `CompatibilityReport` e conversor local validado.
 - Recalcule checksums apenas no parser correto da geracao.
 - Mantenha Gen 1, Gen 2 e Gen 3 em parsers separados.
+- Cancele a gravacao se o save mudou enquanto a sala estava aberta.
 
 ## Por Que Fechar O Jogo
 
@@ -19,3 +20,4 @@ Emuladores podem manter o save em memoria e gravar por cima do arquivo depois. E
 
 O servidor nao e editor de save. Ele recebe apenas o payload do Pokemon escolhido, encaminha ao outro jogador e apaga os dados ao finalizar/cancelar.
 
+Cross-generation deve acontecer localmente no client. O servidor apenas valida modo, compatibilidade declarada, ofertas e confirmacao.

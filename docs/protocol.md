@@ -23,7 +23,9 @@ Criar:
   "room_name": "crystal-paqueta",
   "password": "senha",
   "generation": 2,
-  "game": "pokemon_crystal"
+  "game": "pokemon_crystal",
+  "trade_mode": "same_generation",
+  "supported_trade_modes": ["same_generation", "time_capsule_gen1_gen2", "forward_transfer_to_gen3"]
 }
 ```
 
@@ -35,7 +37,8 @@ Entrar:
   "room_name": "crystal-paqueta",
   "password": "senha",
   "generation": 2,
-  "game": "pokemon_crystal"
+  "game": "pokemon_crystal",
+  "supported_trade_modes": ["same_generation", "time_capsule_gen1_gen2", "forward_transfer_to_gen3"]
 }
 ```
 
@@ -49,14 +52,39 @@ Respostas principais:
 - `game_mismatch`
 - `error`
 
-## Oferta
+## Sala
+
+`room` inclui:
+
+```json
+{
+  "room_name": "crystal-paqueta",
+  "generation": 2,
+  "trade_mode": "same_generation",
+  "compatibility_status": {
+    "compatible": true,
+    "mode": "same_generation",
+    "blocking_reasons": []
+  },
+  "players": {}
+}
+```
+
+## Payload V2
+
+Same-generation mantem raw data:
 
 ```json
 {
   "type": "offer_pokemon",
   "payload": {
+    "payload_version": 2,
     "generation": 2,
     "game": "pokemon_crystal",
+    "source_generation": 2,
+    "source_game": "pokemon_crystal",
+    "target_generation": 2,
+    "trade_mode": "same_generation",
     "species_id": 64,
     "species_name": "Kadabra",
     "level": 32,
@@ -64,16 +92,21 @@ Respostas principais:
     "ot_name": "ANGELO",
     "trainer_id": 12345,
     "raw_data_base64": "...",
-    "display_summary": "Kadabra Lv. 32"
+    "raw": {
+      "format": "gen2-crystal-party-v1",
+      "data_base64": "...",
+      "checksum": "..."
+    },
+    "summary": {
+      "display_summary": "Kadabra Lv. 32"
+    },
+    "canonical": {},
+    "compatibility_report": {}
   }
 }
 ```
 
-O servidor encaminha ao outro jogador:
-
-```json
-{"type": "peer_offer_received", "offer": {"generation": 2}}
-```
+Cross-generation usara o mesmo envelope com `trade_mode` diferente e escrita local por conversor. O servidor nao converte e nao grava save.
 
 ## Confirmacao
 
@@ -106,17 +139,16 @@ Ou desconexao de um jogador:
 {"type": "trade_cancelled", "reason": "peer_disconnected"}
 ```
 
-## Regra De Geracao
+## Feature Guard Cross-Generation
 
-Ao criar a sala, o servidor grava `generation`. Ao entrar, o segundo jogador precisa informar a mesma geracao. Se for diferente:
+Enquanto a feature guard estiver desligada, gerações diferentes retornam:
 
 ```json
 {
   "type": "generation_mismatch",
   "code": "generation_mismatch",
-  "message": "Esta sala e Gen 2. Seu save e Gen 3. Trocas entre geracoes diferentes ainda nao sao suportadas."
+  "message": "Esta sala e Gen 2. Seu save e Gen 3. Cross-generation esta protegido por bloqueio de seguranca enquanto a camada de conversao local esta em desenvolvimento."
 }
 ```
 
-O servidor tambem valida `generation` no `offer_pokemon`.
-
+O client tambem valida o payload recebido antes de gravar.

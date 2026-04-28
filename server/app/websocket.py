@@ -65,9 +65,11 @@ class ConnectionHub:
             client_id=client_id,
             generation=message.get("generation"),
             game=message.get("game"),
+            trade_mode=message.get("trade_mode"),
+            supported_trade_modes=list(message.get("supported_trade_modes") or []),
         )
         self._remember_client(room.room_name, slot, client_id)
-        logger.info("room_created room=%s generation=%s slot=%s", room.room_name, room.generation, slot)
+        logger.info("room_created room=%s generation=%s trade_mode=%s slot=%s", room.room_name, room.generation, room.trade_mode, slot)
         await self._send(
             client_id,
             {
@@ -86,9 +88,10 @@ class ConnectionHub:
             client_id=client_id,
             generation=message.get("generation"),
             game=message.get("game"),
+            supported_trade_modes=list(message.get("supported_trade_modes") or []),
         )
         self._remember_client(room.room_name, slot, client_id)
-        logger.info("room_joined room=%s generation=%s slot=%s", room.room_name, room.generation, slot)
+        logger.info("room_joined room=%s generation=%s trade_mode=%s slot=%s", room.room_name, room.generation, room.trade_mode, slot)
         await self._send(client_id, {"type": "room_joined", "client_id": client_id, "slot": slot, "room": room.to_public_dict()})
         peer_offer = room.offers.get(room.peer_slot(slot))
         if peer_offer is not None:

@@ -1,6 +1,6 @@
 # PokeCable Room Server
 
-Servidor FastAPI/WebSocket para salas privadas de troca por payload de Pokemon. O servidor nao edita saves e nao armazena ROMs ou saves completos.
+Servidor FastAPI/WebSocket para salas privadas de troca por payload de Pokemon. O servidor nao edita saves, nao converte Pokemon e nao armazena ROMs ou saves completos.
 
 ## Rodar Localmente
 
@@ -29,6 +29,7 @@ ws://127.0.0.1:8000/ws
 - Cada sala tem no maximo 2 jogadores.
 - A senha da sala e armazenada com hash PBKDF2.
 - O servidor recebe apenas o payload do Pokemon selecionado.
-- `raw_data_base64` nao deve ser logado completo.
-- Trocas entre geracoes diferentes sao sempre bloqueadas.
-- `ALLOW_CROSS_GENERATION` fica `false`; alterar a variavel nao habilita cross-generation.
+- Payload raw e canonical nao devem ser logados completos.
+- Same-generation e o modo estavel atual.
+- Cross-generation fica protegido por feature guard enquanto os conversores locais estao em desenvolvimento.
+- O servidor mantem `trade_mode` e `compatibility_status`, mas a escrita e conversao acontecem no client.

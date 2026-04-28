@@ -38,10 +38,13 @@ wss://9kernel.vps-kinghost.net/ws
 1. Salve dentro do jogo.
 2. Feche o emulador.
 3. Abra PokeCable Room.
-4. Escolha o save.
-5. Escolha o Pokemon da party.
-6. Aguarde o backup ser criado antes da gravacao.
-7. Reabra o jogo somente depois da mensagem de sucesso.
+4. Escolha `Criar sala same-generation` ou `Entrar em sala`.
+5. Escolha o save.
+6. Escolha o Pokemon da party.
+7. Aguarde o backup ser criado antes da gravacao.
+8. Reabra o jogo somente depois da mensagem de sucesso.
+
+Os modos Time Capsule Gen 1/2 e Transfer para Gen 3 aparecem no menu como preparacao do produto. Enquanto a feature guard estiver desligada, eles mostram que a conversao ainda nao esta habilitada.
 
 ## Backup E Restore
 

@@ -1,18 +1,30 @@
 # Roadmap Cross-Generation
 
-Cross-generation ainda nao existe no produto.
+Cross-generation e uma direcao do PokeCable Room. O bloqueio atual e uma feature guard de seguranca enquanto os conversores locais nao estao prontos.
 
-Regras atuais:
+## Modos Planejados
 
-- Gen 1 somente com Gen 1.
-- Gen 2 somente com Gen 2.
-- Gen 3 somente com Gen 3.
+- `same_generation`: modo estavel atual, usa raw payload somente entre saves da mesma geracao.
+- `time_capsule_gen1_gen2`: modo Gen 1 <-> Gen 2 inspirado na Time Capsule oficial.
+- `forward_transfer_to_gen3`: modo Gen 1/2 -> Gen 3 com recriacao local segura de dados Gen 3.
+- `legacy_downconvert_experimental`: modo Gen 3 -> Gen 1/2, experimental e com perdas controladas.
+
+## Regras
+
 - Nunca copiar `raw_data_base64` entre geracoes diferentes.
+- Cross-generation deve usar `CanonicalPokemon` e conversores por destino.
+- O servidor nao edita save e nao converte Pokemon.
+- O client gera backup antes de qualquer escrita.
+- Se o save mudar enquanto a sala estiver aberta, a gravacao deve ser cancelada.
 
-## Possibilidade Futura
+## Time Capsule Gen 1/2
 
-Um modo especial Gen 1 <-> Gen 2 pode ser estudado no futuro, inspirado na Time Capsule dos jogos oficiais.
+Deve respeitar especies, moves e restricoes compatíveis com Gen 1/2. Held item, dados de breeding, genero e metadados que nao existem em Gen 1 precisam ser removidos ou reportados como perda de dados.
 
-Mesmo nesse caso, nao deve ser feito por copia bruta de payload. Seria necessario converter especies, moves, metadados, restricoes e integridade de save com regras explicitas.
+## Transfer Para Gen 3
 
-Gen 3 <-> Gen 1/2 exigiria uma conversao propria ainda mais cuidadosa e nao deve reutilizar `raw_data_base64` diretamente.
+Gen 1/2 -> Gen 3 nao deve escrever raw antigo no save GBA. O client precisa converter para modelo canonico e criar uma estrutura Gen 3 valida, recalculando checksums e preservando o que for compatível.
+
+## Downconvert Experimental
+
+Gen 3 -> Gen 1/2 exige perda explicita de dados modernos como nature, ability e parte de metadados de batalha. Esse modo deve permanecer atras de feature flag ate existir validacao forte.

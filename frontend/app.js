@@ -297,24 +297,62 @@ function exportGbcPayload(save, constants, location, generation, game, format) {
   raw.set(save.bytes.slice(monStart, monStart + constants.monSize), 0);
   raw.set(save.bytes.slice(otStart, otStart + constants.nameSize), constants.monSize);
   raw.set(save.bytes.slice(nickStart, nickStart + constants.nameSize), constants.monSize + constants.nameSize);
+  const rawBase64 = bytesToBase64(raw);
+  const displaySummary = `${pokemon.species_name} Lv. ${pokemon.level}`;
+  const summary = {
+    species_id: pokemon.species_id,
+    species_name: pokemon.species_name,
+    level: pokemon.level,
+    nickname: pokemon.nickname || pokemon.species_name,
+    display_summary: displaySummary
+  };
   return {
+    payload_version: 2,
     generation,
     game,
+    source_generation: generation,
+    source_game: game,
+    target_generation: generation,
+    trade_mode: "same_generation",
     species_id: pokemon.species_id,
     species_name: pokemon.species_name,
     level: pokemon.level,
     nickname: pokemon.nickname || pokemon.species_name,
     ot_name: pokemon.ot_name,
     trainer_id: pokemon.trainer_id,
-    raw_data_base64: bytesToBase64(raw),
-    display_summary: `${pokemon.species_name} Lv. ${pokemon.level}`,
+    raw_data_base64: rawBase64,
+    display_summary: displaySummary,
+    summary,
+    raw: { format, data_base64: rawBase64 },
+    canonical: generation === 1 ? null : {
+      source_generation: generation,
+      source_game: game,
+      species_national_id: pokemon.species_id,
+      species_name: pokemon.species_name,
+      nickname: pokemon.nickname || pokemon.species_name,
+      level: pokemon.level,
+      ot_name: pokemon.ot_name,
+      trainer_id: pokemon.trainer_id
+    },
+    compatibility_report: {
+      compatible: true,
+      mode: "same_generation",
+      source_generation: generation,
+      target_generation: generation,
+      blocking_reasons: [],
+      warnings: [],
+      data_loss: [],
+      suggested_actions: []
+    },
     metadata: { format, source: "web-local-save", location }
   };
 }
 
 function applyGbcPayload(save, constants, location, payload, generation) {
-  if (payload.generation !== generation) throw new Error(`Payload recebido nao e Gen ${generation}.`);
-  const raw = base64ToBytes(payload.raw_data_base64);
+  if (payload.generation !== generation) {
+    throw new Error(`Payload recebido e Gen ${payload.generation}; este save e Gen ${generation}. Cross-generation ainda esta protegido por feature guard.`);
+  }
+  const raw = base64ToBytes(payload.raw_data_base64 || (payload.raw && payload.raw.data_base64));
   if (raw.length !== constants.monSize + constants.nameSize + constants.nameSize) {
     throw new Error(`Payload Gen ${generation} invalido.`);
   }
@@ -464,24 +502,60 @@ function exportGen3Payload(save, location) {
   if (!pokemon || pokemon.is_egg) throw new Error("Ovos ainda nao sao suportados para troca real.");
   const start = save.slot.sectionOffsets[1] + save.layout.partyOffset + index * gen3.monSize;
   const raw = save.bytes.slice(start, start + gen3.monSize);
+  const rawBase64 = bytesToBase64(raw);
+  const displaySummary = `${pokemon.species_name} Lv. ${pokemon.level}`;
+  const summary = {
+    species_id: pokemon.species_id,
+    species_name: pokemon.species_name,
+    level: pokemon.level,
+    nickname: pokemon.nickname || pokemon.species_name,
+    display_summary: displaySummary
+  };
   return {
+    payload_version: 2,
     generation: 3,
     game: save.game,
+    source_generation: 3,
+    source_game: save.game,
+    target_generation: 3,
+    trade_mode: "same_generation",
     species_id: pokemon.species_id,
     species_name: pokemon.species_name,
     level: pokemon.level,
     nickname: pokemon.nickname || pokemon.species_name,
     ot_name: pokemon.ot_name,
     trainer_id: pokemon.trainer_id,
-    raw_data_base64: bytesToBase64(raw),
-    display_summary: `${pokemon.species_name} Lv. ${pokemon.level}`,
+    raw_data_base64: rawBase64,
+    display_summary: displaySummary,
+    summary,
+    canonical: {
+      source_generation: 3,
+      source_game: save.game,
+      species_national_id: pokemon.species_id,
+      species_name: pokemon.species_name,
+      nickname: pokemon.nickname || pokemon.species_name,
+      level: pokemon.level,
+      ot_name: pokemon.ot_name,
+      trainer_id: pokemon.trainer_id
+    },
+    raw: { format: "gen3-party-v1", data_base64: rawBase64 },
+    compatibility_report: {
+      compatible: true,
+      mode: "same_generation",
+      source_generation: 3,
+      target_generation: 3,
+      blocking_reasons: [],
+      warnings: [],
+      data_loss: [],
+      suggested_actions: []
+    },
     metadata: { format: "gen3-party-v1", source: "web-local-save", location, layout: save.layout.name }
   };
 }
 
 function applyGen3Payload(save, location, payload) {
-  if (payload.generation !== 3) throw new Error("Payload recebido nao e Gen 3.");
-  const raw = base64ToBytes(payload.raw_data_base64);
+  if (payload.generation !== 3) throw new Error(`Payload recebido e Gen ${payload.generation}; este save e Gen 3. Cross-generation ainda esta protegido por feature guard.`);
+  const raw = base64ToBytes(payload.raw_data_base64 || (payload.raw && payload.raw.data_base64));
   if (raw.length !== gen3.monSize) throw new Error("Payload Gen 3 invalido.");
   parseGen3Pokemon(raw);
   const index = Number(location.split(":")[1]);
@@ -661,16 +735,16 @@ function handleMessage(message) {
       break;
     case "peer_offer_received":
       peerPayload = message.offer;
-      peerOfferEl.textContent = peerPayload.display_summary;
+      peerOfferEl.textContent = peerPayload.display_summary || (peerPayload.summary && peerPayload.summary.display_summary) || "-";
       if (loadedSave && peerPayload.generation !== loadedSave.generation) {
-        setStatus(`Payload recebido e Gen ${peerPayload.generation}; este save e Gen ${loadedSave.generation}.`);
+        setStatus(`Payload recebido e Gen ${peerPayload.generation}; este save e Gen ${loadedSave.generation}. Cross-generation esta protegido por feature guard.`);
         confirmButton.disabled = true;
-        log("Payload bloqueado por geracao diferente.");
+        log("Payload bloqueado por feature guard cross-generation.");
         break;
       }
       setStatus("Oferta do outro usuario recebida. Confirme para concluir.");
       confirmButton.disabled = false;
-      log(`Outro usuario oferece: ${peerPayload.display_summary}`);
+      log(`Outro usuario oferece: ${peerOfferEl.textContent}`);
       break;
     case "offers_ready":
       log("As duas ofertas estao prontas.");
@@ -732,6 +806,14 @@ function sendOffer() {
   send({ type: "offer_pokemon", payload: localPayload });
 }
 
+function supportedTradeModes(generation) {
+  const modes = ["same_generation"];
+  if (generation === 1 || generation === 2) modes.push("time_capsule_gen1_gen2");
+  if (generation === 1 || generation === 2 || generation === 3) modes.push("forward_transfer_to_gen3");
+  if (generation === 3) modes.push("legacy_downconvert_experimental");
+  return modes;
+}
+
 async function startRoom(action) {
   const roomName = document.querySelector("#roomName").value.trim();
   const password = document.querySelector("#roomPassword").value;
@@ -755,7 +837,9 @@ async function startRoom(action) {
     room_name: roomName,
     password,
     generation: loadedSave.generation,
-    game: loadedSave.game
+    game: loadedSave.game,
+    trade_mode: "same_generation",
+    supported_trade_modes: supportedTradeModes(loadedSave.generation)
   });
 }
 

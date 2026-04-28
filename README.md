@@ -2,15 +2,29 @@
 
 PokeCable Room e uma tool para R36S/ArkOS/dArkOS que permite dois usuarios trocarem Pokemon pela internet usando um VPS como servidor de salas privadas.
 
-Nao e emulacao de cabo link. A troca e feita por edicao local e segura do arquivo de save, sempre com backup antes de qualquer escrita.
+Nao e emulacao de cabo link. A troca e feita por edicao local e segura do arquivo de save, sempre com backup antes de qualquer escrita. O servidor apenas orquestra sala, compatibilidade, ofertas e confirmacao.
+
+## Direcao Do Produto
+
+Same-generation trade e o modo estavel inicial: Gen 1 com Gen 1, Gen 2 com Gen 2 e Gen 3 com Gen 3 usando payload raw da mesma geracao.
+
+Cross-generation trade e objetivo do projeto. Ele fica protegido por feature guard enquanto a camada de modelo canonico e conversores locais seguros esta em desenvolvimento. Nenhum raw payload de uma geracao deve ser escrito diretamente em save de outra geracao.
+
+Roadmap:
+
+- Same-generation stable mode.
+- Gen 1 <-> Gen 2 Time Capsule mode.
+- Gen 1/2 -> Gen 3 Transfer mode.
+- Gen 3 -> Gen 1/2 Experimental downconvert mode.
 
 ## Suporte Atual
 
 - Servidor FastAPI/WebSocket em `/ws`.
 - Salas privadas com nome e senha.
 - Maximo de dois jogadores por sala.
-- Bloqueio obrigatorio de troca entre geracoes diferentes.
-- Client R36S sem desktop, usando dialog/whiptail e teclado virtual.
+- `trade_mode` e `compatibility_status` preparados no contrato de sala.
+- Payload v2 com raw, summary, canonical e compatibility_report.
+- Client R36S sem desktop, usando dialog/whiptail, terminal e teclado virtual por controle.
 - Frontend web em `https://9kernel.vps-kinghost.net/`.
 - Parser Gen 1 Red/Blue/Yellow para party.
 - Parser Gen 2 Gold/Silver/Crystal para party.
@@ -24,17 +38,15 @@ Nao e emulacao de cabo link. A troca e feita por edicao local e segura do arquiv
 - Nao distribui BIOS.
 - Nao armazena ROMs.
 - Nao envia save completo ao servidor.
-- Nao troca Pokemon entre geracoes diferentes.
+- Nao escreve cross-generation enquanto os conversores nao estiverem habilitados.
 - Nao implementa boxes ainda.
-- Nao implementa modo Gen 1 <-> Gen 2 estilo Time Capsule ainda.
 
-## Regra De Geracao
+## Seguranca De Geracao
 
-- Gen 1 troca somente com Gen 1.
-- Gen 2 troca somente com Gen 2.
-- Gen 3 troca somente com Gen 3.
-- O servidor bloqueia cross-generation mesmo que alguem altere config local.
-- O client tambem rejeita payload recebido com geracao diferente do save local.
+- Same-generation usa raw payload da propria geracao.
+- Cross-generation usara modelo canonico e conversores locais.
+- O servidor bloqueia cross-generation enquanto a feature guard esta desligada.
+- O client tambem rejeita payload recebido de geracao diferente antes de gravar.
 
 ## Rodar Servidor
 

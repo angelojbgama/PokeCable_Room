@@ -4,6 +4,9 @@ import base64
 from dataclasses import dataclass
 from pathlib import Path
 
+from pokecable_room.canonical import CanonicalItem, CanonicalMove, CanonicalOriginalData, CanonicalPokemon
+from pokecable_room.compatibility import CompatibilityReport, build_compatibility_report
+
 from .base import PokemonPayload, PokemonSummary, SaveData
 
 
@@ -421,6 +424,9 @@ class Gen2Parser:
         mon = self._mon_bytes(index)
         raw = mon + self._ot_bytes(index) + self._nickname_bytes(index)
         summary = self.list_party()[index]
+        raw_data_base64 = base64.b64encode(raw).decode("ascii")
+        canonical = self.export_canonical(location)
+        compatibility = self.compatibility_report_for(canonical)
         return PokemonPayload(
             generation=2,
             game=self.game_id,
@@ -430,20 +436,114 @@ class Gen2Parser:
             nickname=summary.nickname,
             ot_name=summary.ot_name,
             trainer_id=summary.trainer_id,
-            raw_data_base64=base64.b64encode(raw).decode("ascii"),
+            raw_data_base64=raw_data_base64,
             display_summary=summary.display_summary,
             checksum=f"{self._stored_checksum(layout.primary_checksum):04x}",
             metadata={"location": location, "format": f"gen2-{layout.name}-party-v1"},
+            canonical=canonical.to_dict(),
+            raw={
+                "format": f"gen2-{layout.name}-party-v1",
+                "data_base64": raw_data_base64,
+                "checksum": f"{self._stored_checksum(layout.primary_checksum):04x}",
+            },
+            compatibility_report=compatibility.to_dict(),
+        )
+
+    def export_canonical(self, location: str) -> CanonicalPokemon:
+        index = self._party_index(location)
+        summary = self.list_party()[index]
+        mon = self._mon_bytes(index)
+        raw = mon + self._ot_bytes(index) + self._nickname_bytes(index)
+        held_item_id = mon[0x01] or None
+        moves = [CanonicalMove(move_id=move_id, source_generation=2) for move_id in mon[0x02:0x06] if move_id]
+        return CanonicalPokemon(
+            source_generation=2,
+            source_game=self.game_id,
+            species_national_id=summary.species_id,
+            species_name=summary.species_name,
+            nickname=summary.nickname,
+            level=summary.level,
+            ot_name=summary.ot_name,
+            trainer_id=summary.trainer_id,
+            experience=int.from_bytes(mon[0x08:0x0B], "big"),
+            moves=moves,
+            held_item=CanonicalItem(item_id=held_item_id, source_generation=2) if held_item_id is not None else None,
+            original_data=CanonicalOriginalData(
+                generation=2,
+                game=self.game_id,
+                format=f"gen2-{self._require_layout().name}-party-v1",
+                raw_data_base64=base64.b64encode(raw).decode("ascii"),
+                checksum=f"{self._stored_checksum(self._require_layout().primary_checksum):04x}",
+                location=location,
+            ),
+            metadata={"source_species_id_space": "national_dex"},
         )
 
     def import_pokemon(self, location: str, payload: PokemonPayload) -> None:
         self.remove_or_replace_sent_pokemon(location, payload)
 
+    def import_canonical(self, location: str, canonical_pokemon: CanonicalPokemon) -> None:
+        if not self.can_import_canonical(canonical_pokemon):
+            report = self.compatibility_report_for(canonical_pokemon)
+            raise ValueError("; ".join(report.blocking_reasons) or "Pokemon canonico nao pode ser importado em Gen 2.")
+        if canonical_pokemon.original_data is None or canonical_pokemon.original_data.raw_data_base64 is None:
+            raise ValueError("Importacao canonica Gen 2 exige raw original enquanto conversor seguro nao esta habilitado.")
+        payload = PokemonPayload(
+            generation=2,
+            game=canonical_pokemon.source_game,
+            species_id=canonical_pokemon.species_national_id,
+            species_name=canonical_pokemon.species_name,
+            level=canonical_pokemon.level,
+            nickname=canonical_pokemon.nickname,
+            ot_name=canonical_pokemon.ot_name,
+            trainer_id=canonical_pokemon.trainer_id,
+            raw_data_base64=canonical_pokemon.original_data.raw_data_base64,
+            display_summary=f"{canonical_pokemon.species_name} Lv. {canonical_pokemon.level}",
+        )
+        self.import_pokemon(location, payload)
+
+    def can_import_canonical(self, canonical_pokemon: CanonicalPokemon) -> bool:
+        return self.compatibility_report_for(canonical_pokemon).compatible
+
+    def compatibility_report_for(self, canonical_pokemon: CanonicalPokemon) -> CompatibilityReport:
+        return build_compatibility_report(canonical_pokemon, self.generation, cross_generation_enabled=False)
+
+    def get_species_id(self, location: str) -> int:
+        return self._mon_bytes(self._party_index(location))[0]
+
+    def set_species_id(self, location: str, species_id: int) -> None:
+        index = self._party_index(location)
+        species_id = int(species_id)
+        if species_id < 1 or species_id > 251:
+            raise ValueError("Species Gen 2 precisa estar no intervalo 1..251.")
+        mon = bytearray(self._mon_bytes(index))
+        mon[0] = species_id
+        self._require_data()[self._require_layout().party_offset + 1 + index] = species_id
+        self._set_mon_bytes(index, bytes(mon))
+        self.recalculate_checksums()
+
+    def get_held_item_id(self, location: str) -> int | None:
+        held_item_id = self._mon_bytes(self._party_index(location))[0x01]
+        return held_item_id or None
+
+    def set_held_item_id(self, location: str, item_id: int) -> None:
+        index = self._party_index(location)
+        item_id = int(item_id)
+        if item_id < 0 or item_id > 255:
+            raise ValueError("Held item Gen 2 precisa caber em um byte.")
+        mon = bytearray(self._mon_bytes(index))
+        mon[0x01] = item_id
+        self._set_mon_bytes(index, bytes(mon))
+        self.recalculate_checksums()
+
+    def clear_held_item(self, location: str) -> None:
+        self.set_held_item_id(location, 0)
+
     def remove_or_replace_sent_pokemon(self, location: str, received_payload: PokemonPayload) -> None:
         if received_payload.generation != 2:
             raise ValueError(
                 f"Payload recebido e Gen {received_payload.generation}, mas o save local e Gen 2. "
-                "Trocas entre geracoes diferentes nao sao suportadas."
+                "Cross-generation esta protegido por feature guard enquanto o conversor local Gen 2 esta em desenvolvimento."
             )
         index = self._party_index(location)
         data = self._require_data()
