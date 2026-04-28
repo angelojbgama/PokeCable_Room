@@ -16,7 +16,6 @@ from .matrix import (
 from .report import CompatibilityReport
 
 
-MAX_SPECIES_BY_GENERATION = {1: 151, 2: 251, 3: 386}
 POLICIES = {"strict", "permissive", "safe_default"}
 
 
@@ -108,9 +107,12 @@ def _apply_item_rules(report: CompatibilityReport, canonical: CanonicalPokemon, 
     if report.target_generation == 1:
         removed = {"item_id": item.item_id, "name": item.name or item_name(item.item_id, canonical.source_generation)}
         report.removed_items.append(removed)
-        report.data_loss.append("held_item")
+        _add_unique(report.data_loss, "held_item")
         report.warnings.append("Held item nao existe em Gen 1 e sera removido.")
         report.requires_user_confirmation = True
+        if policy == "strict":
+            report.compatible = False
+            report.blocking_reasons.append("Held item nao existe na Gen 1.")
         return
     mapped = equivalent_item_id(item.item_id, canonical.source_generation, report.target_generation)
     if mapped is not None and item_exists(mapped, report.target_generation):
@@ -123,7 +125,7 @@ def _apply_item_rules(report: CompatibilityReport, canonical: CanonicalPokemon, 
         report.blocking_reasons.append("Held item nao existe na geracao destino.")
     else:
         report.removed_items.append({"item_id": item.item_id, "name": item.name})
-        report.data_loss.append("held_item")
+        _add_unique(report.data_loss, "held_item")
         report.requires_user_confirmation = True
 
 
@@ -131,13 +133,13 @@ def _apply_generation_field_rules(report: CompatibilityReport, canonical: Canoni
     if report.target_generation in {1, 2}:
         if canonical.ability:
             report.removed_fields.append("ability")
-            report.data_loss.append("ability")
+            _add_unique(report.data_loss, "ability")
         if canonical.nature:
             report.removed_fields.append("nature")
-            report.data_loss.append("nature")
+            _add_unique(report.data_loss, "nature")
         if canonical.source_generation == 3 and int(canonical.trainer_id) > 0xFFFF:
             report.removed_fields.append("trainer_id_high_bits")
-            report.data_loss.append("trainer_id_high_bits")
+            _add_unique(report.data_loss, "trainer_id_high_bits")
             report.transformations.append("Trainer ID Gen 3 sera reduzido para 16 bits no destino.")
         if canonical.ability or canonical.nature:
             report.requires_user_confirmation = True
@@ -146,6 +148,14 @@ def _apply_generation_field_rules(report: CompatibilityReport, canonical: Canoni
                 report.blocking_reasons.append("Ability/nature nao existem na geracao destino.")
         if "trainer_id_high_bits" in report.removed_fields:
             report.requires_user_confirmation = True
+            if policy == "strict":
+                report.compatible = False
+                report.blocking_reasons.append("Trainer ID Gen 3 perderia bits altos na geracao destino.")
+    elif report.target_generation == 3 and canonical.source_generation in {1, 2}:
+        if not canonical.ability:
+            report.transformations.append("Ability Gen 3 sera gerada pelo parser local.")
+        if not canonical.nature:
+            report.transformations.append("Nature Gen 3 sera gerada pelo parser local.")
 
 
 def _apply_mode_rules(report: CompatibilityReport, canonical: CanonicalPokemon) -> None:
@@ -153,7 +163,7 @@ def _apply_mode_rules(report: CompatibilityReport, canonical: CanonicalPokemon) 
         if report.source_generation == 2 and report.target_generation == 1 and canonical.held_item is not None:
             report.warnings.append("Held item nao existe em Gen 1 e sera removido no downconvert.")
             if "held_item" not in report.data_loss:
-                report.data_loss.append("held_item")
+                _add_unique(report.data_loss, "held_item")
         if report.target_generation == 1:
             report.warnings.append("Gen 1 nao possui amizade, genero, shininess completo, held item ou breeding data.")
     elif report.mode == FORWARD_TRANSFER_TO_GEN3:
@@ -161,4 +171,9 @@ def _apply_mode_rules(report: CompatibilityReport, canonical: CanonicalPokemon) 
     elif report.mode == LEGACY_DOWNCONVERT_EXPERIMENTAL:
         report.warnings.append("Downconvert de Gen 3 para Gen 1/2 e experimental e pode perder dados modernos.")
         if canonical.held_item is not None and report.target_generation == 1 and "held_item" not in report.data_loss:
-            report.data_loss.append("held_item")
+            _add_unique(report.data_loss, "held_item")
+
+
+def _add_unique(items: list[str], value: str) -> None:
+    if value not in items:
+        items.append(value)

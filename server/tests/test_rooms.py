@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from app.models import RoomError
-from app.models import FORWARD_TRANSFER_TO_GEN3, SAME_GENERATION, TIME_CAPSULE_GEN1_GEN2
+from app.models import FORWARD_TRANSFER_TO_GEN3, LEGACY_DOWNCONVERT_EXPERIMENTAL, SAME_GENERATION, TIME_CAPSULE_GEN1_GEN2
 from app.rooms import RoomManager
 
 
@@ -202,6 +202,182 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(raised.exception.code, "trade_mode_disabled")
 
+    async def test_time_capsule_enabled_mode_only_allows_gen1_gen2_pair(self) -> None:
+        manager = RoomManager(
+            room_timeout_seconds=60,
+            max_rooms=10,
+            cross_generation_enabled=True,
+            enabled_trade_modes=[TIME_CAPSULE_GEN1_GEN2],
+        )
+        await manager.create_room(
+            room_name="time",
+            password="pw",
+            client_id="a",
+            generation=1,
+            game="pokemon_red",
+            trade_mode=TIME_CAPSULE_GEN1_GEN2,
+            supported_trade_modes=[TIME_CAPSULE_GEN1_GEN2],
+        )
+        with self.assertRaises(RoomError) as raised:
+            await manager.join_room(
+                room_name="time",
+                password="pw",
+                client_id="b",
+                generation=3,
+                game="pokemon_emerald",
+                supported_trade_modes=[TIME_CAPSULE_GEN1_GEN2],
+            )
+        self.assertEqual(raised.exception.code, "game_mismatch")
+
+    async def test_forward_transfer_enabled_mode_only_allows_gen1_or_gen2_to_gen3(self) -> None:
+        manager = RoomManager(
+            room_timeout_seconds=60,
+            max_rooms=10,
+            cross_generation_enabled=True,
+            enabled_trade_modes=[FORWARD_TRANSFER_TO_GEN3],
+        )
+        await manager.create_room(
+            room_name="forward",
+            password="pw",
+            client_id="a",
+            generation=1,
+            game="pokemon_red",
+            trade_mode=FORWARD_TRANSFER_TO_GEN3,
+            supported_trade_modes=[FORWARD_TRANSFER_TO_GEN3],
+        )
+        room, slot = await manager.join_room(
+            room_name="forward",
+            password="pw",
+            client_id="b",
+            generation=3,
+            game="pokemon_emerald",
+            supported_trade_modes=[FORWARD_TRANSFER_TO_GEN3],
+        )
+        self.assertEqual(slot, "B")
+        self.assertEqual(room.trade_mode, FORWARD_TRANSFER_TO_GEN3)
+
+        with self.assertRaises(RoomError) as raised:
+            await manager.create_room(
+                room_name="bad-forward-source",
+                password="pw",
+                client_id="c",
+                generation=3,
+                game="pokemon_emerald",
+                trade_mode=FORWARD_TRANSFER_TO_GEN3,
+                supported_trade_modes=[FORWARD_TRANSFER_TO_GEN3],
+            )
+        self.assertEqual(raised.exception.code, "game_mismatch")
+
+    async def test_forward_room_rejects_reverse_offer_when_legacy_mode_is_not_enabled(self) -> None:
+        manager = RoomManager(
+            room_timeout_seconds=60,
+            max_rooms=10,
+            cross_generation_enabled=True,
+            enabled_trade_modes=[FORWARD_TRANSFER_TO_GEN3],
+        )
+        await manager.create_room(
+            room_name="forward",
+            password="pw",
+            client_id="a",
+            generation=1,
+            game="pokemon_red",
+            trade_mode=FORWARD_TRANSFER_TO_GEN3,
+            supported_trade_modes=[FORWARD_TRANSFER_TO_GEN3],
+        )
+        await manager.join_room(
+            room_name="forward",
+            password="pw",
+            client_id="b",
+            generation=3,
+            game="pokemon_emerald",
+            supported_trade_modes=[FORWARD_TRANSFER_TO_GEN3],
+        )
+
+        with self.assertRaises(RoomError) as raised:
+            await manager.offer_pokemon(
+                client_id="b",
+                payload=synthetic_cross_payload_v2(3, 1, FORWARD_TRANSFER_TO_GEN3, "pokemon_emerald"),
+            )
+        self.assertEqual(raised.exception.code, "trade_mode_disabled")
+
+    async def test_legacy_downconvert_enabled_mode_only_allows_gen3_to_gen1_or_gen2(self) -> None:
+        manager = RoomManager(
+            room_timeout_seconds=60,
+            max_rooms=10,
+            cross_generation_enabled=True,
+            enabled_trade_modes=[LEGACY_DOWNCONVERT_EXPERIMENTAL],
+        )
+        await manager.create_room(
+            room_name="legacy",
+            password="pw",
+            client_id="a",
+            generation=3,
+            game="pokemon_emerald",
+            trade_mode=LEGACY_DOWNCONVERT_EXPERIMENTAL,
+            supported_trade_modes=[LEGACY_DOWNCONVERT_EXPERIMENTAL],
+        )
+        room, slot = await manager.join_room(
+            room_name="legacy",
+            password="pw",
+            client_id="b",
+            generation=2,
+            game="pokemon_crystal",
+            supported_trade_modes=[LEGACY_DOWNCONVERT_EXPERIMENTAL],
+        )
+        self.assertEqual(slot, "B")
+        self.assertEqual(room.trade_mode, LEGACY_DOWNCONVERT_EXPERIMENTAL)
+
+        with self.assertRaises(RoomError) as raised:
+            await manager.create_room(
+                room_name="bad-legacy-source",
+                password="pw",
+                client_id="c",
+                generation=1,
+                game="pokemon_red",
+                trade_mode=LEGACY_DOWNCONVERT_EXPERIMENTAL,
+                supported_trade_modes=[LEGACY_DOWNCONVERT_EXPERIMENTAL],
+            )
+        self.assertEqual(raised.exception.code, "game_mismatch")
+
+    async def test_cross_generation_create_and_join_require_announced_supported_mode(self) -> None:
+        manager = RoomManager(
+            room_timeout_seconds=60,
+            max_rooms=10,
+            cross_generation_enabled=True,
+            enabled_trade_modes=[TIME_CAPSULE_GEN1_GEN2],
+        )
+        with self.assertRaises(RoomError) as raised:
+            await manager.create_room(
+                room_name="missing-create-support",
+                password="pw",
+                client_id="a",
+                generation=1,
+                game="pokemon_red",
+                trade_mode=TIME_CAPSULE_GEN1_GEN2,
+                supported_trade_modes=[SAME_GENERATION],
+            )
+        self.assertEqual(raised.exception.code, "game_mismatch")
+
+        await manager.create_room(
+            room_name="missing-join-support",
+            password="pw",
+            client_id="b",
+            generation=1,
+            game="pokemon_red",
+            trade_mode=TIME_CAPSULE_GEN1_GEN2,
+            supported_trade_modes=[TIME_CAPSULE_GEN1_GEN2],
+        )
+        with self.assertRaises(RoomError) as raised:
+            await manager.join_room(
+                room_name="missing-join-support",
+                password="pw",
+                client_id="c",
+                generation=2,
+                game="pokemon_crystal",
+                supported_trade_modes=[SAME_GENERATION],
+            )
+        self.assertEqual(raised.exception.code, "game_mismatch")
+
     async def test_cross_generation_global_flag_without_enabled_modes_does_not_release_mode(self) -> None:
         manager = RoomManager(
             room_timeout_seconds=60,
@@ -296,6 +472,48 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(slot, "A")
         self.assertIsNotNone(offer.canonical)
         self.assertEqual(room.trade_mode, TIME_CAPSULE_GEN1_GEN2)
+
+    async def test_cross_generation_offer_rejects_trade_mode_target_and_canonical_generation_mismatch(self) -> None:
+        manager = RoomManager(
+            room_timeout_seconds=60,
+            max_rooms=10,
+            cross_generation_enabled=True,
+            enabled_trade_modes=[TIME_CAPSULE_GEN1_GEN2],
+        )
+        await manager.create_room(
+            room_name="time",
+            password="pw",
+            client_id="a",
+            generation=1,
+            game="pokemon_red",
+            trade_mode=TIME_CAPSULE_GEN1_GEN2,
+            supported_trade_modes=[TIME_CAPSULE_GEN1_GEN2],
+        )
+        await manager.join_room(
+            room_name="time",
+            password="pw",
+            client_id="b",
+            generation=2,
+            game="pokemon_crystal",
+            supported_trade_modes=[TIME_CAPSULE_GEN1_GEN2],
+        )
+
+        wrong_mode = synthetic_cross_payload_v2(1, 2, TIME_CAPSULE_GEN1_GEN2, "pokemon_red")
+        wrong_mode["trade_mode"] = FORWARD_TRANSFER_TO_GEN3
+        with self.assertRaises(RoomError) as raised:
+            await manager.offer_pokemon(client_id="a", payload=wrong_mode)
+        self.assertEqual(raised.exception.code, "trade_mode_mismatch")
+
+        wrong_target = synthetic_cross_payload_v2(1, 3, TIME_CAPSULE_GEN1_GEN2, "pokemon_red")
+        with self.assertRaises(RoomError) as raised:
+            await manager.offer_pokemon(client_id="a", payload=wrong_target)
+        self.assertEqual(raised.exception.code, "generation_mismatch")
+
+        wrong_canonical = synthetic_cross_payload_v2(1, 2, TIME_CAPSULE_GEN1_GEN2, "pokemon_red")
+        wrong_canonical["canonical"]["source_generation"] = 2
+        with self.assertRaises(RoomError) as raised:
+            await manager.offer_pokemon(client_id="a", payload=wrong_canonical)
+        self.assertEqual(raised.exception.code, "generation_mismatch")
 
     async def test_same_generation_offer_requires_raw_even_with_canonical_payload(self) -> None:
         manager = RoomManager(room_timeout_seconds=60, max_rooms=10)

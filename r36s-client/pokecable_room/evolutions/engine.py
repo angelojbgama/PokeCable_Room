@@ -1,25 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-import warnings
-
-from pokecable_room.canonical import CanonicalPokemon
-
 from .rules import (
-    MAX_SPECIES_BY_GENERATION,
     TradeEvolutionResult,
     TradeEvolutionRule,
     item_trade_rules_for_generation,
     simple_trade_rules_for_generation,
+    species_exists_in_native_generation,
 )
-
-
-@dataclass(slots=True)
-class EvolutionContext:
-    source_generation: int
-    target_generation: int
-    trade_mode: str
-    item_based_evolutions_enabled: bool = False
 
 
 def preview_trade_evolution_for_parser(
@@ -32,6 +19,8 @@ def preview_trade_evolution_for_parser(
     rule = _find_simple_rule(generation, species_id)
     if rule is not None:
         return _result_from_rule(rule, consumed_item_id=None, evolved=True, reason="simple_trade_evolution")
+    if _find_simple_candidate(generation, species_id) is not None:
+        return _not_evolved(species_id, reason="target_species_not_supported")
     if item_based_evolutions_enabled:
         held_item_id = parser.get_held_item_id(location)
         item_rule = _find_item_rule(generation, species_id, held_item_id)
@@ -42,8 +31,12 @@ def preview_trade_evolution_for_parser(
                 evolved=True,
                 reason="item_trade_evolution",
             )
+        if _find_item_candidate_for_item(generation, species_id, held_item_id) is not None:
+            return _not_evolved(species_id, reason="target_species_not_supported")
         if any(rule.source_species_id == species_id for rule in item_trade_rules_for_generation(generation)):
-            return _not_evolved(species_id, reason="item_trade_evolution_rule_has_no_validated_item_id")
+            return _not_evolved(species_id, reason="wrong_held_item")
+    elif any(rule.source_species_id == species_id for rule in item_trade_rules_for_generation(generation)):
+        return _not_evolved(species_id, reason="item_trade_evolution_disabled")
     return _not_evolved(species_id, reason="no_trade_evolution_rule")
 
 
@@ -76,6 +69,8 @@ def preview_trade_evolution(
     rule = _find_simple_rule(generation, species_id)
     if rule is not None:
         return _result_from_rule(rule, consumed_item_id=None, evolved=True, reason="simple_trade_evolution")
+    if _find_simple_candidate(generation, species_id) is not None:
+        return _not_evolved(species_id, reason="target_species_not_supported")
     if item_based_evolutions_enabled:
         item_rule = _find_item_rule(generation, species_id, held_item_id)
         if item_rule is not None:
@@ -85,47 +80,29 @@ def preview_trade_evolution(
                 evolved=True,
                 reason="item_trade_evolution",
             )
+        if _find_item_candidate_for_item(generation, species_id, held_item_id) is not None:
+            return _not_evolved(species_id, reason="target_species_not_supported")
+        if any(rule.source_species_id == species_id for rule in item_trade_rules_for_generation(generation)):
+            return _not_evolved(species_id, reason="wrong_held_item")
+    elif any(rule.source_species_id == species_id for rule in item_trade_rules_for_generation(generation)):
+        return _not_evolved(species_id, reason="item_trade_evolution_disabled")
     return _not_evolved(species_id, reason="no_trade_evolution_rule")
 
 
-def trade_evolution_target(species_id: int, context: EvolutionContext, held_item_id: int | None = None) -> int | None:
-    result = preview_trade_evolution(
-        context.target_generation,
-        species_id,
-        held_item_id=held_item_id,
-        item_based_evolutions_enabled=context.item_based_evolutions_enabled,
-    )
-    return result.target_species_id if result.evolved else None
-
-
-def apply_trade_evolution(pokemon: CanonicalPokemon, context: EvolutionContext) -> CanonicalPokemon:
-    warnings.warn(
-        "apply_trade_evolution mutates only CanonicalPokemon and does not update save raw data; "
-        "use apply_trade_evolution_to_parser for real save edits.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    target = trade_evolution_target(
-        pokemon.species_national_id,
-        context,
-        pokemon.held_item.item_id if pokemon.held_item is not None else None,
-    )
-    if target is None:
-        return pokemon
-    pokemon.species_national_id = target
-    pokemon.metadata["trade_evolution_applied"] = True
-    pokemon.metadata["trade_evolution_context"] = {
-        "source_generation": context.source_generation,
-        "target_generation": context.target_generation,
-        "trade_mode": context.trade_mode,
-    }
-    return pokemon
-
-
 def _find_simple_rule(generation: int, species_id: int) -> TradeEvolutionRule | None:
+    rule = _find_simple_candidate(generation, species_id)
+    if rule is None:
+        return None
+    if not species_exists_in_native_generation(generation, rule.target_species_id):
+        return None
+    return rule
+
+
+def _find_simple_candidate(generation: int, species_id: int) -> TradeEvolutionRule | None:
     for rule in simple_trade_rules_for_generation(generation):
-        if rule.source_species_id == species_id and _species_exists(rule.target_species_id, generation):
-            return rule
+        if rule.source_species_id != species_id:
+            continue
+        return rule
     return None
 
 
@@ -137,7 +114,16 @@ def _find_item_rule(generation: int, species_id: int, held_item_id: int | None) 
             continue
         if rule.required_item_id is None:
             continue
-        if rule.required_item_id == held_item_id and _species_exists(rule.target_species_id, generation):
+        if rule.required_item_id == held_item_id and species_exists_in_native_generation(generation, rule.target_species_id):
+            return rule
+    return None
+
+
+def _find_item_candidate_for_item(generation: int, species_id: int, held_item_id: int | None) -> TradeEvolutionRule | None:
+    if held_item_id is None:
+        return None
+    for rule in item_trade_rules_for_generation(generation):
+        if rule.source_species_id == species_id and rule.required_item_id == held_item_id:
             return rule
     return None
 
@@ -170,7 +156,3 @@ def _not_evolved(species_id: int, *, reason: str) -> TradeEvolutionResult:
         target_name=f"Species #{species_id}",
         reason=reason,
     )
-
-
-def _species_exists(species_id: int, generation: int) -> bool:
-    return 1 <= int(species_id) <= MAX_SPECIES_BY_GENERATION[int(generation)]

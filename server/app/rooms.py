@@ -20,6 +20,7 @@ from .models import (
     parse_generation,
     parse_room_name,
     parse_trade_mode,
+    trade_mode_can_start_from,
     supported_trade_modes_for_generation,
     trade_mode_for_generations,
 )
@@ -72,6 +73,17 @@ class RoomManager:
                     "trade_mode_disabled",
                     "Modo em desenvolvimento. Seu save foi detectado corretamente, mas essa conversao ainda nao esta habilitada.",
                 )
+            creator_supported_modes = (
+                supported_trade_modes if supported_trade_modes is not None else supported_trade_modes_for_generation(generation)
+            )
+            if requested_trade_mode != SAME_GENERATION:
+                if not trade_mode_can_start_from(requested_trade_mode, generation):
+                    raise RoomError(
+                        "game_mismatch",
+                        f"Gen {generation} nao pode criar uma sala {requested_trade_mode}; escolha o modo correspondente ao destino.",
+                    )
+                if requested_trade_mode not in creator_supported_modes:
+                    raise RoomError("game_mismatch", f"Este client nao anunciou suporte a {requested_trade_mode}.")
             if not password:
                 raise RoomError("invalid_password", "Senha da sala e obrigatoria.")
             if room_name in self.rooms:
@@ -103,7 +115,7 @@ class RoomManager:
                 client_id=client_id,
                 generation=generation,
                 game=game,
-                supported_trade_modes=supported_trade_modes or supported_trade_modes_for_generation(generation),
+                supported_trade_modes=creator_supported_modes,
             )
             self.rooms[room_name] = room
             self.client_rooms[client_id] = (room_name, slot)
@@ -164,7 +176,9 @@ class RoomManager:
                 raise RoomError("generation_mismatch", generation_mismatch_message(room.generation, generation))
             peer_slot = "A" if "A" in room.players else "B"
             peer = room.players.get(peer_slot)
-            entrant_supported_modes = supported_trade_modes or supported_trade_modes_for_generation(generation)
+            entrant_supported_modes = (
+                supported_trade_modes if supported_trade_modes is not None else supported_trade_modes_for_generation(generation)
+            )
             if room.trade_mode != SAME_GENERATION:
                 if peer is not None and room.trade_mode not in peer.supported_trade_modes:
                     raise RoomError("game_mismatch", f"O criador da sala nao anunciou suporte a {room.trade_mode}.")
@@ -194,12 +208,29 @@ class RoomManager:
                 raise RoomError("generation_mismatch", generation_mismatch_message(player.generation, offer.generation))
             if offer.trade_mode != room.trade_mode:
                 raise RoomError("trade_mode_mismatch", f"Oferta usa {offer.trade_mode}, mas a sala usa {room.trade_mode}.")
+            if room.trade_mode not in player.supported_trade_modes:
+                raise RoomError("game_mismatch", f"Este client nao anunciou suporte a {room.trade_mode}.")
             if room.trade_mode == SAME_GENERATION and offer.generation != room.generation:
                 raise RoomError("generation_mismatch", generation_mismatch_message(room.generation, offer.generation))
             if room.trade_mode == SAME_GENERATION and not offer.raw_data_base64:
                 raise RoomError("invalid_payload", "Troca same-generation exige payload raw.")
             if room.trade_mode != SAME_GENERATION and not offer.canonical:
                 raise RoomError("invalid_payload", "Troca cross-generation exige payload canonico.")
+            if room.trade_mode != SAME_GENERATION:
+                peer = room.players.get(room.peer_slot(slot))
+                actual_offer_mode = trade_mode_for_generations(player.generation, peer.generation) if peer is not None else room.trade_mode
+                if not self._trade_mode_enabled(actual_offer_mode):
+                    raise RoomError("trade_mode_disabled", f"O modo {actual_offer_mode} nao esta habilitado no servidor.")
+                if actual_offer_mode not in player.supported_trade_modes:
+                    raise RoomError("game_mismatch", f"Este client nao anunciou suporte a {actual_offer_mode}.")
+                if peer is not None and offer.target_generation is not None and offer.target_generation != peer.generation:
+                    raise RoomError(
+                        "generation_mismatch",
+                        f"Payload mira Gen {offer.target_generation}, mas o outro jogador e Gen {peer.generation}.",
+                    )
+                canonical_generation = offer.canonical.get("source_generation") if offer.canonical else None
+                if canonical_generation is not None and parse_generation(canonical_generation) != offer.generation:
+                    raise RoomError("generation_mismatch", "Canonical source_generation nao bate com a geracao do jogador.")
             room.offers[slot] = offer
             room.confirmations[slot] = False
             return room, slot, offer

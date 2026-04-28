@@ -364,6 +364,8 @@ class Gen3Parser:
         growth = self._substruct_offset(raw[:BOX_MON_SIZE], 0)
         attacks = self._substruct_offset(raw[:BOX_MON_SIZE], 1)
         held_item_id = int.from_bytes(secure[growth + 2 : growth + 4], "little") or None
+        is_egg = bool(details["is_egg"])
+        national_id = 0 if is_egg else native_to_national(3, summary.species_id)
         moves = []
         for offset in range(0, 8, 2):
             move_id = int.from_bytes(secure[attacks + offset : attacks + offset + 2], "little")
@@ -372,7 +374,7 @@ class Gen3Parser:
         return CanonicalPokemon(
             source_generation=3,
             source_game=self.game_id,
-            species_national_id=native_to_national(3, summary.species_id),
+            species_national_id=national_id,
             species_name=summary.species_name,
             nickname=summary.nickname,
             level=summary.level,
@@ -390,7 +392,11 @@ class Gen3Parser:
                 location=location,
                 metadata={"layout": self._require_layout().name},
             ),
-            metadata={"source_species_id_space": "gen3_internal", "source_species_id": summary.species_id},
+            metadata={
+                "source_species_id_space": "gen3_internal",
+                "source_species_id": summary.species_id,
+                "is_egg": is_egg,
+            },
         )
 
     def import_pokemon(self, location: str, payload: PokemonPayload) -> None:

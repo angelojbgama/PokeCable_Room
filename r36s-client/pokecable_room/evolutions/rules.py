@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pokecable_room.data.items import ITEM_IDS_BY_GENERATION_AND_NAME
+from pokecable_room.data.species import GEN1_INTERNAL_TO_NATIONAL, GEN3_INTERNAL_TO_NATIONAL, NATIONAL_TO_GEN2_ID
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,12 +68,21 @@ ITEM_TRADE_EVOLUTION_RULES: tuple[TradeEvolutionRule, ...] = (
 )
 
 
-MAX_SPECIES_BY_GENERATION = {1: 190, 2: 251, 3: 412}
-
-
 def simple_trade_rules_for_generation(generation: int) -> tuple[TradeEvolutionRule, ...]:
     return tuple(rule for rule in SIMPLE_TRADE_EVOLUTION_RULES if rule.generation == int(generation))
 
 
 def item_trade_rules_for_generation(generation: int) -> tuple[TradeEvolutionRule, ...]:
     return tuple(rule for rule in ITEM_TRADE_EVOLUTION_RULES if rule.generation == int(generation))
+
+
+def species_exists_in_native_generation(generation: int, species_id: int) -> bool:
+    generation = int(generation)
+    species_id = int(species_id)
+    if generation == 1:
+        return species_id in GEN1_INTERNAL_TO_NATIONAL
+    if generation == 2:
+        return species_id in NATIONAL_TO_GEN2_ID
+    if generation == 3:
+        return species_id in GEN3_INTERNAL_TO_NATIONAL
+    return False

@@ -41,6 +41,11 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
             trade_mode=trade_mode,
             target_generation=target_generation,
             cross_generation_policy="safe_default",
+            enabled_cross_generation_modes=[
+                TIME_CAPSULE_GEN1_GEN2,
+                FORWARD_TRANSFER_TO_GEN3,
+                LEGACY_DOWNCONVERT_EXPERIMENTAL,
+            ],
         ).to_dict()
 
     async def _commit_room(self, manager: RoomManager, room_name: str, mode: str, creator_generation: int, join_generation: int) -> None:
@@ -51,7 +56,12 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
             generation=creator_generation,
             game={1: "pokemon_red", 2: "pokemon_crystal", 3: "pokemon_emerald"}[creator_generation],
             trade_mode=mode,
-            supported_trade_modes=[mode],
+            supported_trade_modes=[
+                mode,
+                TIME_CAPSULE_GEN1_GEN2,
+                FORWARD_TRANSFER_TO_GEN3,
+                LEGACY_DOWNCONVERT_EXPERIMENTAL,
+            ],
         )
         await manager.join_room(
             room_name=room_name,
@@ -59,7 +69,12 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
             client_id="b",
             generation=join_generation,
             game={1: "pokemon_red", 2: "pokemon_crystal", 3: "pokemon_emerald"}[join_generation],
-            supported_trade_modes=[mode],
+            supported_trade_modes=[
+                mode,
+                TIME_CAPSULE_GEN1_GEN2,
+                FORWARD_TRANSFER_TO_GEN3,
+                LEGACY_DOWNCONVERT_EXPERIMENTAL,
+            ],
         )
 
     async def test_time_capsule_gen1_gen2_room_commits_and_converts_both_saves(self) -> None:
@@ -93,7 +108,10 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
                     root = Path(tempdir)
                     source = self._parser(parser_cls, root / filename, data)
                     gen3 = self._parser(Gen3Parser, root / "emerald.sav", synthetic_gen3_save("rse"))
-                    manager = RoomManager(cross_generation_enabled=True, enabled_trade_modes=[FORWARD_TRANSFER_TO_GEN3])
+                    manager = RoomManager(
+                        cross_generation_enabled=True,
+                        enabled_trade_modes=[FORWARD_TRANSFER_TO_GEN3, LEGACY_DOWNCONVERT_EXPERIMENTAL],
+                    )
                     await self._commit_room(manager, f"forward-{source_generation}", FORWARD_TRANSFER_TO_GEN3, source_generation, 3)
 
                     await manager.offer_pokemon(client_id="a", payload=self._offer(source, 3, FORWARD_TRANSFER_TO_GEN3))
@@ -111,7 +129,11 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
             root = Path(tempdir)
             gen3 = self._parser(Gen3Parser, root / "emerald.sav", synthetic_gen3_save("rse"))
             gen1 = self._parser(Gen1Parser, root / "red.sav", synthetic_gen1_save())
-            manager = RoomManager(cross_generation_enabled=True, enabled_trade_modes=[LEGACY_DOWNCONVERT_EXPERIMENTAL])
+            gen2 = self._parser(Gen2Parser, root / "crystal.sav", synthetic_gen2_save())
+            manager = RoomManager(
+                cross_generation_enabled=True,
+                enabled_trade_modes=[LEGACY_DOWNCONVERT_EXPERIMENTAL, FORWARD_TRANSFER_TO_GEN3],
+            )
             await self._commit_room(manager, "legacy", LEGACY_DOWNCONVERT_EXPERIMENTAL, 3, 1)
 
             await manager.offer_pokemon(client_id="a", payload=self._offer(gen3, 1, LEGACY_DOWNCONVERT_EXPERIMENTAL))
@@ -124,9 +146,16 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(gen1.validate())
             self.assertEqual(gen1.list_party()[0].species_name, "Kadabra")
 
+            get_converter(3, 2).apply_to_save(gen2, "party:0", gen3.export_canonical("party:0"))
+            self.assertTrue(gen2.validate())
+            self.assertEqual(gen2.list_party()[0].species_name, "Kadabra")
+
             incompatible = gen3.export_canonical("party:1")
             self.assertFalse(get_converter(3, 1).can_convert(incompatible).compatible)
             self.assertFalse(get_converter(3, 2).can_convert(incompatible).compatible)
+
+            gen2.set_species_id("party:0", 152)
+            self.assertFalse(get_converter(2, 1).can_convert(gen2.export_canonical("party:0")).compatible)
 
 
 if __name__ == "__main__":

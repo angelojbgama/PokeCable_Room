@@ -1,20 +1,11 @@
-from .engine import (
-    EvolutionContext,
-    apply_trade_evolution,
-    apply_trade_evolution_to_parser,
-    preview_trade_evolution,
-    preview_trade_evolution_for_parser,
-    trade_evolution_target,
-)
-from .rules import TradeEvolutionResult, TradeEvolutionRule
+from .engine import apply_trade_evolution_to_parser, preview_trade_evolution, preview_trade_evolution_for_parser
+from .rules import TradeEvolutionResult, TradeEvolutionRule, species_exists_in_native_generation
 
 __all__ = [
-    "EvolutionContext",
     "TradeEvolutionResult",
     "TradeEvolutionRule",
-    "apply_trade_evolution",
     "apply_trade_evolution_to_parser",
     "preview_trade_evolution",
     "preview_trade_evolution_for_parser",
-    "trade_evolution_target",
+    "species_exists_in_native_generation",
 ]

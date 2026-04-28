@@ -56,6 +56,13 @@ class TradeEvolutionParserTests(unittest.TestCase):
         self._assert_gen1_evolution(147, 14)
 
     def test_gen2_kadabra_evolves_to_alakazam(self) -> None:
+        parser = FakeParser(2, 64)
+        result = apply_trade_evolution_to_parser(parser, "party:0")
+        self.assertTrue(result.evolved)
+        self.assertEqual(parser.get_species_id("party:0"), 65)
+        self.assertEqual(parser.set_calls, [65])
+
+    def test_gen2_kadabra_evolves_to_alakazam_with_real_parser(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             save = Path(tempdir) / "Pokemon Crystal.sav"
             save.write_bytes(synthetic_gen2_save())
@@ -68,6 +75,13 @@ class TradeEvolutionParserTests(unittest.TestCase):
             self.assertTrue(parser.validate())
 
     def test_gen3_kadabra_evolves_to_alakazam(self) -> None:
+        parser = FakeParser(3, 64)
+        result = apply_trade_evolution_to_parser(parser, "party:0")
+        self.assertTrue(result.evolved)
+        self.assertEqual(parser.get_species_id("party:0"), 65)
+        self.assertEqual(parser.set_calls, [65])
+
+    def test_gen3_kadabra_evolves_to_alakazam_with_real_parser(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             save = Path(tempdir) / "Pokemon Emerald.sav"
             save.write_bytes(synthetic_gen3_save("rse"))
@@ -93,9 +107,18 @@ class TradeEvolutionParserTests(unittest.TestCase):
         self.assertEqual(parser.set_calls, [])
 
     def test_item_evolution_does_not_run_when_feature_flag_is_false(self) -> None:
-        parser = FakeParser(2, 95, held_item_id=999)
+        parser = FakeParser(2, 95, held_item_id=0x8F)
         result = apply_trade_evolution_to_parser(parser, "party:0", item_based_evolutions_enabled=False)
         self.assertFalse(result.evolved)
+        self.assertEqual(result.reason, "item_trade_evolution_disabled")
+        self.assertEqual(parser.get_species_id("party:0"), 95)
+        self.assertEqual(parser.clear_calls, 0)
+
+    def test_wrong_item_does_not_evolve(self) -> None:
+        parser = FakeParser(2, 95, held_item_id=0x52)
+        result = apply_trade_evolution_to_parser(parser, "party:0", item_based_evolutions_enabled=True)
+        self.assertFalse(result.evolved)
+        self.assertEqual(result.reason, "wrong_held_item")
         self.assertEqual(parser.get_species_id("party:0"), 95)
         self.assertEqual(parser.clear_calls, 0)
 
@@ -261,6 +284,7 @@ class TradeEvolutionParserTests(unittest.TestCase):
             parser = FakeParser(2, 64)
             result = apply_trade_evolution_to_parser(parser, "party:0")
             self.assertFalse(result.evolved)
+            self.assertEqual(result.reason, "target_species_not_supported")
             self.assertEqual(parser.get_species_id("party:0"), 64)
         finally:
             engine.simple_trade_rules_for_generation = original

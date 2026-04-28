@@ -102,6 +102,33 @@ class CompatibilityTests(unittest.TestCase):
         self.assertTrue(report.compatible)
         self.assertIn("held_item", report.data_loss)
         self.assertTrue(report.removed_items)
+        self.assertTrue(report.requires_user_confirmation)
+
+    def test_strict_blocks_held_item_and_trainer_id_data_loss(self) -> None:
+        held_item_report = build_compatibility_report(
+            canonical(
+                source_generation=2,
+                national_id=64,
+                name="Kadabra",
+                held_item=CanonicalItem(item_id=0x52, name="King's Rock", source_generation=2),
+            ),
+            1,
+            cross_generation_enabled=True,
+            policy="strict",
+        )
+        self.assertFalse(held_item_report.compatible)
+        self.assertIn("held_item", held_item_report.data_loss)
+
+        trainer_report_source = canonical(source_generation=3, national_id=64, native_id=64, name="Kadabra")
+        trainer_report_source.trainer_id = 0x12345678
+        trainer_report = build_compatibility_report(
+            trainer_report_source,
+            2,
+            cross_generation_enabled=True,
+            policy="strict",
+        )
+        self.assertFalse(trainer_report.compatible)
+        self.assertIn("trainer_id_high_bits", trainer_report.data_loss)
 
     def test_safe_default_blocks_moves_missing_from_target(self) -> None:
         gen1_report = build_compatibility_report(
@@ -153,6 +180,8 @@ class CompatibilityTests(unittest.TestCase):
     def test_known_move_names_pp_and_existence_fallback(self) -> None:
         self.assertEqual(MOVE_DATA[33].name, "Tackle")
         self.assertEqual(MOVE_DATA[33].base_pp, 35)
+        self.assertEqual(MOVE_DATA[94].name, "Psychic")
+        self.assertEqual(MOVE_DATA[105].name, "Recover")
         self.assertEqual(MOVE_DATA[252].name, "Fake Out")
         self.assertEqual(MOVE_DATA[252].base_pp, 10)
         self.assertTrue(move_exists(200, 2))

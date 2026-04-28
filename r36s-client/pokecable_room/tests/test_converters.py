@@ -56,6 +56,20 @@ class ConverterTests(unittest.TestCase):
             self.assertEqual(updated.ot_name, "CHRIS")
             self.assertEqual(updated.trainer_id, 12345)
 
+    def test_gen2_to_gen1_blocks_species_above_151(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            source = self._parser(Gen2Parser, root / "crystal.sav", synthetic_gen2_save())
+            target = self._parser(Gen1Parser, root / "red.sav", synthetic_gen1_save())
+            source.set_species_id("party:0", 152)
+            converter = get_converter(2, 1)
+            report = converter.can_convert(source.export_canonical("party:0"))
+
+            self.assertFalse(report.compatible)
+            self.assertTrue(any("National Dex #152" in item for item in report.blocking_reasons))
+            with self.assertRaises(ValueError):
+                converter.apply_to_save(target, "party:1", source.export_canonical("party:0"))
+
     def test_gen1_to_gen3_creates_valid_gen3_struct(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)
@@ -143,6 +157,7 @@ class ConverterTests(unittest.TestCase):
 
             self.assertTrue(result.wrote_to_save)
             self.assertEqual(target.get_held_item_id("party:1"), 199)
+            self.assertEqual(result.canonical_after.held_item.item_id, 199)
             self.assertTrue(any("ID 199" in item for item in result.transformations))
             self.assertTrue(target.validate())
 
@@ -157,6 +172,28 @@ class ConverterTests(unittest.TestCase):
 
             self.assertTrue(result.wrote_to_save)
             self.assertEqual(target.get_held_item_id("party:1"), 0x8F)
+            self.assertEqual(result.canonical_after.held_item.item_id, 0x8F)
+            self.assertTrue(target.validate())
+
+    def test_gen3_to_gen1_removes_held_item_and_modern_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            source = self._parser(Gen3Parser, root / "emerald.sav", synthetic_gen3_save("rse"))
+            target = self._parser(Gen1Parser, root / "red.sav", synthetic_gen1_save())
+            source.set_held_item_id("party:0", 199)
+            canonical = source.export_canonical("party:0")
+            canonical.ability = "Synchronize"
+            canonical.nature = "Timid"
+
+            result = get_converter(3, 1).apply_to_save(target, "party:1", canonical)
+
+            self.assertTrue(result.wrote_to_save)
+            self.assertIsNone(result.canonical_after.held_item)
+            self.assertIsNone(result.canonical_after.ability)
+            self.assertIsNone(result.canonical_after.nature)
+            self.assertIn("held_item", result.data_loss)
+            self.assertIn("ability", result.data_loss)
+            self.assertIn("nature", result.data_loss)
             self.assertTrue(target.validate())
 
     def test_gen2_to_gen1_removes_held_item_and_reports_data_loss(self) -> None:

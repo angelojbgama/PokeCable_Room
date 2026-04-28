@@ -61,8 +61,13 @@ async def run_trade(
     local_generation = parser.get_generation()
     local_game = parser.get_game_id()
     enabled_cross_generation_modes = enabled_cross_generation_modes or []
+    announced_trade_modes = _client_supported_trade_modes(
+        local_generation,
+        cross_generation_enabled=cross_generation_enabled,
+        enabled_cross_generation_modes=enabled_cross_generation_modes,
+    )
     if trade_mode != SAME_GENERATION and not (cross_generation_enabled and trade_mode in enabled_cross_generation_modes):
-        raise RuntimeError("Modo em desenvolvimento. Seu save foi detectado corretamente, mas essa conversao ainda nao esta habilitada.")
+        raise RuntimeError("Este modo de troca entre geracoes nao esta habilitado neste client.")
     async with PokeCableNetworkClient(server_url) as network:
         if action == "create":
             await network.send(
@@ -73,7 +78,7 @@ async def run_trade(
                     "generation": local_generation,
                     "game": local_game,
                     "trade_mode": trade_mode,
-                    "supported_trade_modes": supported_modes_for_generation(local_generation),
+                    "supported_trade_modes": announced_trade_modes,
                 }
             )
             await network.wait_for({"room_created"})
@@ -88,7 +93,7 @@ async def run_trade(
                     "password": password,
                     "generation": local_generation,
                     "game": local_game,
-                    "supported_trade_modes": supported_modes_for_generation(local_generation),
+                    "supported_trade_modes": announced_trade_modes,
                 }
             )
             joined = await network.wait_for({"room_joined"})
@@ -98,7 +103,7 @@ async def run_trade(
         if action == "join":
             trade_mode = str(room_info.get("trade_mode") or trade_mode)
             if trade_mode != SAME_GENERATION and not (cross_generation_enabled and trade_mode in enabled_cross_generation_modes):
-                raise RuntimeError("Modo em desenvolvimento. Seu save foi detectado corretamente, mas essa conversao ainda nao esta habilitada.")
+                raise RuntimeError("Este modo de troca entre geracoes nao esta habilitado neste client.")
         target_generation = _peer_generation(room_info, network.client_id) if trade_mode != SAME_GENERATION else local_generation
         expected_mode = get_trade_mode(local_generation, target_generation)
         if action == "create" and expected_mode != trade_mode:
@@ -109,6 +114,7 @@ async def run_trade(
             trade_mode=trade_mode,
             target_generation=target_generation,
             cross_generation_policy=cross_generation_policy,
+            enabled_cross_generation_modes=enabled_cross_generation_modes,
         )
         ui.print(f"Pokemon selecionado: {offer.display_summary} ({local_game}, Gen {local_generation})")
 
@@ -120,18 +126,23 @@ async def run_trade(
             local_generation,
             trade_mode=trade_mode,
             cross_generation_policy=cross_generation_policy,
+            enabled_cross_generation_modes=enabled_cross_generation_modes,
         )
         ui.print(f"Pokemon do outro jogador: {received_preview.display_summary}")
         if received_report is not None:
             _print_report(ui, received_report.to_dict())
             if received_report.requires_user_confirmation:
-                if auto_confirm and not unsafe_auto_confirm_data_loss:
+                if not _can_continue_with_report(
+                    received_report,
+                    auto_confirm=auto_confirm,
+                    unsafe_auto_confirm_data_loss=unsafe_auto_confirm_data_loss,
+                ):
                     await network.send({"type": "cancel_trade"})
                     raise RuntimeError(
                         "A compatibilidade indica perda de dados e exige confirmacao manual. "
                         "auto_confirm foi bloqueado por seguranca."
                     )
-                if not ui.confirm("A conversao tem avisos/perdas. Confirmar mesmo assim?", default=False):
+                if not auto_confirm and not ui.confirm("A conversao tem avisos/perdas. Confirmar mesmo assim?", default=False):
                     await network.send({"type": "cancel_trade"})
                     raise RuntimeError("Troca cancelada pelo usuario apos relatorio de compatibilidade.")
         preview = preview_trade_evolution(
@@ -141,7 +152,12 @@ async def run_trade(
             item_based_evolutions_enabled=item_based_evolutions_enabled,
         )
         if auto_trade_evolution and preview.evolved:
-            ui.print(f"Preview: {preview.source_name} evoluira para {preview.target_name} apos a troca.")
+            message = f"Preview: {preview.source_name} evoluira para {preview.target_name} apos a troca."
+            if preview.consumed_item_name:
+                message += f" {preview.consumed_item_name} sera consumido."
+            ui.print(message)
+        elif auto_trade_evolution and preview.reason == "item_trade_evolution_disabled":
+            ui.print("Evolucao por item esta desligada. Ative item_trade_evolutions_enabled para testar.")
 
         if not auto_confirm and not ui.confirm("Confirmar troca agora?", default=False):
             await network.send({"type": "cancel_trade"})
@@ -155,6 +171,7 @@ async def run_trade(
             local_generation,
             trade_mode=trade_mode,
             cross_generation_policy=cross_generation_policy,
+            enabled_cross_generation_modes=enabled_cross_generation_modes,
         )
         if save_path is not None:
             current_signature = (save_path.stat().st_size, int(save_path.stat().st_mtime))
@@ -217,7 +234,15 @@ async def run_trade(
         return received_payload
 
 
-def _build_offer_payload(parser, location: str, *, trade_mode: str, target_generation: int, cross_generation_policy: str) -> PokemonPayload:
+def _build_offer_payload(
+    parser,
+    location: str,
+    *,
+    trade_mode: str,
+    target_generation: int,
+    cross_generation_policy: str,
+    enabled_cross_generation_modes: list[str] | None = None,
+) -> PokemonPayload:
     if trade_mode == SAME_GENERATION:
         offer = parser.export_pokemon(location)
         offer.trade_mode = trade_mode
@@ -232,6 +257,8 @@ def _build_offer_payload(parser, location: str, *, trade_mode: str, target_gener
     )
     if not report.compatible:
         raise RuntimeError("; ".join(report.blocking_reasons))
+    if report.mode != SAME_GENERATION and report.mode not in set(enabled_cross_generation_modes or []):
+        raise RuntimeError(f"Este Pokemon exige modo {report.mode}, mas esse modo nao esta habilitado neste client.")
     return PokemonPayload(
         generation=canonical.source_generation,
         game=canonical.source_game,
@@ -267,6 +294,7 @@ def _validate_received_payload_for_mode(
     *,
     trade_mode: str,
     cross_generation_policy: str,
+    enabled_cross_generation_modes: list[str] | None = None,
 ):
     if trade_mode == SAME_GENERATION:
         validate_payload_for_local_save(payload, local_generation)
@@ -279,6 +307,8 @@ def _validate_received_payload_for_mode(
     conversion_mode = get_trade_mode(canonical.source_generation, local_generation)
     if conversion_mode == UNSUPPORTED:
         raise RuntimeError(f"Par de geracoes nao suportado: Gen {canonical.source_generation} -> Gen {local_generation}.")
+    if conversion_mode != SAME_GENERATION and conversion_mode not in set(enabled_cross_generation_modes or []):
+        raise RuntimeError(f"Payload recebido exige modo {conversion_mode}, mas esse modo nao esta habilitado neste client.")
     report = build_compatibility_report(
         canonical,
         local_generation,
@@ -288,6 +318,26 @@ def _validate_received_payload_for_mode(
     if not report.compatible:
         raise RuntimeError("; ".join(report.blocking_reasons))
     return report
+
+
+def _client_supported_trade_modes(
+    generation: int,
+    *,
+    cross_generation_enabled: bool,
+    enabled_cross_generation_modes: list[str],
+) -> list[str]:
+    modes = [SAME_GENERATION]
+    if not cross_generation_enabled:
+        return modes
+    enabled = set(enabled_cross_generation_modes)
+    modes.extend(mode for mode in supported_modes_for_generation(generation) if mode != SAME_GENERATION and mode in enabled)
+    return sorted(set(modes))
+
+
+def _can_continue_with_report(report, *, auto_confirm: bool, unsafe_auto_confirm_data_loss: bool) -> bool:
+    if not report.requires_user_confirmation:
+        return True
+    return not auto_confirm or unsafe_auto_confirm_data_loss
 
 
 def _peer_generation(room_info: dict, client_id: str | None) -> int:
@@ -392,6 +442,7 @@ async def automated_or_prompted_trade(args: argparse.Namespace) -> int:
     except Exception as exc:
         logger.exception("Trade failed")
         ui.print(f"Erro: {exc}")
+        ui.print("A troca nao foi aplicada. Seu save original foi preservado.")
         ui.print(f"Log: {log_file}")
         return 1
     return 0

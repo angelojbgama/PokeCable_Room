@@ -41,6 +41,12 @@ TRADE_MODE_MATRIX = {
     (3, 2): LEGACY_DOWNCONVERT_EXPERIMENTAL,
 }
 VALID_TRADE_MODES = set(TRADE_MODE_MATRIX.values())
+TRADE_MODE_SOURCE_GENERATIONS = {
+    SAME_GENERATION: {1, 2, 3},
+    TIME_CAPSULE_GEN1_GEN2: {1, 2},
+    FORWARD_TRANSFER_TO_GEN3: {1, 2},
+    LEGACY_DOWNCONVERT_EXPERIMENTAL: {3},
+}
 
 
 class RoomError(Exception):
@@ -281,6 +287,10 @@ def game_family_for_generation(generation: int) -> str:
 
 def trade_mode_for_generations(source_generation: int, target_generation: int) -> str:
     return TRADE_MODE_MATRIX.get((int(source_generation), int(target_generation)), UNSUPPORTED)
+
+
+def trade_mode_can_start_from(trade_mode: str, source_generation: int) -> bool:
+    return int(source_generation) in TRADE_MODE_SOURCE_GENERATIONS.get(parse_trade_mode(trade_mode), set())
 
 
 def supported_trade_modes_for_generation(generation: int) -> list[str]:

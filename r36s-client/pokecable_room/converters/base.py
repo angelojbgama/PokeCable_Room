@@ -25,7 +25,16 @@ class BaseConverter:
     mode: str = "unsupported"
 
     def can_convert(self, canonical: CanonicalPokemon, policy: str = "safe_default") -> CompatibilityReport:
-        return build_compatibility_report(canonical, self.target_generation, cross_generation_enabled=True, policy=policy)
+        report = build_compatibility_report(canonical, self.target_generation, cross_generation_enabled=True, policy=policy)
+        if int(canonical.source_generation) != int(self.source_generation):
+            report.compatible = False
+            report.blocking_reasons.append(
+                f"Conversor Gen {self.source_generation} -> Gen {self.target_generation} recebeu Gen {canonical.source_generation}."
+            )
+        if report.mode != self.mode:
+            report.compatible = False
+            report.blocking_reasons.append(f"Conversor {self.mode} recebeu payload do modo {report.mode}.")
+        return report
 
     def convert(self, canonical: CanonicalPokemon, target_parser, target_location: str, policy: str = "safe_default") -> ConversionResult:
         report = self.can_convert(canonical, policy=policy)

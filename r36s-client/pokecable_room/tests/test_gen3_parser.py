@@ -124,6 +124,19 @@ class Gen3ParserTests(unittest.TestCase):
             self.assertEqual(updated[0].species_name, "Clamperl")
             self.assertTrue(reloaded.validate())
 
+    def test_export_canonical_marks_egg_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            save = Path(tempdir) / "egg.sav"
+            save.write_bytes(synthetic_save("rse"))
+            parser = Gen3Parser()
+            parser.load(save)
+            parser.set_species_id("party:0", 412)
+
+            canonical = parser.export_canonical("party:0")
+
+            self.assertTrue(canonical.metadata["is_egg"])
+            self.assertEqual(canonical.species.national_dex_id, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

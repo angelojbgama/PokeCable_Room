@@ -3,6 +3,9 @@ __pycache__/
 .pytest_cache/
 .venv/
 *.log
+.env
+server/.env
+r36s-client/.env
 *.sav
 *.srm
 *.gb

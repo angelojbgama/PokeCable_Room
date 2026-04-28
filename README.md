@@ -69,6 +69,105 @@ Experimental protegido por flags:
 - O servidor bloqueia cross-generation enquanto a feature guard global estiver desligada ou o modo nao estiver em `ENABLED_TRADE_MODES`.
 - O client tambem rejeita payload recebido de geracao diferente antes de gravar.
 
+## Cross-Generation Trade
+
+Same-generation e o modo estavel: os dois saves sao da mesma geracao e o client escreve o raw payload daquela mesma geracao. Cross-generation usa payload canonico e conversores locais; o servidor apenas valida sala, senha, modo, ofertas e confirmacoes.
+
+Modos protegidos por flags:
+
+- `time_capsule_gen1_gen2`: Gen 1 <-> Gen 2 para Pokemon compativeis.
+- `forward_transfer_to_gen3`: Gen 1 -> Gen 3 e Gen 2 -> Gen 3.
+- `legacy_downconvert_experimental`: Gen 3 -> Gen 1 e Gen 3 -> Gen 2.
+
+Em uma troca de duas vias entre Gen 1/2 e Gen 3, cada direcao respeita sua propria flag. Por exemplo, para o jogador Gen 1 enviar ao Gen 3 e tambem receber do Gen 3, servidor e clients precisam habilitar `forward_transfer_to_gen3` e `legacy_downconvert_experimental`.
+
+Servidor:
+
+```text
+ALLOW_CROSS_GENERATION=true
+ENABLED_TRADE_MODES=time_capsule_gen1_gen2
+```
+
+Client:
+
+```json
+{
+  "cross_generation": {
+    "enabled": true,
+    "enabled_modes": ["time_capsule_gen1_gen2"],
+    "policy": "safe_default",
+    "unsafe_auto_confirm_data_loss": false
+  }
+}
+```
+
+Politicas:
+
+- `strict`: bloqueia perdas de dados relevantes.
+- `safe_default`: bloqueia species/moves incompativeis, permite perdas removiveis com confirmacao.
+- `permissive`: remove o que puder ser removido, registra `data_loss` e exige confirmacao.
+
+Perdas conhecidas:
+
+- Species inexistente na geracao destino bloqueia sempre.
+- Egg bloqueia sempre.
+- Move inexistente bloqueia em `safe_default`/`strict`; em `permissive` pode ser removido.
+- Held item indo para Gen 1 e removido com `data_loss`.
+- Held item sem equivalente em Gen 2/3 e removido ou bloqueado conforme a politica.
+- Ability/nature indo para Gen 1/2 sao removidas com `data_loss`.
+- Trainer ID Gen 3 pode ser reduzido para 16 bits ao ir para Gen 1/2.
+
+Seguranca:
+
+- Backup antes de salvar.
+- Se o save mudar enquanto a sala esta aberta, a troca e abortada antes da gravacao.
+- Nenhum save completo vai ao servidor.
+- Nenhuma ROM e usada.
+- Nenhum raw payload cross-generation e escrito em save local.
+
+## Trade Evolutions
+
+Evolucao por troca e aplicada localmente no client depois que o Pokemon recebido e escrito no slot do save. A engine altera apenas o parser em memoria; o fluxo do client cria backup antes da gravacao, valida o save e entao salva o arquivo.
+
+`auto_trade_evolution=true` liga evolucoes simples por troca. `item_trade_evolutions_enabled=false` e o padrao: evolucoes por item existem para testes/beta, mas so acontecem quando essa opcao e ativada no `config.json`. Gen 1 nao possui held item.
+
+Quando a evolucao por item acontece, o item correto e consumido no save local. Se o item estiver errado ou a flag estiver desligada, o Pokemon recebido permanece sem evoluir e a troca continua normalmente.
+
+Suporte Gen 1:
+
+- Kadabra -> Alakazam
+- Machoke -> Machamp
+- Graveler -> Golem
+- Haunter -> Gengar
+
+Suporte Gen 2:
+
+- Kadabra -> Alakazam
+- Machoke -> Machamp
+- Graveler -> Golem
+- Haunter -> Gengar
+- Poliwhirl + King's Rock -> Politoed
+- Slowpoke + King's Rock -> Slowking
+- Onix + Metal Coat -> Steelix
+- Scyther + Metal Coat -> Scizor
+- Seadra + Dragon Scale -> Kingdra
+- Porygon + Up-Grade -> Porygon2
+
+Suporte Gen 3:
+
+- Kadabra -> Alakazam
+- Machoke -> Machamp
+- Graveler -> Golem
+- Haunter -> Gengar
+- Poliwhirl + King's Rock -> Politoed
+- Slowpoke + King's Rock -> Slowking
+- Onix + Metal Coat -> Steelix
+- Scyther + Metal Coat -> Scizor
+- Seadra + Dragon Scale -> Kingdra
+- Porygon + Up-Grade -> Porygon2
+- Clamperl + Deep Sea Tooth -> Huntail
+- Clamperl + Deep Sea Scale -> Gorebyss
+
 ## Feature Flags
 
 Config local do client:
