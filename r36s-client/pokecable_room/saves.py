@@ -22,6 +22,7 @@ DEFAULT_CONFIG = {
     "backup_dir": "/roms/tools/pokecable_room/backups",
     "log_dir": "/roms/tools/pokecable_room/logs",
     "auto_trade_evolution": True,
+    "item_trade_evolutions_enabled": False,
     "allow_cross_generation": False,
 }
 

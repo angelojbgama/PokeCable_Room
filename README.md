@@ -30,6 +30,8 @@ Roadmap:
 - Parser Gen 2 Gold/Silver/Crystal para party.
 - Parser Gen 3 Ruby/Sapphire/Emerald/FireRed/LeafGreen para party.
 - Backup automatico antes de alterar save.
+- Evolucao simples por troca aplicada localmente depois da troca, quando `auto_trade_evolution` esta ligado.
+- Evolucoes por item preparadas, mas desligadas por `item_trade_evolutions_enabled=false` ate validacao dos IDs de item.
 
 ## O Que Nao Faz
 
@@ -39,6 +41,7 @@ Roadmap:
 - Nao armazena ROMs.
 - Nao envia save completo ao servidor.
 - Nao escreve cross-generation enquanto os conversores nao estiverem habilitados.
+- Nao aplica evolucao por item por padrao.
 - Nao implementa boxes ainda.
 
 ## Seguranca De Geracao

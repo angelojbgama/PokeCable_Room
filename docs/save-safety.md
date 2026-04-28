@@ -11,6 +11,8 @@ Regras obrigatorias:
 - Recalcule checksums apenas no parser correto da geracao.
 - Mantenha Gen 1, Gen 2 e Gen 3 em parsers separados.
 - Cancele a gravacao se o save mudou enquanto a sala estava aberta.
+- Aplique evolucao simples por troca somente depois do backup e antes de salvar.
+- Mantenha evolucao por item desligada ate validar IDs reais de item por geracao.
 
 ## Por Que Fechar O Jogo
 

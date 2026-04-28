@@ -13,5 +13,6 @@
   "backup_dir": "/roms/tools/pokecable_room/backups",
   "log_dir": "/roms/tools/pokecable_room/logs",
   "auto_trade_evolution": true,
+  "item_trade_evolutions_enabled": false,
   "allow_cross_generation": false
 }

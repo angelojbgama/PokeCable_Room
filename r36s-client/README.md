@@ -29,6 +29,7 @@ Abra em `Options -> Tools`.
 6. Escolha um Pokemon da party.
 7. Aguarde o outro jogador.
 8. Confirme e deixe a tool criar o backup.
+9. Se `auto_trade_evolution` estiver ligado, evolucoes simples por troca sao aplicadas no save antes de gravar.
 
 ## Modos
 
@@ -38,3 +39,5 @@ Abra em `Options -> Tools`.
 - Testar compatibilidade: mostra o modo planejado, bloqueios, avisos e perdas esperadas.
 
 Suporte atual: party de Gen 1, party de Gen 2 Gold/Silver/Crystal e party de Gen 3. Boxes ainda nao estao habilitadas. Cross-generation e objetivo do produto, mas a escrita fica bloqueada ate os conversores locais serem validados.
+
+Evolucao por item fica preparada em regras, mas `item_trade_evolutions_enabled` permanece `false` por padrao porque os IDs de item precisam ser validados em saves reais.

@@ -12,16 +12,14 @@ from pokecable_room.parsers.gen2 import (
     CRYSTAL_SECONDARY_CHECKSUM,
     CRYSTAL_SECONDARY_END,
     CRYSTAL_SECONDARY_START,
+    CRYSTAL_LAYOUT,
     GOLD_SILVER_PARTY_OFFSET,
     GOLD_SILVER_PRIMARY_CHECKSUM,
     GOLD_SILVER_PRIMARY_END,
     GOLD_SILVER_PRIMARY_START,
     NAME_SIZE,
-    PARTY_DATA_OFFSET,
     PARTY_HEADER_SIZE,
     PARTY_MON_SIZE,
-    PARTY_NICK_OFFSET,
-    PARTY_OT_OFFSET,
     Gen2Parser,
 )
 
@@ -53,12 +51,12 @@ def synthetic_save() -> bytes:
     data[CRYSTAL_PARTY_OFFSET + 2] = 156
     data[CRYSTAL_PARTY_OFFSET + 3] = 0xFF
     for index, (species, level, nick) in enumerate([(95, 11, "ROCKY"), (156, 18, "QUILAVA")]):
-        start = PARTY_DATA_OFFSET + index * PARTY_MON_SIZE
+        start = CRYSTAL_LAYOUT.party_data_offset + index * PARTY_MON_SIZE
         data[start] = species
         data[start + 0x06 : start + 0x08] = (12345 + index).to_bytes(2, "big")
         data[start + 0x1F] = level
-        ot_start = PARTY_OT_OFFSET + index * NAME_SIZE
-        nick_start = PARTY_NICK_OFFSET + index * NAME_SIZE
+        ot_start = CRYSTAL_LAYOUT.party_ot_offset + index * NAME_SIZE
+        nick_start = CRYSTAL_LAYOUT.party_nick_offset + index * NAME_SIZE
         data[ot_start : ot_start + NAME_SIZE] = encode_name("CHRIS")
         data[nick_start : nick_start + NAME_SIZE] = encode_name(nick)
     write_checksum(data)

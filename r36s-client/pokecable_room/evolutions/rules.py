@@ -1,48 +1,75 @@
 from __future__ import annotations
 
-
-SIMPLE_TRADE_EVOLUTIONS: dict[int, dict[int, int]] = {
-    1: {
-        38: 149,
-        41: 126,
-        39: 49,
-        147: 14,
-    },
-    2: {
-        64: 65,
-        67: 68,
-        75: 76,
-        93: 94,
-    },
-    3: {
-        64: 65,
-        67: 68,
-        75: 76,
-        93: 94,
-    },
-}
+from dataclasses import dataclass
 
 
-ITEM_TRADE_EVOLUTION_RULES: dict[int, tuple[str, ...]] = {
-    2: (
-        "Poliwhirl + King's Rock -> Politoed",
-        "Slowpoke + King's Rock -> Slowking",
-        "Onix + Metal Coat -> Steelix",
-        "Scyther + Metal Coat -> Scizor",
-        "Seadra + Dragon Scale -> Kingdra",
-        "Porygon + Up-Grade -> Porygon2",
-    ),
-    3: (
-        "Poliwhirl + King's Rock -> Politoed",
-        "Slowpoke + King's Rock -> Slowking",
-        "Onix + Metal Coat -> Steelix",
-        "Scyther + Metal Coat -> Scizor",
-        "Seadra + Dragon Scale -> Kingdra",
-        "Porygon + Up-Grade -> Porygon2",
-        "Clamperl + Deep Sea Tooth -> Huntail",
-        "Clamperl + Deep Sea Scale -> Gorebyss",
-    ),
-}
+@dataclass(frozen=True, slots=True)
+class TradeEvolutionRule:
+    generation: int
+    source_species_id: int
+    target_species_id: int
+    source_name: str
+    target_name: str
+    required_item_id: int | None = None
+    required_item_name: str | None = None
+    consume_item: bool = True
 
 
-MAX_SPECIES_BY_GENERATION = {1: 151, 2: 251, 3: 386}
+@dataclass(slots=True)
+class TradeEvolutionResult:
+    evolved: bool
+    source_species_id: int
+    target_species_id: int
+    source_name: str
+    target_name: str
+    consumed_item_id: int | None = None
+    consumed_item_name: str | None = None
+    reason: str = ""
+
+
+SIMPLE_TRADE_EVOLUTION_RULES: tuple[TradeEvolutionRule, ...] = (
+    TradeEvolutionRule(1, 38, 149, "Kadabra", "Alakazam"),
+    TradeEvolutionRule(1, 41, 126, "Machoke", "Machamp"),
+    TradeEvolutionRule(1, 39, 49, "Graveler", "Golem"),
+    TradeEvolutionRule(1, 147, 14, "Haunter", "Gengar"),
+    TradeEvolutionRule(2, 64, 65, "Kadabra", "Alakazam"),
+    TradeEvolutionRule(2, 67, 68, "Machoke", "Machamp"),
+    TradeEvolutionRule(2, 75, 76, "Graveler", "Golem"),
+    TradeEvolutionRule(2, 93, 94, "Haunter", "Gengar"),
+    TradeEvolutionRule(3, 64, 65, "Kadabra", "Alakazam"),
+    TradeEvolutionRule(3, 67, 68, "Machoke", "Machamp"),
+    TradeEvolutionRule(3, 75, 76, "Graveler", "Golem"),
+    TradeEvolutionRule(3, 93, 94, "Haunter", "Gengar"),
+)
+
+
+# Item IDs are intentionally unset until validated against real saves for each
+# generation/game. Keeping these rules declarative lets the UI/reporting know
+# what is planned without mutating saves by guesswork.
+ITEM_TRADE_EVOLUTION_RULES: tuple[TradeEvolutionRule, ...] = (
+    TradeEvolutionRule(2, 61, 186, "Poliwhirl", "Politoed", required_item_name="King's Rock"),
+    TradeEvolutionRule(2, 79, 199, "Slowpoke", "Slowking", required_item_name="King's Rock"),
+    TradeEvolutionRule(2, 95, 208, "Onix", "Steelix", required_item_name="Metal Coat"),
+    TradeEvolutionRule(2, 123, 212, "Scyther", "Scizor", required_item_name="Metal Coat"),
+    TradeEvolutionRule(2, 117, 230, "Seadra", "Kingdra", required_item_name="Dragon Scale"),
+    TradeEvolutionRule(2, 137, 233, "Porygon", "Porygon2", required_item_name="Up-Grade"),
+    TradeEvolutionRule(3, 61, 186, "Poliwhirl", "Politoed", required_item_name="King's Rock"),
+    TradeEvolutionRule(3, 79, 199, "Slowpoke", "Slowking", required_item_name="King's Rock"),
+    TradeEvolutionRule(3, 95, 208, "Onix", "Steelix", required_item_name="Metal Coat"),
+    TradeEvolutionRule(3, 123, 212, "Scyther", "Scizor", required_item_name="Metal Coat"),
+    TradeEvolutionRule(3, 117, 230, "Seadra", "Kingdra", required_item_name="Dragon Scale"),
+    TradeEvolutionRule(3, 137, 233, "Porygon", "Porygon2", required_item_name="Up-Grade"),
+    TradeEvolutionRule(3, 373, 374, "Clamperl", "Huntail", required_item_name="Deep Sea Tooth"),
+    TradeEvolutionRule(3, 373, 375, "Clamperl", "Gorebyss", required_item_name="Deep Sea Scale"),
+)
+
+
+MAX_SPECIES_BY_GENERATION = {1: 190, 2: 251, 3: 412}
+
+
+def simple_trade_rules_for_generation(generation: int) -> tuple[TradeEvolutionRule, ...]:
+    return tuple(rule for rule in SIMPLE_TRADE_EVOLUTION_RULES if rule.generation == int(generation))
+
+
+def item_trade_rules_for_generation(generation: int) -> tuple[TradeEvolutionRule, ...]:
+    return tuple(rule for rule in ITEM_TRADE_EVOLUTION_RULES if rule.generation == int(generation))

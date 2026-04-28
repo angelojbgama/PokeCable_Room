@@ -13,12 +13,13 @@ if __package__ is None or __package__ == "":
 
 from pokecable_room.compatibility import build_compatibility_report, supported_modes_for_generation
 from pokecable_room.compatibility.matrix import SAME_GENERATION
+from pokecable_room.evolutions import apply_trade_evolution_to_parser, preview_trade_evolution
 from pokecable_room.logs import setup_logging
 from pokecable_room.network import PokeCableNetworkClient
 from pokecable_room.parsers.base import PokemonPayload
 from pokecable_room.backups import create_backup, list_backups, restore_backup
 from pokecable_room.saves import detect_parser, find_save_files, load_config, save_config
-from pokecable_room.trade import maybe_apply_trade_evolution, validate_payload_for_local_save
+from pokecable_room.trade import validate_payload_for_local_save
 from pokecable_room.ui import TerminalUI
 
 
@@ -39,6 +40,8 @@ async def run_trade(
     initial_save_signature: tuple[int, int] | None,
     ui: TerminalUI,
     trade_mode: str = SAME_GENERATION,
+    auto_trade_evolution: bool = True,
+    item_based_evolutions_enabled: bool = False,
 ) -> PokemonPayload:
     local_generation = parser.get_generation()
     local_game = parser.get_game_id()
@@ -83,6 +86,13 @@ async def run_trade(
         received_preview = PokemonPayload.from_dict(peer_offer_message["offer"])
         validate_payload_for_local_save(received_preview, local_generation)
         ui.print(f"Pokemon do outro jogador: {received_preview.display_summary}")
+        preview = preview_trade_evolution(
+            local_generation,
+            received_preview.species_id,
+            item_based_evolutions_enabled=item_based_evolutions_enabled,
+        )
+        if auto_trade_evolution and preview.evolved:
+            ui.print(f"Preview: {preview.source_name} evoluira para {preview.target_name} apos a troca.")
 
         if not auto_confirm and not ui.confirm("Confirmar troca agora?", default=False):
             await network.send({"type": "cancel_trade"})
@@ -92,7 +102,6 @@ async def run_trade(
         committed = await network.wait_for({"trade_committed"})
         received_payload = PokemonPayload.from_dict(committed["received_payload"])
         validate_payload_for_local_save(received_payload, local_generation)
-        received_payload = maybe_apply_trade_evolution(received_payload, enabled=False)
         if save_path is not None:
             current_signature = (save_path.stat().st_size, int(save_path.stat().st_mtime))
             if initial_save_signature is not None and current_signature != initial_save_signature:
@@ -121,8 +130,17 @@ async def run_trade(
                 },
             )
             parser.remove_or_replace_sent_pokemon(pokemon_location, received_payload)
+            evolution_result = None
+            if auto_trade_evolution:
+                evolution_result = apply_trade_evolution_to_parser(
+                    parser,
+                    pokemon_location,
+                    item_based_evolutions_enabled=item_based_evolutions_enabled,
+                )
             parser.save(save_path)
             ui.print(f"Troca aplicada no save: {save_path}")
+            if evolution_result is not None and evolution_result.evolved:
+                ui.print(f"{evolution_result.source_name} evoluiu para {evolution_result.target_name}!")
             ui.print(f"Backup: {backup_path}")
             ui.print(f"Metadata: {metadata_path}")
         return received_payload
@@ -178,6 +196,8 @@ async def automated_or_prompted_trade(args: argparse.Namespace) -> int:
             initial_save_signature=initial_signature,
             ui=ui,
             trade_mode=args.trade_mode,
+            auto_trade_evolution=bool(config.get("auto_trade_evolution", True)),
+            item_based_evolutions_enabled=bool(config.get("item_trade_evolutions_enabled", False)),
         )
     except Exception as exc:
         logger.exception("Trade failed")
@@ -206,7 +226,7 @@ def show_logs(ui: TerminalUI) -> None:
     ui.print("\n".join(lines))
 
 
-def restore_backup_placeholder(ui: TerminalUI) -> None:
+def restore_backup_flow(ui: TerminalUI) -> None:
     config = load_config()
     backups = list_backups(config["backup_dir"])
     if not backups:
@@ -224,7 +244,7 @@ def restore_backup_placeholder(ui: TerminalUI) -> None:
     ui.print(f"Backup restaurado em: {destination}")
 
 
-def choose_save_placeholder(ui: TerminalUI) -> None:
+def choose_save_flow(ui: TerminalUI) -> None:
     config = load_config()
     saves = find_save_files(config["default_save_dirs"])
     if not saves:
@@ -249,7 +269,7 @@ def mode_in_development(ui: TerminalUI, mode_label: str) -> None:
 
 
 def view_party(ui: TerminalUI) -> None:
-    choose_save_placeholder(ui)
+    choose_save_flow(ui)
 
 
 def test_compatibility(ui: TerminalUI) -> None:
@@ -336,8 +356,8 @@ def interactive_menu() -> int:
             mode_in_development(ui, "Time Capsule Gen 1/2")
         elif choice == "create_transfer_gen3":
             mode_in_development(ui, "Transfer para Gen 3")
-        if choice == "save":
-            choose_save_placeholder(ui)
+        elif choice == "save":
+            choose_save_flow(ui)
         elif choice == "party":
             view_party(ui)
         elif choice == "compatibility":
@@ -345,7 +365,7 @@ def interactive_menu() -> int:
         elif choice == "server":
             configure_server(ui)
         elif choice == "restore":
-            restore_backup_placeholder(ui)
+            restore_backup_flow(ui)
         elif choice == "logs":
             show_logs(ui)
         else:
