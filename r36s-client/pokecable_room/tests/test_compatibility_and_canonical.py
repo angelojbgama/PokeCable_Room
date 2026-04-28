@@ -109,7 +109,7 @@ class CompatibilityAndCanonicalTests(unittest.TestCase):
 
     def test_report_warns_held_item_loss_when_going_to_gen1(self) -> None:
         report = build_compatibility_report(canonical_gen2(64, held_item=True), 1, cross_generation_enabled=False)
-        self.assertFalse(report.compatible)
+        self.assertTrue(report.compatible)
         self.assertIn("held_item", report.data_loss)
         self.assertTrue(any("Held item" in warning for warning in report.warnings))
 

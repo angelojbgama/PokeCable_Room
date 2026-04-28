@@ -18,7 +18,7 @@ from app.models import (
 )
 from app.rooms import RoomManager
 
-from pokecable_room.canonical import CanonicalPokemon
+from pokecable_room.canonical import CanonicalItem, CanonicalMove, CanonicalPokemon
 from pokecable_room.client import _build_offer_payload
 from pokecable_room.compatibility import build_compatibility_report
 from pokecable_room.converters import get_converter
@@ -66,11 +66,6 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
             trade_mode=trade_mode,
             target_generation=target_generation,
             cross_generation_policy="safe_default",
-            enabled_cross_generation_modes=[
-                TIME_CAPSULE_GEN1_GEN2,
-                FORWARD_TRANSFER_TO_GEN3,
-                LEGACY_DOWNCONVERT_EXPERIMENTAL,
-            ],
         ).to_dict()
 
     async def _commit_room(self, manager: RoomManager, room_name: str, mode: str, creator_generation: int, join_generation: int) -> None:
@@ -293,6 +288,52 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(gen3.validate())
             self.assertEqual(gen1.get_species_id("party:0"), 21)
             self.assertEqual(gen3.get_species_id("party:0"), 25)
+
+    def test_gen1_pikachu_gen3_mew_auto_retrocompat_flow(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            gen1_path = root / "red.sav"
+            gen3_path = root / "emerald.sav"
+            gen1 = self._parser(Gen1Parser, gen1_path, synthetic_gen1_save())
+            gen3 = self._parser(Gen3Parser, gen3_path, synthetic_gen3_save("rse"))
+            self._set_national_species(gen1, 25)
+            self._set_national_species(gen3, 151)
+
+            pikachu = gen1.export_canonical("party:0")
+            mew = gen3.export_canonical("party:0")
+            mew.ability = "Synchronize"
+            mew.nature = "Timid"
+            mew.held_item = CanonicalItem(item_id=199, name="Metal Coat", source_generation=3)
+            mew.moves = [CanonicalMove(move_id=252, name="Fake Out", source_generation=3)]
+
+            mew_to_gen1 = build_compatibility_report(mew, target_generation=1, cross_generation_enabled=True, policy="auto_retrocompat")
+            pikachu_to_gen3 = build_compatibility_report(pikachu, target_generation=3, cross_generation_enabled=True, policy="auto_retrocompat")
+            self.assertTrue(mew_to_gen1.compatible)
+            self.assertFalse(mew_to_gen1.requires_user_confirmation)
+            self.assertIn("ability", mew_to_gen1.data_loss)
+            self.assertIn("nature", mew_to_gen1.data_loss)
+            self.assertIn("held_item", mew_to_gen1.data_loss)
+            self.assertIn("moves", mew_to_gen1.data_loss)
+            self.assertTrue(mew_to_gen1.removed_moves)
+            self.assertTrue(mew_to_gen1.removed_items)
+            self.assertTrue(pikachu_to_gen3.compatible)
+
+            result_gen1 = get_converter(3, 1).apply_to_save(gen1, "party:0", mew, policy="auto_retrocompat")
+            result_gen3 = get_converter(1, 3).apply_to_save(gen3, "party:0", pikachu, policy="auto_retrocompat")
+            self.assertIn("moves", result_gen1.data_loss)
+            self.assertTrue(any("Pound" in item for item in result_gen1.transformations))
+            self.assertTrue(result_gen3.wrote_to_save)
+            gen1.save(gen1_path)
+            gen3.save(gen3_path)
+
+            reloaded_gen1 = Gen1Parser()
+            reloaded_gen3 = Gen3Parser()
+            reloaded_gen1.load(gen1_path)
+            reloaded_gen3.load(gen3_path)
+            self.assertTrue(reloaded_gen1.validate())
+            self.assertTrue(reloaded_gen3.validate())
+            self.assertEqual(reloaded_gen1.get_species_id("party:0"), 21)
+            self.assertEqual(reloaded_gen3.get_species_id("party:0"), 25)
 
     async def test_gen1_pikachu_gen3_treecko_blocks_entire_trade(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

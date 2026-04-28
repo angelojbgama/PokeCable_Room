@@ -8,7 +8,7 @@ Nao e emulacao de cabo link. A troca e feita por edicao local e segura do arquiv
 
 Same-generation trade e o modo estavel: Gen 1 com Gen 1, Gen 2 com Gen 2 e Gen 3 com Gen 3 usando payload raw da mesma geracao.
 
-Cross-generation trade tambem faz parte do produto. A sala e unica: o usuario cria ou entra em uma sala, escolhe o save e o Pokemon, e o sistema deriva automaticamente o caminho de conversao necessario para cada direcao. Cross-generation continua protegido por feature flags no client e no servidor. Nenhum raw payload de uma geracao deve ser escrito diretamente em save de outra geracao.
+Cross-generation trade tambem faz parte do produto. A sala e unica: o usuario cria ou entra em uma sala, escolhe o save e o Pokemon, e o sistema deriva automaticamente o caminho de conversao necessario para cada direcao. O usuario nao escolhe sala especial e nao precisa aceitar um passo tecnico extra de perda de dados. Nenhum raw payload de uma geracao deve ser escrito diretamente em save de outra geracao.
 
 Roadmap:
 
@@ -33,12 +33,12 @@ Estavel:
 - Backup automatico antes de alterar save.
 - Sala unica: criar sala, entrar sala, escolher save e Pokemon.
 - Same-generation trade usando raw payload somente entre saves da mesma geracao.
-- Cross-generation trade usando payload canonico, preflight local e conversores locais quando as flags estao habilitadas.
+- Cross-generation trade usando payload canonico, preflight local e conversores locais.
 - Evolucao simples por troca aplicada localmente depois da troca, quando `auto_trade_evolution` esta ligado.
 
 Experimental protegido por flags:
 
-- Modos derivados por direcao no contrato interno da sala.
+- Modos derivados por direcao no estado interno da sala.
 - Preflight obrigatorio antes de confirmar troca.
 - Payload v2 com raw, summary, canonical e compatibility_report.
 - Modelo canonico separando National Dex, ID nativo da geracao e espaco de ID.
@@ -61,7 +61,7 @@ Experimental protegido por flags:
 
 - Boxes ainda nao estao implementadas; o fluxo atual opera em party.
 - Validacao completa de learnset nao e objetivo inicial; moves sao validados por existencia na geracao destino.
-- Cross-generation deve ser testado com backup e feature flags por modo.
+- Cross-generation deve ser testado com backup.
 - Downconvert Gen 3 -> Gen 1/2 pode perder ability, nature, parte do trainer ID, held item e moves modernos.
 - O jogo/emulador precisa estar fechado antes de gravar no save.
 
@@ -69,8 +69,8 @@ Experimental protegido por flags:
 
 - Same-generation usa raw payload da propria geracao.
 - Cross-generation usa modelo canonico, `CompatibilityReport` e conversores locais.
-- O servidor bloqueia cross-generation enquanto a feature guard global estiver desligada ou algum modo derivado da troca nao estiver em `ENABLED_TRADE_MODES`.
-- O client tambem rejeita cross-generation se `cross_generation.enabled=false` ou se o modo derivado nao estiver habilitado localmente.
+- O servidor bloqueia cross-generation se a flag global estiver desligada ou se algum modo derivado da troca nao estiver em `ENABLED_TRADE_MODES`.
+- O client anuncia suporte tecnico a `canonical_cross_generation`; a compatibilidade real e decidida no preflight.
 - A compatibilidade e calculada por Pokemon recebido durante o preflight, antes da confirmacao final.
 
 ## Cross-Generation Trade
@@ -90,7 +90,7 @@ Modos derivados internamente e protegidos por flags:
 - `forward_transfer_to_gen3`: Gen 1 -> Gen 3 e Gen 2 -> Gen 3.
 - `legacy_downconvert_experimental`: Gen 3 -> Gen 1 e Gen 3 -> Gen 2.
 
-Em uma troca de duas vias entre Gen 1/2 e Gen 3, cada direcao respeita sua propria flag. Por exemplo, para o jogador Gen 1 enviar ao Gen 3 e tambem receber do Gen 3, servidor e clients precisam habilitar `forward_transfer_to_gen3` e `legacy_downconvert_experimental`.
+Em uma troca de duas vias entre Gen 1/2 e Gen 3, cada direcao respeita seu proprio modo interno. Por exemplo, para o jogador Gen 1 enviar ao Gen 3 e tambem receber do Gen 3, o servidor precisa habilitar `forward_transfer_to_gen3` e `legacy_downconvert_experimental`.
 
 Compatibilidade por National Dex:
 
@@ -105,8 +105,10 @@ Compatibilidade por National Dex:
 
 Exemplos:
 
-- Permitido: Gen 1 Pikachu <-> Gen 3 Mew, se moves e perdas passarem pela politica.
+- Permitido: Gen 1 Pikachu <-> Gen 3 Mew.
 - Bloqueado: Gen 1 Pikachu <-> Gen 3 Treecko, porque Treecko #252 nao existe na Gen 1.
+- Permitido: Gen 2 Mew <-> Gen 3 Mew.
+- Bloqueado: Gen 2 Chikorita -> Gen 1, porque Chikorita #152 nao existe na Gen 1.
 
 Servidor:
 
@@ -122,7 +124,7 @@ Client:
   "cross_generation": {
     "enabled": true,
     "enabled_modes": ["time_capsule_gen1_gen2", "forward_transfer_to_gen3", "legacy_downconvert_experimental"],
-    "policy": "safe_default",
+    "policy": "auto_retrocompat",
     "unsafe_auto_confirm_data_loss": false
   }
 }
@@ -133,16 +135,18 @@ Politicas:
 - `strict`: bloqueia perdas de dados relevantes.
 - `safe_default`: bloqueia species/moves incompativeis, permite perdas removiveis com confirmacao.
 - `permissive`: remove o que puder ser removido, registra `data_loss` e exige confirmacao.
+- `auto_retrocompat`: padrao do produto; remove/normaliza automaticamente moves, held item e campos modernos quando a species existe no destino.
 
 Perdas conhecidas:
 
 - Species inexistente na geracao destino bloqueia sempre.
 - Egg bloqueia sempre.
-- Move inexistente bloqueia em `safe_default`/`strict`; em `permissive` pode ser removido.
+- Move inexistente bloqueia em `safe_default`/`strict`; em `permissive` e `auto_retrocompat` pode ser removido.
 - Held item indo para Gen 1 e removido com `data_loss`.
 - Held item sem equivalente em Gen 2/3 e removido ou bloqueado conforme a politica.
 - Ability/nature indo para Gen 1/2 sao removidas com `data_loss`.
 - Trainer ID Gen 3 pode ser reduzido para 16 bits ao ir para Gen 1/2.
+- Em `auto_retrocompat`, essas perdas sao registradas no relatorio/log, mas nao exigem confirmacao extra alem da confirmacao normal da troca.
 
 Seguranca:
 
@@ -205,31 +209,31 @@ Config local do client:
   "auto_trade_evolution": true,
   "item_trade_evolutions_enabled": false,
   "cross_generation": {
-    "enabled": false,
-    "enabled_modes": [],
-    "policy": "safe_default",
+    "enabled": true,
+    "enabled_modes": ["time_capsule_gen1_gen2", "forward_transfer_to_gen3", "legacy_downconvert_experimental"],
+    "policy": "auto_retrocompat",
     "unsafe_auto_confirm_data_loss": false
   }
 }
 ```
 
-Servidor:
+Servidor em producao/cross-generation:
 
 ```text
-ALLOW_CROSS_GENERATION=false
-ENABLED_TRADE_MODES=
+ALLOW_CROSS_GENERATION=true
+ENABLED_TRADE_MODES=time_capsule_gen1_gen2,forward_transfer_to_gen3,legacy_downconvert_experimental
 ```
 
-`ALLOW_CROSS_GENERATION=true` sozinho nao libera tudo. Cada modo precisa aparecer em `ENABLED_TRADE_MODES`, por exemplo `time_capsule_gen1_gen2`.
+`ALLOW_CROSS_GENERATION=true` sozinho nao libera tudo. Cada modo derivado precisa aparecer em `ENABLED_TRADE_MODES`.
 
 Variaveis e opcoes:
 
 - `ALLOW_CROSS_GENERATION`: liga a feature guard global do servidor.
 - `ENABLED_TRADE_MODES`: lista os modos cross-generation permitidos no servidor.
 - `item_trade_evolutions_enabled`: liga evolucoes por item no client; padrao `false`.
-- `cross_generation.enabled`: liga cross-generation no client.
+- `cross_generation.enabled`: liga cross-generation no client; configs antigas com `false` e modos vazios sao migradas para o padrao automatico.
 - `cross_generation.enabled_modes`: modos cross-generation permitidos no client.
-- `cross_generation.policy`: `safe_default`, `strict` ou `permissive`.
+- `cross_generation.policy`: `auto_retrocompat`, `safe_default`, `strict` ou `permissive`.
 - `cross_generation.unsafe_auto_confirm_data_loss`: permite auto-confirm com perda de dados; padrao `false` e nao recomendado.
 
 ## Rodar Servidor

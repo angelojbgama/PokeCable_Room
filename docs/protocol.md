@@ -242,9 +242,9 @@ Ou desconexao de um jogador:
 {"type": "trade_cancelled", "reason": "peer_disconnected"}
 ```
 
-## Feature Guard Cross-Generation
+## Guardas Cross-Generation
 
-Enquanto a feature guard estiver desligada, gerações diferentes retornam erro claro no join:
+O client atualizado sempre anuncia suporte tecnico a `canonical_cross_generation`. O servidor ainda protege cross-generation por flags de producao: se a flag global estiver desligada, geracoes diferentes retornam erro claro no join:
 
 ```json
 {
@@ -254,7 +254,7 @@ Enquanto a feature guard estiver desligada, gerações diferentes retornam erro 
 }
 ```
 
-O client tambem valida o payload recebido antes de gravar.
+O client valida o Pokemon recebido no preflight antes de qualquer gravacao. Species inexistente no destino bloqueia a troca inteira; perdas removiveis sao registradas no `CompatibilityReport`.
 
 Para liberar um modo cross-generation no servidor:
 

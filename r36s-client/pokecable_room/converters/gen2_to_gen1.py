@@ -18,8 +18,5 @@ class Gen2ToGen1Converter(BaseConverter):
         converted.held_item = None
         converted.ability = None
         converted.nature = None
-        converted.moves = [move for move in converted.moves if move.move_id <= 165]
-        if converted.species is not None:
-            converted.species.target_species_id = report.normalized_species.get("target_species_id")
-            converted.species.target_species_id_space = report.normalized_species.get("target_species_id_space")
+        self._apply_report_normalization(converted, report)
         return converted

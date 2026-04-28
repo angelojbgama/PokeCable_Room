@@ -15,9 +15,7 @@
   "auto_trade_evolution": true,
   "item_trade_evolutions_enabled": false,
   "cross_generation": {
-    "enabled": false,
-    "enabled_modes": [],
-    "policy": "safe_default",
+    "policy": "auto_retrocompat",
     "unsafe_auto_confirm_data_loss": false
   }
 }

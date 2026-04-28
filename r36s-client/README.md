@@ -40,8 +40,8 @@ O usuario nao escolhe modo de geracao ao criar sala. O app detecta a geracao de 
 - Se algum Pokemon nao puder ser recebido pela geracao do outro jogador, a troca inteira e bloqueada antes do commit.
 - Testar compatibilidade mostra bloqueios, avisos, transformacoes e perdas esperadas.
 
-Suporte atual: party de Gen 1, party de Gen 2 Gold/Silver/Crystal e party de Gen 3. Boxes ainda nao estao habilitadas. Cross-generation fica desligado por padrao e exige flags no client e no servidor.
+Suporte atual: party de Gen 1, party de Gen 2 Gold/Silver/Crystal e party de Gen 3. Boxes ainda nao estao habilitadas. Cross-generation vem ligado por padrao no client atualizado com a politica `auto_retrocompat`.
 
-Use `Configurar cross-generation` no menu para ativar o client, habilitar os tres modos validados e escolher a politica `safe_default`, `strict` ou `permissive`.
+Use `Configurar cross-generation` no menu apenas para trocar a politica ou desligar testes. Na politica padrao, campos incompatíveis com geracoes antigas sao removidos/normalizados automaticamente e registrados no relatorio/log.
 
 Evolucao por item esta implementada para Gen 2/3, mas `item_trade_evolutions_enabled` permanece `false` por padrao para testes controlados.

@@ -14,10 +14,7 @@ if __package__ is None or __package__ == "":
 from pokecable_room.canonical import CanonicalPokemon
 from pokecable_room.compatibility import build_compatibility_report, supported_modes_for_generation
 from pokecable_room.compatibility.matrix import (
-    FORWARD_TRANSFER_TO_GEN3,
-    LEGACY_DOWNCONVERT_EXPERIMENTAL,
     SAME_GENERATION,
-    TIME_CAPSULE_GEN1_GEN2,
     UNSUPPORTED,
     get_trade_mode,
 )
@@ -56,20 +53,13 @@ async def run_trade(
     trade_mode: str = SAME_GENERATION,
     auto_trade_evolution: bool = True,
     item_based_evolutions_enabled: bool = False,
-    cross_generation_enabled: bool = False,
-    enabled_cross_generation_modes: list[str] | None = None,
-    cross_generation_policy: str = "safe_default",
+    cross_generation_policy: str = "auto_retrocompat",
     unsafe_auto_confirm_data_loss: bool = False,
 ) -> PokemonPayload:
     local_generation = parser.get_generation()
     local_game = parser.get_game_id()
-    enabled_cross_generation_modes = enabled_cross_generation_modes or []
-    announced_trade_modes = _client_supported_trade_modes(
-        local_generation,
-        cross_generation_enabled=cross_generation_enabled,
-        enabled_cross_generation_modes=enabled_cross_generation_modes,
-    )
-    announced_protocols = _client_supported_protocols(cross_generation_capable=True)
+    announced_trade_modes = _client_supported_trade_modes(local_generation)
+    announced_protocols = _client_supported_protocols()
     if trade_mode != SAME_GENERATION:
         ui.print(f"Aviso: --trade-mode={trade_mode} e legado/debug; o modo real sera derivado automaticamente.")
     async with PokeCableNetworkClient(server_url) as network:
@@ -112,7 +102,6 @@ async def run_trade(
             pokemon_location,
             target_generation=target_generation,
             cross_generation_policy=cross_generation_policy,
-            enabled_cross_generation_modes=enabled_cross_generation_modes,
         )
         ui.print(f"Pokemon selecionado: {offer.display_summary} ({local_game}, Gen {local_generation})")
 
@@ -123,8 +112,6 @@ async def run_trade(
         preflight_ok, received_report = _preflight_result_for_payload(
             received_preview,
             local_generation,
-            cross_generation_enabled=cross_generation_enabled,
-            enabled_cross_generation_modes=enabled_cross_generation_modes,
             cross_generation_policy=cross_generation_policy,
             auto_confirm=auto_confirm,
             unsafe_auto_confirm_data_loss=unsafe_auto_confirm_data_loss,
@@ -165,8 +152,6 @@ async def run_trade(
         _committed_ok, conversion_report_dict = _preflight_result_for_payload(
             received_payload,
             local_generation,
-            cross_generation_enabled=cross_generation_enabled,
-            enabled_cross_generation_modes=enabled_cross_generation_modes,
             cross_generation_policy=cross_generation_policy,
             auto_confirm=False,
             unsafe_auto_confirm_data_loss=True,
@@ -244,7 +229,6 @@ def _build_offer_payload(
     trade_mode: str | None = None,
     target_generation: int,
     cross_generation_policy: str,
-    enabled_cross_generation_modes: list[str] | None = None,
 ) -> PokemonPayload:
     local_generation = parser.get_generation()
     trade_mode = get_trade_mode(local_generation, target_generation)
@@ -286,8 +270,6 @@ def _preflight_result_for_payload(
     payload: PokemonPayload,
     local_generation: int,
     *,
-    cross_generation_enabled: bool,
-    enabled_cross_generation_modes: list[str],
     cross_generation_policy: str,
     auto_confirm: bool,
     unsafe_auto_confirm_data_loss: bool,
@@ -311,14 +293,6 @@ def _preflight_result_for_payload(
             source_generation=payload.generation,
             target_generation=local_generation,
         )
-    if not cross_generation_enabled:
-        return False, _simple_preflight_report(
-            compatible=False,
-            mode=get_trade_mode(payload.generation, local_generation),
-            source_generation=payload.generation,
-            target_generation=local_generation,
-            blocking_reasons=["Cross-generation esta desligado neste client. Ative em Configurar cross-generation para concluir a troca."],
-        )
     if not payload.canonical:
         return False, _simple_preflight_report(
             compatible=False,
@@ -337,14 +311,6 @@ def _preflight_result_for_payload(
             target_generation=local_generation,
             blocking_reasons=[f"Par de geracoes nao suportado: Gen {canonical.source_generation} -> Gen {local_generation}."],
         )
-    if conversion_mode not in set(enabled_cross_generation_modes or []):
-        return False, _simple_preflight_report(
-            compatible=False,
-            mode=conversion_mode,
-            source_generation=canonical.source_generation,
-            target_generation=local_generation,
-            blocking_reasons=[f"Payload recebido exige modo {conversion_mode}, mas esse modo nao esta habilitado neste client."],
-        )
     report = build_compatibility_report(
         canonical,
         local_generation,
@@ -355,7 +321,7 @@ def _preflight_result_for_payload(
     _print_report(ui, report_dict)
     if not report.compatible:
         return False, report_dict
-    if report.requires_user_confirmation:
+    if report.requires_user_confirmation and cross_generation_policy != "auto_retrocompat":
         if auto_confirm and not unsafe_auto_confirm_data_loss:
             report_dict.setdefault("blocking_reasons", []).append(
                 "Esta conversao possui perda de dados e exige confirmacao manual."
@@ -393,25 +359,12 @@ def _simple_preflight_report(
     }
 
 
-def _client_supported_trade_modes(
-    generation: int,
-    *,
-    cross_generation_enabled: bool,
-    enabled_cross_generation_modes: list[str],
-) -> list[str]:
-    modes = [SAME_GENERATION]
-    if not cross_generation_enabled:
-        return modes
-    enabled = set(enabled_cross_generation_modes)
-    modes.extend(mode for mode in supported_modes_for_generation(generation) if mode != SAME_GENERATION and mode in enabled)
-    return sorted(set(modes))
+def _client_supported_trade_modes(generation: int) -> list[str]:
+    return sorted(set(supported_modes_for_generation(generation)))
 
 
-def _client_supported_protocols(*, cross_generation_capable: bool = True) -> list[str]:
-    protocols = [RAW_SAME_GENERATION_PROTOCOL]
-    if cross_generation_capable:
-        protocols.append(CANONICAL_CROSS_GENERATION_PROTOCOL)
-    return protocols
+def _client_supported_protocols() -> list[str]:
+    return [RAW_SAME_GENERATION_PROTOCOL, CANONICAL_CROSS_GENERATION_PROTOCOL]
 
 
 def _can_continue_with_report(report, *, auto_confirm: bool, unsafe_auto_confirm_data_loss: bool) -> bool:
@@ -514,9 +467,7 @@ async def automated_or_prompted_trade(args: argparse.Namespace) -> int:
             trade_mode=args.trade_mode,
             auto_trade_evolution=bool(config.get("auto_trade_evolution", True)),
             item_based_evolutions_enabled=bool(config.get("item_trade_evolutions_enabled", False)),
-            cross_generation_enabled=bool(cross_generation_config.get("enabled", False)),
-            enabled_cross_generation_modes=list(cross_generation_config.get("enabled_modes") or []),
-            cross_generation_policy=str(cross_generation_config.get("policy") or "safe_default"),
+            cross_generation_policy=str(cross_generation_config.get("policy") or "auto_retrocompat"),
             unsafe_auto_confirm_data_loss=bool(cross_generation_config.get("unsafe_auto_confirm_data_loss", False)),
         )
     except Exception as exc:
@@ -532,53 +483,9 @@ def configure_server(ui: TerminalUI) -> None:
     config = load_config()
     server_url = ui.input_text("URL WebSocket do servidor", config["server_url"])
     config["server_url"] = server_url
-    config.setdefault("cross_generation", {"enabled": False, "enabled_modes": [], "policy": "safe_default"})
+    config.setdefault("cross_generation", {"policy": "auto_retrocompat"})
     save_config(config)
     ui.print("Servidor configurado.")
-
-
-def configure_cross_generation(ui: TerminalUI) -> None:
-    config = load_config()
-    current = dict(config.get("cross_generation") or {})
-    enabled = ui.confirm("Ativar cross-generation neste client?", default=bool(current.get("enabled", False)))
-    policy = ui.choose(
-        "Politica de compatibilidade",
-        ["safe_default", "strict", "permissive"],
-        [
-            "safe_default: bloqueia species/moves incompativeis e pede confirmacao para perdas",
-            "strict: bloqueia qualquer perda relevante",
-            "permissive: remove dados incompativeis quando possivel e pede confirmacao",
-        ],
-    )
-    enabled_modes = []
-    if enabled:
-        if ui.confirm("Habilitar todos os modos cross-generation validados?", default=True):
-            enabled_modes = [
-                TIME_CAPSULE_GEN1_GEN2,
-                FORWARD_TRANSFER_TO_GEN3,
-                LEGACY_DOWNCONVERT_EXPERIMENTAL,
-            ]
-        else:
-            for mode, label in [
-                (TIME_CAPSULE_GEN1_GEN2, "Gen 1 <-> Gen 2"),
-                (FORWARD_TRANSFER_TO_GEN3, "Gen 1/2 -> Gen 3"),
-                (LEGACY_DOWNCONVERT_EXPERIMENTAL, "Gen 3 -> Gen 1/2"),
-            ]:
-                if ui.confirm(f"Habilitar {label}?", default=mode in set(current.get("enabled_modes") or [])):
-                    enabled_modes.append(mode)
-    config["cross_generation"] = {
-        "enabled": enabled,
-        "enabled_modes": enabled_modes,
-        "policy": policy,
-        "unsafe_auto_confirm_data_loss": False,
-    }
-    save_config(config)
-    if enabled:
-        ui.print("Cross-generation ativado neste client.")
-        ui.print(f"Modos: {', '.join(enabled_modes)}")
-        ui.print(f"Politica: {policy}")
-    else:
-        ui.print("Cross-generation desativado neste client.")
 
 
 def show_logs(ui: TerminalUI) -> None:
@@ -671,7 +578,6 @@ def interactive_menu() -> int:
                 "party",
                 "compatibility",
                 "server",
-                "cross_generation",
                 "restore",
                 "logs",
                 "exit",
@@ -683,7 +589,6 @@ def interactive_menu() -> int:
                 "Ver party",
                 "Testar compatibilidade",
                 "Configurar servidor VPS",
-                "Configurar cross-generation",
                 "Restaurar backup",
                 "Ver logs",
                 "Sair",
@@ -721,8 +626,6 @@ def interactive_menu() -> int:
             test_compatibility(ui)
         elif choice == "server":
             configure_server(ui)
-        elif choice == "cross_generation":
-            configure_cross_generation(ui)
         elif choice == "restore":
             restore_backup_flow(ui)
         elif choice == "logs":

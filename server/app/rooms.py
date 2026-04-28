@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import timedelta
-from typing import Iterable
 
 from .models import (
     CANONICAL_CROSS_GENERATION,
@@ -24,7 +23,6 @@ from .models import (
     parse_game_id,
     parse_generation,
     parse_room_name,
-    parse_trade_mode,
     supported_trade_modes_for_generation,
     trade_mode_for_generations,
 )
@@ -36,20 +34,19 @@ class RoomManager:
         self,
         room_timeout_seconds: int | None = None,
         max_rooms: int | None = None,
-        cross_generation_enabled: bool | None = False,
-        enabled_trade_modes: Iterable[str] | None = None,
+        cross_generation_enabled: bool | None = None,
+        enabled_trade_modes: object | None = None,
     ) -> None:
         self.room_timeout_seconds = room_timeout_seconds or int(os.getenv("ROOM_TIMEOUT_SECONDS", "900"))
         self.max_rooms = max_rooms or int(os.getenv("MAX_ROOMS", "200"))
-        if cross_generation_enabled is None:
-            cross_generation_enabled = os.getenv("ALLOW_CROSS_GENERATION", "false").strip().lower() == "true"
-        self.cross_generation_enabled = bool(cross_generation_enabled)
-        env_modes = os.getenv("ENABLED_TRADE_MODES", "")
-        configured_modes = enabled_trade_modes if enabled_trade_modes is not None else [item for item in env_modes.split(",") if item.strip()]
+        # cross_generation_enabled/enabled_trade_modes are accepted for legacy
+        # deploy configs, but no longer gate product behavior. The server
+        # derives directions automatically and the preflight decides by Pokemon.
+        self.cross_generation_enabled = True
         self.enabled_trade_modes = {
-            parse_trade_mode(mode)
-            for mode in configured_modes
-            if parse_trade_mode(mode) != SAME_GENERATION
+            TIME_CAPSULE_GEN1_GEN2,
+            FORWARD_TRANSFER_TO_GEN3,
+            LEGACY_DOWNCONVERT_EXPERIMENTAL,
         }
         self.rooms: dict[str, Room] = {}
         self.client_rooms: dict[str, tuple[str, PlayerSlot]] = {}
@@ -193,14 +190,10 @@ class RoomManager:
             if receiver_mode != SAME_GENERATION and not offer.canonical:
                 raise RoomError("invalid_payload", "Troca cross-generation exige payload canonico.")
             if receiver_mode != SAME_GENERATION:
-                if not self._trade_mode_enabled(receiver_mode):
-                    raise RoomError("trade_mode_disabled", f"O modo {receiver_mode} nao esta habilitado no servidor.")
                 if CANONICAL_CROSS_GENERATION not in player.supported_protocols or CANONICAL_CROSS_GENERATION not in peer.supported_protocols:
-                    raise RoomError("game_mismatch", "Este client nao anunciou suporte a troca canonical cross-generation.")
-                if offer.target_generation is not None and offer.target_generation != peer.generation:
                     raise RoomError(
-                        "generation_mismatch",
-                        f"Payload mira Gen {offer.target_generation}, mas o outro jogador e Gen {peer.generation}.",
+                        "game_mismatch",
+                        "O client nao anunciou protocolo canonical_cross_generation. Atualize o client.",
                     )
                 canonical_generation = offer.canonical.get("source_generation") if offer.canonical else None
                 if canonical_generation is not None and parse_generation(canonical_generation) != offer.generation:
@@ -335,12 +328,6 @@ class RoomManager:
         for player in room.players.values():
             self.client_rooms.pop(player.client_id, None)
 
-    def _trade_mode_enabled(self, trade_mode: str) -> bool:
-        trade_mode = parse_trade_mode(trade_mode)
-        if trade_mode == SAME_GENERATION:
-            return True
-        return self.cross_generation_enabled and trade_mode in self.enabled_trade_modes
-
     def _normalize_supported_protocols(
         self,
         supported_protocols: list[str] | None,
@@ -365,19 +352,11 @@ class RoomManager:
         room.derived_modes = {"A": mode_for_a, "B": mode_for_b}
         required_cross_modes = {mode for mode in room.derived_modes.values() if mode != SAME_GENERATION}
         if required_cross_modes:
-            if not self.cross_generation_enabled:
-                raise RoomError("generation_mismatch", "Este servidor nao habilitou troca entre geracoes.")
-            missing = sorted(mode for mode in required_cross_modes if mode not in self.enabled_trade_modes)
-            if missing:
-                raise RoomError(
-                    "trade_mode_disabled",
-                    f"O modo necessario {_human_trade_mode(missing[0])} nao esta habilitado no servidor.",
-            )
             for player in room.players.values():
                 if CANONICAL_CROSS_GENERATION not in player.supported_protocols:
                     raise RoomError(
                         "game_mismatch",
-                        "O client nao anunciou protocolo canonical_cross_generation. Atualize o client ou habilite cross-generation nas configuracoes.",
+                        "O client nao anunciou protocolo canonical_cross_generation. Atualize o client.",
                     )
         else:
             for player in room.players.values():
@@ -395,13 +374,3 @@ class RoomManager:
             "data_loss": [],
             "suggested_actions": [],
         }
-
-
-def _human_trade_mode(trade_mode: str) -> str:
-    labels = {
-        SAME_GENERATION: "Same-generation",
-        TIME_CAPSULE_GEN1_GEN2: "Time Capsule Gen 1/2",
-        FORWARD_TRANSFER_TO_GEN3: "Transfer para Gen 3",
-        LEGACY_DOWNCONVERT_EXPERIMENTAL: "Downconvert experimental Gen 3 -> Gen 1/2",
-    }
-    return labels.get(trade_mode, trade_mode)

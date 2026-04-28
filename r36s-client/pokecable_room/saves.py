@@ -24,9 +24,7 @@ DEFAULT_CONFIG = {
     "auto_trade_evolution": True,
     "item_trade_evolutions_enabled": False,
     "cross_generation": {
-        "enabled": False,
-        "enabled_modes": [],
-        "policy": "safe_default",
+        "policy": "auto_retrocompat",
         "unsafe_auto_confirm_data_loss": False,
     },
 }
@@ -44,7 +42,10 @@ def load_config() -> dict[str, Any]:
     config = dict(DEFAULT_CONFIG)
     config.update(loaded)
     cross_generation = dict(DEFAULT_CONFIG["cross_generation"])
-    cross_generation.update(loaded.get("cross_generation") or {})
+    loaded_cross_generation = dict(loaded.get("cross_generation") or {})
+    cross_generation.update(loaded_cross_generation)
+    cross_generation.pop("enabled", None)
+    cross_generation.pop("enabled_modes", None)
     config["cross_generation"] = cross_generation
     config.pop("allow_cross_generation", None)
     return config
@@ -55,8 +56,8 @@ def save_config(config: dict[str, Any]) -> None:
     config.pop("allow_cross_generation", None)
     cross_generation = dict(DEFAULT_CONFIG["cross_generation"])
     cross_generation.update(config.get("cross_generation") or {})
-    if not cross_generation.get("enabled"):
-        cross_generation["enabled_modes"] = []
+    cross_generation.pop("enabled", None)
+    cross_generation.pop("enabled_modes", None)
     config["cross_generation"] = cross_generation
     config_path().write_text(json.dumps(config, indent=2), encoding="utf-8")
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import unittest
-from unittest.mock import patch
 
 from app.models import (
     CANONICAL_CROSS_GENERATION,
@@ -111,12 +110,13 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(room.derived_modes["A"], LEGACY_DOWNCONVERT_EXPERIMENTAL)
         self.assertEqual(room.derived_modes["B"], FORWARD_TRANSFER_TO_GEN3)
 
-    async def test_join_cross_generation_requires_server_flags(self) -> None:
+    async def test_join_cross_generation_ignores_legacy_server_flags(self) -> None:
         manager = RoomManager(room_timeout_seconds=60, max_rooms=10, cross_generation_enabled=False)
         await manager.create_room(room_name="off", password="pw", client_id="a", generation=1, game="pokemon_red", supported_protocols=PROTOCOLS)
-        with self.assertRaises(RoomError) as raised:
-            await manager.join_room(room_name="off", password="pw", client_id="b", generation=3, game="pokemon_emerald", supported_protocols=PROTOCOLS)
-        self.assertEqual(raised.exception.code, "generation_mismatch")
+        room, slot = await manager.join_room(room_name="off", password="pw", client_id="b", generation=3, game="pokemon_emerald", supported_protocols=PROTOCOLS)
+        self.assertEqual(slot, "B")
+        self.assertEqual(room.derived_modes["A"], LEGACY_DOWNCONVERT_EXPERIMENTAL)
+        self.assertEqual(room.derived_modes["B"], FORWARD_TRANSFER_TO_GEN3)
 
         manager = RoomManager(
             room_timeout_seconds=60,
@@ -125,9 +125,9 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
             enabled_trade_modes=[FORWARD_TRANSFER_TO_GEN3],
         )
         await manager.create_room(room_name="partial", password="pw", client_id="a", generation=1, game="pokemon_red", supported_protocols=PROTOCOLS)
-        with self.assertRaises(RoomError) as raised:
-            await manager.join_room(room_name="partial", password="pw", client_id="b", generation=3, game="pokemon_emerald", supported_protocols=PROTOCOLS)
-        self.assertEqual(raised.exception.code, "trade_mode_disabled")
+        room, slot = await manager.join_room(room_name="partial", password="pw", client_id="b", generation=3, game="pokemon_emerald", supported_protocols=PROTOCOLS)
+        self.assertEqual(slot, "B")
+        self.assertEqual(room.derived_modes["A"], LEGACY_DOWNCONVERT_EXPERIMENTAL)
 
     async def test_failed_join_rolls_back_player_slot(self) -> None:
         manager = RoomManager(room_timeout_seconds=60, max_rooms=10, cross_generation_enabled=True, enabled_trade_modes=ALL_CROSS_MODES)
@@ -304,13 +304,12 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(1.1)
         self.assertEqual(await manager.cleanup_expired(), ["room"])
 
-    async def test_env_allow_cross_generation_without_enabled_modes_does_not_release_mode(self) -> None:
-        with patch.dict("os.environ", {"ALLOW_CROSS_GENERATION": "true", "ENABLED_TRADE_MODES": ""}):
-            manager = RoomManager(room_timeout_seconds=60, max_rooms=10, cross_generation_enabled=None)
+    async def test_env_cross_generation_flags_do_not_gate_join(self) -> None:
+        manager = RoomManager(room_timeout_seconds=60, max_rooms=10, cross_generation_enabled=None)
         await manager.create_room(room_name="room", password="pw", client_id="a", generation=1, game="pokemon_red", supported_protocols=PROTOCOLS)
-        with self.assertRaises(RoomError) as raised:
-            await manager.join_room(room_name="room", password="pw", client_id="b", generation=2, game="pokemon_crystal", supported_protocols=PROTOCOLS)
-        self.assertEqual(raised.exception.code, "trade_mode_disabled")
+        room, slot = await manager.join_room(room_name="room", password="pw", client_id="b", generation=2, game="pokemon_crystal", supported_protocols=PROTOCOLS)
+        self.assertEqual(slot, "B")
+        self.assertEqual(room.derived_modes["A"], TIME_CAPSULE_GEN1_GEN2)
 
     async def _cross_room(self) -> tuple[RoomManager, object]:
         manager = RoomManager(room_timeout_seconds=60, max_rooms=10, cross_generation_enabled=True, enabled_trade_modes=ALL_CROSS_MODES)

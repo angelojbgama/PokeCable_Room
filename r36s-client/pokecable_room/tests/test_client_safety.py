@@ -12,7 +12,12 @@ from pokecable_room.client import (
     _preflight_result_for_payload,
     _print_report,
 )
-from pokecable_room.compatibility.matrix import SAME_GENERATION, TIME_CAPSULE_GEN1_GEN2
+from pokecable_room.compatibility.matrix import (
+    FORWARD_TRANSFER_TO_GEN3,
+    LEGACY_DOWNCONVERT_EXPERIMENTAL,
+    SAME_GENERATION,
+    TIME_CAPSULE_GEN1_GEN2,
+)
 from pokecable_room.compatibility.report import CompatibilityReport
 from pokecable_room.parsers.base import PokemonPayload
 from pokecable_room.trade import validate_payload_for_local_save
@@ -91,48 +96,37 @@ class ClientSafetyTests(unittest.TestCase):
             _can_continue_with_report(report, auto_confirm=False, unsafe_auto_confirm_data_loss=False)
         )
 
-    def test_client_announces_only_enabled_cross_generation_modes(self) -> None:
-        self.assertEqual(
-            _client_supported_trade_modes(1, cross_generation_enabled=False, enabled_cross_generation_modes=[TIME_CAPSULE_GEN1_GEN2]),
-            [SAME_GENERATION],
-        )
-        modes = _client_supported_trade_modes(
-            1,
-            cross_generation_enabled=True,
-            enabled_cross_generation_modes=[TIME_CAPSULE_GEN1_GEN2],
-        )
+    def test_client_announces_all_generation_modes_without_user_flag(self) -> None:
+        modes = _client_supported_trade_modes(1)
         self.assertIn(SAME_GENERATION, modes)
         self.assertIn(TIME_CAPSULE_GEN1_GEN2, modes)
+        self.assertIn(FORWARD_TRANSFER_TO_GEN3, modes)
+        self.assertIn(LEGACY_DOWNCONVERT_EXPERIMENTAL, modes)
 
     def test_client_supported_protocols_always_include_raw_and_can_include_canonical(self) -> None:
-        self.assertEqual(_client_supported_protocols(cross_generation_capable=False), ["raw_same_generation"])
         self.assertEqual(
-            _client_supported_protocols(cross_generation_capable=True),
+            _client_supported_protocols(),
             ["raw_same_generation", "canonical_cross_generation"],
         )
 
-    def test_preflight_cross_generation_disabled_returns_clear_error(self) -> None:
+    def test_preflight_has_no_local_cross_generation_flag_block(self) -> None:
         payload = canonical_payload(3, 1, 151, "Mew", native_id=151)
         ok, report = _preflight_result_for_payload(
             payload,
             1,
-            cross_generation_enabled=False,
-            enabled_cross_generation_modes=["legacy_downconvert_experimental"],
             cross_generation_policy="safe_default",
             auto_confirm=False,
             unsafe_auto_confirm_data_loss=False,
             ui=FakeUI(),
         )
-        self.assertFalse(ok)
-        self.assertIn("Configurar cross-generation", " ".join(report["blocking_reasons"]))
+        self.assertTrue(ok)
+        self.assertTrue(report["compatible"])
 
     def test_preflight_mew_gen3_to_gen1_allows_with_manual_confirmation(self) -> None:
         payload = canonical_payload(3, 1, 151, "Mew", native_id=151)
         ok, report = _preflight_result_for_payload(
             payload,
             1,
-            cross_generation_enabled=True,
-            enabled_cross_generation_modes=["legacy_downconvert_experimental"],
             cross_generation_policy="safe_default",
             auto_confirm=False,
             unsafe_auto_confirm_data_loss=False,
@@ -146,8 +140,6 @@ class ClientSafetyTests(unittest.TestCase):
         ok, report = _preflight_result_for_payload(
             payload,
             1,
-            cross_generation_enabled=True,
-            enabled_cross_generation_modes=["legacy_downconvert_experimental"],
             cross_generation_policy="safe_default",
             auto_confirm=False,
             unsafe_auto_confirm_data_loss=False,
@@ -161,8 +153,6 @@ class ClientSafetyTests(unittest.TestCase):
         ok, report = _preflight_result_for_payload(
             payload,
             3,
-            cross_generation_enabled=True,
-            enabled_cross_generation_modes=["forward_transfer_to_gen3"],
             cross_generation_policy="safe_default",
             auto_confirm=True,
             unsafe_auto_confirm_data_loss=False,
@@ -176,8 +166,6 @@ class ClientSafetyTests(unittest.TestCase):
         ok, report = _preflight_result_for_payload(
             payload,
             1,
-            cross_generation_enabled=True,
-            enabled_cross_generation_modes=["legacy_downconvert_experimental"],
             cross_generation_policy="safe_default",
             auto_confirm=True,
             unsafe_auto_confirm_data_loss=False,
@@ -185,6 +173,26 @@ class ClientSafetyTests(unittest.TestCase):
         )
         self.assertFalse(ok)
         self.assertIn("confirmacao manual", " ".join(report["blocking_reasons"]))
+
+    def test_preflight_auto_retrocompat_does_not_block_data_loss(self) -> None:
+        payload = canonical_payload(3, 1, 151, "Mew", native_id=151, ability="Synchronize", nature="Timid")
+        payload.canonical["held_item"] = {"item_id": 199, "name": "Metal Coat", "source_generation": 3}
+        payload.canonical["moves"] = [{"move_id": 252, "name": "Fake Out", "source_generation": 3}]
+        ok, report = _preflight_result_for_payload(
+            payload,
+            1,
+            cross_generation_policy="auto_retrocompat",
+            auto_confirm=True,
+            unsafe_auto_confirm_data_loss=False,
+            ui=FakeUI(),
+        )
+        self.assertTrue(ok)
+        self.assertTrue(report["compatible"])
+        self.assertIn("ability", report["data_loss"])
+        self.assertIn("nature", report["data_loss"])
+        self.assertIn("held_item", report["data_loss"])
+        self.assertIn("moves", report["data_loss"])
+        self.assertFalse(report["requires_user_confirmation"])
 
     def test_print_report_includes_data_loss_and_removed_entries(self) -> None:
         ui = FakeUI()

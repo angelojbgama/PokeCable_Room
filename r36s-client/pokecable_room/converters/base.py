@@ -3,8 +3,9 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 
-from pokecable_room.canonical import CanonicalPokemon
+from pokecable_room.canonical import CanonicalMove, CanonicalPokemon
 from pokecable_room.compatibility import CompatibilityReport, build_compatibility_report
+from pokecable_room.data.moves import move_exists, move_name
 
 
 @dataclass(slots=True)
@@ -66,10 +67,44 @@ class BaseConverter:
 
     def _normalized_copy(self, canonical: CanonicalPokemon, report: CompatibilityReport) -> CanonicalPokemon:
         converted = deepcopy(canonical)
+        self._apply_report_normalization(converted, report)
+        return converted
+
+    def _apply_report_normalization(self, converted: CanonicalPokemon, report: CompatibilityReport) -> None:
         if converted.species is not None:
             converted.species.target_species_id = report.normalized_species.get("target_species_id")
             converted.species.target_species_id_space = report.normalized_species.get("target_species_id_space")
-        return converted
+        removed_move_ids = {int(move["move_id"]) for move in report.removed_moves if move.get("move_id") is not None}
+        if removed_move_ids:
+            had_moves = any(move.move_id not in {None, 0} for move in converted.moves)
+            converted.moves = [
+                move
+                for move in converted.moves
+                if move.move_id not in removed_move_ids and move_exists(move.move_id, self.target_generation)
+            ]
+            should_apply_fallback = any("Pound sera aplicado" in item for item in report.transformations)
+            if had_moves and not converted.moves and should_apply_fallback:
+                converted.moves = [
+                    CanonicalMove(
+                        move_id=1,
+                        name=move_name(1) or "Pound",
+                        source_generation=self.target_generation,
+                    )
+                ]
+                fallback = "Fallback move Pound aplicado apos remocao de moves incompativeis."
+                if fallback not in report.transformations:
+                    report.transformations.append(fallback)
+        if report.removed_items:
+            converted.held_item = None
+        if "ability" in report.removed_fields:
+            converted.ability = None
+        if "nature" in report.removed_fields:
+            converted.nature = None
+        if "trainer_id_high_bits" in report.removed_fields:
+            converted.trainer_id = int(converted.trainer_id) & 0xFFFF
+        for metadata_field in ("gender", "sex", "form"):
+            if metadata_field in report.removed_fields:
+                converted.metadata.pop(metadata_field, None)
 
 
 def get_converter(source_generation: int, target_generation: int) -> BaseConverter:

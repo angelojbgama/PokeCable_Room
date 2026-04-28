@@ -13,6 +13,8 @@ const cancelButton = document.querySelector("#cancelTrade");
 const downloadArea = document.querySelector("#downloadArea");
 
 const speciesNames = {
+  9: "Blastoise",
+  25: "Pikachu",
   38: "Kadabra",
   41: "Machoke",
   64: "Kadabra",
@@ -20,6 +22,7 @@ const speciesNames = {
   75: "Graveler",
   93: "Haunter",
   95: "Onix",
+  151: "Mew",
   156: "Quilava",
   175: "Togepi",
   201: "Unown",
@@ -38,15 +41,112 @@ const speciesNames = {
 
 const gen1InternalNames = {
   14: "Gengar",
+  21: "Mew",
+  28: "Blastoise",
   34: "Onix",
   38: "Kadabra",
   39: "Graveler",
   41: "Machoke",
   49: "Golem",
+  84: "Pikachu",
   126: "Machamp",
   147: "Haunter",
   149: "Alakazam"
 };
+
+const gen1InternalToNational = {
+  1: 112, 2: 115, 3: 32, 4: 35, 5: 21, 6: 100, 7: 34, 8: 80, 9: 2, 10: 103,
+  11: 108, 12: 102, 13: 88, 14: 94, 15: 29, 16: 31, 17: 104, 18: 111, 19: 131,
+  20: 59, 21: 151, 22: 130, 23: 90, 24: 72, 25: 92, 26: 123, 27: 120, 28: 9,
+  29: 127, 30: 114, 33: 58, 34: 95, 35: 22, 36: 16, 37: 79, 38: 64, 39: 75,
+  40: 113, 41: 67, 42: 122, 43: 106, 44: 107, 45: 24, 46: 47, 47: 54, 48: 96,
+  49: 76, 51: 126, 53: 125, 54: 82, 55: 109, 57: 56, 58: 86, 59: 50, 60: 128,
+  64: 83, 65: 48, 66: 149, 70: 84, 71: 60, 72: 124, 73: 146, 74: 144, 75: 145,
+  76: 132, 77: 52, 78: 98, 82: 37, 83: 38, 84: 25, 85: 26, 88: 147, 89: 148,
+  90: 140, 91: 141, 92: 116, 93: 117, 96: 27, 97: 28, 98: 138, 99: 139,
+  100: 39, 101: 40, 102: 133, 103: 136, 104: 135, 105: 134, 106: 66, 107: 41,
+  108: 23, 109: 46, 110: 61, 111: 62, 112: 13, 113: 14, 114: 15, 116: 85,
+  117: 57, 118: 51, 119: 49, 120: 87, 123: 10, 124: 11, 125: 12, 126: 68,
+  128: 55, 129: 97, 130: 42, 131: 150, 132: 143, 133: 129, 136: 89, 138: 99,
+  139: 91, 141: 101, 142: 36, 143: 110, 144: 53, 145: 105, 147: 93, 148: 63,
+  149: 65, 150: 17, 151: 18, 152: 121, 153: 1, 154: 3, 155: 73, 157: 118,
+  158: 119, 163: 77, 164: 78, 165: 19, 166: 20, 167: 33, 168: 30, 169: 74,
+  170: 137, 171: 142, 173: 81, 176: 4, 177: 7, 178: 5, 179: 8, 180: 6,
+  185: 43, 186: 44, 187: 45, 188: 69, 189: 70, 190: 71
+};
+const nationalToGen1Internal = Object.fromEntries(
+  Object.entries(gen1InternalToNational).map(([internal, national]) => [national, Number(internal)])
+);
+
+const gen3NativeToNational = {
+  277: 252, 278: 253, 279: 254,
+  280: 255, 281: 256, 282: 257,
+  283: 258, 284: 259, 285: 260,
+  373: 366, 374: 367, 375: 368,
+  411: 358,
+  412: 0
+};
+for (let unownId = 252; unownId <= 276; unownId += 1) gen3NativeToNational[unownId] = 201;
+const nationalToGen3Native = Object.fromEntries(
+  Object.entries(gen3NativeToNational).map(([internal, national]) => [national, Number(internal)])
+);
+
+function nativeToNational(generation, speciesId) {
+  if (generation === 1) return gen1InternalToNational[speciesId] || speciesId;
+  if (generation === 3) return gen3NativeToNational[speciesId] || speciesId;
+  return speciesId;
+}
+
+function nationalToNative(generation, nationalId) {
+  if (generation === 1) return nationalToGen1Internal[nationalId] || 0;
+  if (generation === 2) return nationalId >= 1 && nationalId <= 251 ? nationalId : 0;
+  if (generation === 3) {
+    if (nationalId >= 1 && nationalId <= 251) return nationalId;
+    return nationalToGen3Native[nationalId] || 0;
+  }
+  return 0;
+}
+
+function speciesExistsInGeneration(nationalId, generation) {
+  return nationalToNative(generation, nationalId) > 0;
+}
+
+function canonicalSpeciesFor(generation, speciesId, speciesName) {
+  const nationalId = nativeToNational(generation, speciesId);
+  return {
+    national_dex_id: nationalId || speciesId,
+    source_species_id: speciesId,
+    source_species_id_space: generation === 1 ? "gen1_internal" : generation === 2 ? "national_dex" : "gen3_internal",
+    name: speciesName
+  };
+}
+
+function canonicalFromPayload(payload) {
+  if (!payload.canonical) return null;
+  const canonical = payload.canonical;
+  const species = canonical.species || {
+    national_dex_id: canonical.species_national_id || nativeToNational(payload.generation, payload.species_id),
+    source_species_id: payload.species_id,
+    source_species_id_space: payload.generation === 1 ? "gen1_internal" : payload.generation === 2 ? "national_dex" : "gen3_internal",
+    name: canonical.species_name || payload.species_name
+  };
+  return {
+    source_generation: canonical.source_generation || payload.generation,
+    source_game: canonical.source_game || payload.game,
+    species,
+    species_national_id: species.national_dex_id,
+    species_name: species.name || canonical.species_name || payload.species_name,
+    nickname: canonical.nickname || payload.nickname || species.name || payload.species_name,
+    level: Number(canonical.level || payload.level || 1),
+    ot_name: canonical.ot_name || payload.ot_name || "TRAINER",
+    trainer_id: Number(canonical.trainer_id || payload.trainer_id || 0),
+    moves: canonical.moves || [],
+    held_item: canonical.held_item || null,
+    ability: canonical.ability || null,
+    nature: canonical.nature || null,
+    metadata: canonical.metadata || {}
+  };
+}
 
 const gen1 = {
   partyOffset: 0x2f2c,
@@ -204,6 +304,39 @@ function decodeGen3Text(bytes) {
   return chars.join("").trim();
 }
 
+function encodeGbcText(text, size = 11) {
+  const bytes = new Uint8Array(size);
+  bytes.fill(0x50);
+  const value = String(text || "").slice(0, size - 1);
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 65 && code <= 90) bytes[index] = 0x80 + code - 65;
+    else if (code >= 97 && code <= 122) bytes[index] = 0xa0 + code - 97;
+    else if (code >= 48 && code <= 57) bytes[index] = 0xf6 + code - 48;
+    else if (value[index] === " ") bytes[index] = 0x7f;
+    else if (value[index] === "-") bytes[index] = 0xe3;
+    else bytes[index] = 0x7f;
+  }
+  return bytes;
+}
+
+function encodeGen3Text(text, size) {
+  const bytes = new Uint8Array(size);
+  bytes.fill(0xff);
+  const value = String(text || "").slice(0, size);
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 65 && code <= 90) bytes[index] = 0xbb + code - 65;
+    else if (code >= 97 && code <= 122) bytes[index] = 0xd5 + code - 97;
+    else if (code >= 48 && code <= 57) bytes[index] = 0xa1 + code - 48;
+    else if (value[index] === " ") bytes[index] = 0x00;
+    else if (value[index] === ".") bytes[index] = 0xad;
+    else if (value[index] === "-") bytes[index] = 0xae;
+    else bytes[index] = 0x00;
+  }
+  return bytes;
+}
+
 function sumRange(data, start, end) {
   let sum = 0;
   for (let index = start; index <= end; index += 1) sum = (sum + data[index]) & 0xffff;
@@ -256,7 +389,8 @@ function parseGen1Party(save) {
       level: save.bytes[monStart + 0x21],
       nickname: decodeGbcText(save.bytes.slice(nickStart, nickStart + gen1.nameSize)) || speciesName,
       ot_name: decodeGbcText(save.bytes.slice(otStart, otStart + gen1.nameSize)),
-      trainer_id: (save.bytes[monStart + 0x0c] << 8) | save.bytes[monStart + 0x0d]
+      trainer_id: (save.bytes[monStart + 0x0c] << 8) | save.bytes[monStart + 0x0d],
+      moves: Array.from(save.bytes.slice(monStart + 0x08, monStart + 0x0c)).filter(Boolean)
     });
   }
   return party;
@@ -280,6 +414,8 @@ function parseGen2Party(save) {
       nickname: decodeGbcText(save.bytes.slice(nickStart, nickStart + constants.nameSize)),
       ot_name: decodeGbcText(save.bytes.slice(otStart, otStart + constants.nameSize)),
       trainer_id: (save.bytes[monStart + 0x06] << 8) | save.bytes[monStart + 0x07],
+      held_item_id: save.bytes[monStart + 0x01] || null,
+      moves: Array.from(save.bytes.slice(monStart + 0x02, monStart + 0x06)).filter(Boolean),
       is_egg: speciesEntry === 0xfd
     });
   }
@@ -324,15 +460,18 @@ function exportGbcPayload(save, constants, location, generation, game, format) {
     display_summary: displaySummary,
     summary,
     raw: { format, data_base64: rawBase64 },
-    canonical: generation === 1 ? null : {
+    canonical: {
       source_generation: generation,
       source_game: game,
-      species_national_id: pokemon.species_id,
+      species: canonicalSpeciesFor(generation, pokemon.species_id, pokemon.species_name),
+      species_national_id: canonicalSpeciesFor(generation, pokemon.species_id, pokemon.species_name).national_dex_id,
       species_name: pokemon.species_name,
       nickname: pokemon.nickname || pokemon.species_name,
       level: pokemon.level,
       ot_name: pokemon.ot_name,
-      trainer_id: pokemon.trainer_id
+      trainer_id: pokemon.trainer_id,
+      moves: (pokemon.moves || []).map((moveId) => ({ move_id: moveId, source_generation: generation })),
+      held_item: pokemon.held_item_id ? { item_id: pokemon.held_item_id, source_generation: generation } : null
     },
     compatibility_report: {
       compatible: true,
@@ -350,7 +489,8 @@ function exportGbcPayload(save, constants, location, generation, game, format) {
 
 function applyGbcPayload(save, constants, location, payload, generation) {
   if (payload.generation !== generation) {
-    throw new Error(`Payload recebido e Gen ${payload.generation}; este save e Gen ${generation}. Cross-generation ainda esta protegido por feature guard.`);
+    applyCanonicalToGbc(save, constants, location, payload, generation);
+    return;
   }
   const raw = base64ToBytes(payload.raw_data_base64 || (payload.raw && payload.raw.data_base64));
   if (raw.length !== constants.monSize + constants.nameSize + constants.nameSize) {
@@ -364,6 +504,59 @@ function applyGbcPayload(save, constants, location, payload, generation) {
   save.bytes.set(raw.slice(0, constants.monSize), monStart);
   save.bytes.set(raw.slice(constants.monSize, constants.monSize + constants.nameSize), otStart);
   save.bytes.set(raw.slice(constants.monSize + constants.nameSize), nickStart);
+  if (generation === 1) {
+    save.bytes[gen1.checksumOffset] = gen1Checksum(save.bytes);
+  } else {
+    if (constants.secondaryStart !== undefined) {
+      save.bytes.set(save.bytes.slice(constants.primaryStart, constants.primaryEnd + 1), constants.secondaryStart);
+      writeLe16(save.bytes, constants.secondaryChecksum, sumRange(save.bytes, constants.secondaryStart, constants.secondaryEnd));
+    }
+    writeLe16(save.bytes, constants.primaryChecksum, sumRange(save.bytes, constants.primaryStart, constants.primaryEnd));
+  }
+}
+
+function compatibleMovesForGeneration(canonical, generation) {
+  const maxMove = generation === 1 ? 165 : generation === 2 ? 251 : 354;
+  const moves = (canonical.moves || [])
+    .map((move) => Number(move.move_id || move))
+    .filter((moveId) => moveId > 0 && moveId <= maxMove)
+    .slice(0, 4);
+  return moves.length ? moves : [1];
+}
+
+function applyCanonicalToGbc(save, constants, location, payload, generation) {
+  const canonical = canonicalFromPayload(payload);
+  if (!canonical) throw new Error("Payload cross-generation sem canonical.");
+  const nationalId = Number(canonical.species.national_dex_id);
+  const speciesId = nationalToNative(generation, nationalId);
+  if (!speciesId) throw new Error(`${canonical.species.name} National Dex #${nationalId} nao existe na Gen ${generation}.`);
+  const index = Number(location.split(":")[1]);
+  const monStart = constants.dataOffset + index * constants.monSize;
+  const otStart = constants.otOffset + index * constants.nameSize;
+  const nickStart = constants.nickOffset + index * constants.nameSize;
+  const mon = new Uint8Array(constants.monSize);
+  const level = Math.max(1, Math.min(100, Number(canonical.level || 1)));
+  const moves = compatibleMovesForGeneration(canonical, generation);
+
+  mon[0] = speciesId;
+  if (generation === 1) {
+    mon[0x03] = level;
+    moves.forEach((moveId, offset) => { mon[0x08 + offset] = moveId; });
+    mon[0x0c] = (canonical.trainer_id >> 8) & 0xff;
+    mon[0x0d] = canonical.trainer_id & 0xff;
+    mon[0x21] = level;
+  } else {
+    mon[0x01] = 0;
+    moves.forEach((moveId, offset) => { mon[0x02 + offset] = moveId; });
+    mon[0x06] = (canonical.trainer_id >> 8) & 0xff;
+    mon[0x07] = canonical.trainer_id & 0xff;
+    mon[0x1f] = level;
+  }
+
+  save.bytes[constants.partyOffset + 1 + index] = speciesId;
+  save.bytes.set(mon, monStart);
+  save.bytes.set(encodeGbcText(canonical.ot_name || "TRAINER", constants.nameSize), otStart);
+  save.bytes.set(encodeGbcText(canonical.nickname || canonical.species.name, constants.nameSize), nickStart);
   if (generation === 1) {
     save.bytes[gen1.checksumOffset] = gen1Checksum(save.bytes);
   } else {
@@ -400,6 +593,15 @@ function decryptGen3Secure(raw) {
   return secure;
 }
 
+function encryptGen3Secure(secure, personality, trainerId) {
+  const key = (personality ^ trainerId) >>> 0;
+  const encrypted = new Uint8Array(gen3.secureSize);
+  for (let offset = 0; offset < gen3.secureSize; offset += 4) {
+    writeLe32(encrypted, offset, (readLe32(secure, offset) ^ key) >>> 0);
+  }
+  return encrypted;
+}
+
 function parseGen3Pokemon(raw) {
   if (raw.length !== gen3.monSize) throw new Error("Struct Pokemon Gen 3 invalido.");
   const personality = readLe32(raw, 0);
@@ -408,7 +610,15 @@ function parseGen3Pokemon(raw) {
   const secure = decryptGen3Secure(raw);
   if (gen3BoxChecksum(secure) !== checksum) throw new Error("Checksum interno do Pokemon Gen 3 invalido.");
   const growthIndex = gen3.substructOrders[personality % 24][0];
-  const speciesId = readLe16(secure, growthIndex * 12);
+  const attacksIndex = gen3.substructOrders[personality % 24][1];
+  const growth = growthIndex * 12;
+  const attacks = attacksIndex * 12;
+  const speciesId = readLe16(secure, growth);
+  const moves = [];
+  for (let offset = 0; offset < 4; offset += 1) {
+    const moveId = readLe16(secure, attacks + offset * 2);
+    if (moveId) moves.push(moveId);
+  }
   return {
     species_id: speciesId,
     species_name: speciesNames[speciesId] || `Species #${speciesId}`,
@@ -416,8 +626,19 @@ function parseGen3Pokemon(raw) {
     nickname: decodeGen3Text(raw.slice(0x08, 0x12)),
     ot_name: decodeGen3Text(raw.slice(0x14, 0x1b)),
     trainer_id: trainerId,
+    held_item_id: readLe16(secure, growth + 2) || null,
+    moves,
     is_egg: speciesId === 412 || Boolean(raw[0x13] & 0x04)
   };
+}
+
+function deterministicPersonality(canonical) {
+  let value = 0x9e3779b9;
+  const text = `${canonical.species.national_dex_id}:${canonical.nickname}:${canonical.trainer_id}`;
+  for (let index = 0; index < text.length; index += 1) {
+    value = ((value * 33) ^ text.charCodeAt(index)) >>> 0;
+  }
+  return value >>> 0;
 }
 
 function readGen3Slot(bytes, base) {
@@ -490,6 +711,8 @@ function parseGen3Party(save) {
       nickname: details.nickname || speciesName,
       ot_name: details.ot_name,
       trainer_id: details.trainer_id,
+      held_item_id: details.held_item_id,
+      moves: details.moves,
       is_egg: details.is_egg
     });
   }
@@ -531,12 +754,15 @@ function exportGen3Payload(save, location) {
     canonical: {
       source_generation: 3,
       source_game: save.game,
-      species_national_id: pokemon.species_id,
+      species: canonicalSpeciesFor(3, pokemon.species_id, pokemon.species_name),
+      species_national_id: canonicalSpeciesFor(3, pokemon.species_id, pokemon.species_name).national_dex_id,
       species_name: pokemon.species_name,
       nickname: pokemon.nickname || pokemon.species_name,
       level: pokemon.level,
       ot_name: pokemon.ot_name,
-      trainer_id: pokemon.trainer_id
+      trainer_id: pokemon.trainer_id,
+      moves: (pokemon.moves || []).map((moveId) => ({ move_id: moveId, source_generation: 3 })),
+      held_item: pokemon.held_item_id ? { item_id: pokemon.held_item_id, source_generation: 3 } : null
     },
     raw: { format: "gen3-party-v1", data_base64: rawBase64 },
     compatibility_report: {
@@ -554,10 +780,53 @@ function exportGen3Payload(save, location) {
 }
 
 function applyGen3Payload(save, location, payload) {
-  if (payload.generation !== 3) throw new Error(`Payload recebido e Gen ${payload.generation}; este save e Gen 3. Cross-generation ainda esta protegido por feature guard.`);
+  if (payload.generation !== 3) {
+    applyCanonicalToGen3(save, location, payload);
+    return;
+  }
   const raw = base64ToBytes(payload.raw_data_base64 || (payload.raw && payload.raw.data_base64));
   if (raw.length !== gen3.monSize) throw new Error("Payload Gen 3 invalido.");
   parseGen3Pokemon(raw);
+  const index = Number(location.split(":")[1]);
+  const section1 = save.slot.sectionOffsets[1];
+  const start = section1 + save.layout.partyOffset + index * gen3.monSize;
+  save.bytes.set(raw, start);
+  writeLe16(save.bytes, section1 + 0xff6, gen3SectorChecksum(save.bytes, section1));
+}
+
+function applyCanonicalToGen3(save, location, payload) {
+  const canonical = canonicalFromPayload(payload);
+  if (!canonical) throw new Error("Payload cross-generation sem canonical.");
+  const nationalId = Number(canonical.species.national_dex_id);
+  const speciesId = nationalToNative(3, nationalId);
+  if (!speciesId) throw new Error(`${canonical.species.name} National Dex #${nationalId} nao existe na Gen 3.`);
+  const personality = deterministicPersonality(canonical);
+  const trainerId = Number(canonical.trainer_id || 0) >>> 0;
+  const secure = new Uint8Array(gen3.secureSize);
+  const order = gen3.substructOrders[personality % 24];
+  const growth = order[0] * 12;
+  const attacks = order[1] * 12;
+  const level = Math.max(1, Math.min(100, Number(canonical.level || 1)));
+  const moves = compatibleMovesForGeneration(canonical, 3);
+
+  writeLe16(secure, growth, speciesId);
+  writeLe32(secure, growth + 4, 0);
+  moves.forEach((moveId, offset) => {
+    writeLe16(secure, attacks + offset * 2, moveId);
+    secure[attacks + 8 + offset] = 35;
+  });
+
+  const raw = new Uint8Array(gen3.monSize);
+  writeLe32(raw, 0, personality);
+  writeLe32(raw, 4, trainerId);
+  raw.set(encodeGen3Text(canonical.nickname || canonical.species.name, 10), 8);
+  raw[18] = 2;
+  raw.set(encodeGen3Text(canonical.ot_name || "TRAINER", 7), 20);
+  writeLe16(raw, 28, gen3BoxChecksum(secure));
+  raw.set(encryptGen3Secure(secure, personality, trainerId), gen3.secureOffset);
+  raw[84] = level;
+  parseGen3Pokemon(raw);
+
   const index = Number(location.split(":")[1]);
   const section1 = save.slot.sectionOffsets[1];
   const start = section1 + save.layout.partyOffset + index * gen3.monSize;
@@ -820,31 +1089,15 @@ function handlePreflightRequired(message) {
   const payload = message.received_payload;
   peerPayload = payload;
   peerOfferEl.textContent = payload.display_summary || (payload.summary && payload.summary.display_summary) || "-";
-  const report = {
-    compatible: true,
-    mode: message.derived_mode || "same_generation",
-    source_generation: message.source_generation,
-    target_generation: message.target_generation,
-    blocking_reasons: [],
-    warnings: [],
-    data_loss: [],
-    suggested_actions: [],
-    transformations: [],
-    removed_moves: [],
-    removed_items: [],
-    removed_fields: [],
-    normalized_species: {},
-    requires_user_confirmation: false
-  };
+  const report = buildWebCompatibilityReport(payload, message);
   if (!loadedSave) {
     report.compatible = false;
     report.blocking_reasons.push("Nenhum save carregado.");
-  } else if (payload.generation !== loadedSave.generation) {
-    report.compatible = false;
-    report.blocking_reasons.push(`Frontend web ainda nao aplica cross-generation localmente: payload Gen ${payload.generation}, save Gen ${loadedSave.generation}.`);
   } else if (!(payload.raw_data_base64 || (payload.raw && payload.raw.data_base64))) {
-    report.compatible = false;
-    report.blocking_reasons.push("Payload same-generation sem raw data.");
+    if (payload.generation === loadedSave.generation) {
+      report.compatible = false;
+      report.blocking_reasons.push("Payload same-generation sem raw data.");
+    }
   }
   send({
     type: "preflight_result",
@@ -863,13 +1116,78 @@ function handlePreflightRequired(message) {
   }
 }
 
+function buildWebCompatibilityReport(payload, message) {
+  const targetGeneration = loadedSave ? loadedSave.generation : message.target_generation;
+  const report = {
+    compatible: true,
+    mode: message.derived_mode || "same_generation",
+    source_generation: message.source_generation,
+    target_generation: targetGeneration,
+    blocking_reasons: [],
+    warnings: [],
+    data_loss: [],
+    suggested_actions: [],
+    transformations: [],
+    removed_moves: [],
+    removed_items: [],
+    removed_fields: [],
+    normalized_species: {},
+    requires_user_confirmation: false
+  };
+  if (!loadedSave || payload.generation === targetGeneration) return report;
+  const canonical = canonicalFromPayload(payload);
+  if (!canonical) {
+    report.compatible = false;
+    report.blocking_reasons.push("Payload cross-generation sem canonical.");
+    return report;
+  }
+  const nationalId = Number(canonical.species.national_dex_id);
+  const targetSpeciesId = nationalToNative(targetGeneration, nationalId);
+  report.normalized_species = {
+    national_dex_id: nationalId,
+    source_species_id: canonical.species.source_species_id,
+    source_species_id_space: canonical.species.source_species_id_space,
+    target_species_id: targetSpeciesId,
+    target_species_id_space: targetGeneration === 1 ? "gen1_internal" : targetGeneration === 2 ? "national_dex" : "gen3_internal"
+  };
+  if (!speciesExistsInGeneration(nationalId, targetGeneration)) {
+    report.compatible = false;
+    report.blocking_reasons.push(`${canonical.species.name} National Dex #${nationalId} nao existe na Gen ${targetGeneration}.`);
+    return report;
+  }
+  report.transformations.push(`Species National Dex #${nationalId} convertido para ID ${targetSpeciesId} na Gen ${targetGeneration}.`);
+  const maxMove = targetGeneration === 1 ? 165 : targetGeneration === 2 ? 251 : 354;
+  for (const move of canonical.moves || []) {
+    const moveId = Number(move.move_id || move);
+    if (moveId > maxMove) {
+      report.removed_moves.push({ move_id: moveId, name: `Move #${moveId}` });
+      if (!report.data_loss.includes("moves")) report.data_loss.push("moves");
+    }
+  }
+  if (canonical.held_item && canonical.held_item.item_id && targetGeneration === 1) {
+    report.removed_items.push({ item_id: canonical.held_item.item_id, name: `Item #${canonical.held_item.item_id}` });
+    report.data_loss.push("held_item");
+  }
+  if (targetGeneration < 3) {
+    if (canonical.ability) {
+      report.removed_fields.push("ability");
+      report.data_loss.push("ability");
+    }
+    if (canonical.nature) {
+      report.removed_fields.push("nature");
+      report.data_loss.push("nature");
+    }
+  }
+  return report;
+}
+
 function supportedTradeModes(generation) {
   void generation;
-  return ["same_generation"];
+  return ["same_generation", "time_capsule_gen1_gen2", "forward_transfer_to_gen3", "legacy_downconvert_experimental"];
 }
 
 function supportedProtocols() {
-  return ["raw_same_generation"];
+  return ["raw_same_generation", "canonical_cross_generation"];
 }
 
 async function startRoom(action) {

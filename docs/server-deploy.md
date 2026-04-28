@@ -22,14 +22,14 @@ ALLOW_CROSS_GENERATION=false
 ENABLED_TRADE_MODES=
 ```
 
-`ALLOW_CROSS_GENERATION=false` e o padrao recomendado. Para testar cross-generation em um modo especifico, habilite a flag global e liste somente o modo desejado:
+Para operar com troca automatica entre Gen 1/2/3, habilite a flag global e liste todos os modos derivados usados pelo servidor:
 
 ```text
 ALLOW_CROSS_GENERATION=true
-ENABLED_TRADE_MODES=time_capsule_gen1_gen2
+ENABLED_TRADE_MODES=time_capsule_gen1_gen2,forward_transfer_to_gen3,legacy_downconvert_experimental
 ```
 
-Cada modo precisa ser habilitado separadamente. Nao use `legacy_downconvert_experimental` em producao sem revisar os relatórios de perda de dados no client.
+`ALLOW_CROSS_GENERATION=true` sozinho nao libera cross-generation. Cada modo derivado precisa aparecer em `ENABLED_TRADE_MODES`. O client valida o Pokemon recebido no preflight e registra perdas removiveis no relatorio local.
 
 ## Nginx Reverse Proxy
 

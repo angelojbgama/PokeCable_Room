@@ -46,18 +46,18 @@ wss://9kernel.vps-kinghost.net/ws
 
 O menu nao pede para escolher Time Capsule, Transfer ou Downconvert. A sala e unica: cada jogador escolhe o save e o Pokemon, e o sistema valida automaticamente se a troca e same-generation ou cross-generation.
 
-Para testes cross-generation, use `Configurar cross-generation` no menu ou edite `config.json` e habilite somente os modos validados:
+O client atualizado ja anuncia suporte tecnico a cross-generation. Use `Configurar cross-generation` no menu apenas para trocar a politica ou desligar testes. Config padrao:
 
 ```json
 "cross_generation": {
   "enabled": true,
   "enabled_modes": ["time_capsule_gen1_gen2", "forward_transfer_to_gen3", "legacy_downconvert_experimental"],
-  "policy": "safe_default",
+  "policy": "auto_retrocompat",
   "unsafe_auto_confirm_data_loss": false
 }
 ```
 
-O servidor tambem precisa estar com os mesmos modos em `ENABLED_TRADE_MODES`. Se qualquer lado falhar no preflight, a troca inteira e bloqueada antes de gravar save.
+O servidor tambem precisa estar com os mesmos modos em `ENABLED_TRADE_MODES`. Se qualquer lado falhar no preflight, a troca inteira e bloqueada antes de gravar save. Em `auto_retrocompat`, perdas removiveis sao registradas e a confirmacao normal da troca continua sendo a unica confirmacao do usuario.
 
 ## Backup E Restore
 
