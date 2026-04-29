@@ -6,6 +6,8 @@ from pathlib import Path
 
 from pokecable_room.canonical import CanonicalMove
 from pokecable_room.converters import get_converter
+from pokecable_room.data.species import national_to_native
+from pokecable_room.evolutions import apply_trade_evolution_to_parser
 from pokecable_room.parsers.gen1 import Gen1Parser
 from pokecable_room.parsers.gen2 import Gen2Parser
 from pokecable_room.parsers.gen3 import Gen3Parser
@@ -283,6 +285,46 @@ class ConverterTests(unittest.TestCase):
             self.assertIn("held_item", result.data_loss)
             self.assertIsNone(result.canonical_after.held_item)
             self.assertTrue(target.validate())
+
+    def test_gen2_item_trade_species_arrive_in_gen1_without_evolving(self) -> None:
+        cases = [
+            (61, 0x52, 61, "Poliwhirl"),
+            (79, 0x52, 79, "Slowpoke"),
+            (95, 0x8F, 95, "Onix"),
+            (123, 0x8F, 123, "Scyther"),
+            (117, 0x97, 117, "Seadra"),
+            (137, 0xAC, 137, "Porygon"),
+        ]
+        for source_species, item_id, expected_national, expected_name in cases:
+            with self.subTest(source=expected_name):
+                with tempfile.TemporaryDirectory() as tempdir:
+                    root = Path(tempdir)
+                    source = self._parser(Gen2Parser, root / "crystal.sav", synthetic_gen2_save())
+                    target = self._parser(Gen1Parser, root / "red.sav", synthetic_gen1_save())
+                    source.set_species_id("party:0", source_species)
+                    source.set_held_item_id("party:0", item_id)
+
+                    conversion = get_converter(2, 1).apply_to_save(
+                        target,
+                        "party:1",
+                        source.export_canonical("party:0"),
+                        policy="auto_retrocompat",
+                    )
+                    evolution = apply_trade_evolution_to_parser(
+                        target,
+                        "party:1",
+                        item_based_evolutions_enabled=True,
+                    )
+
+                    self.assertTrue(conversion.wrote_to_save)
+                    self.assertIn("held_item", conversion.data_loss)
+                    self.assertIsNone(conversion.canonical_after.held_item)
+                    self.assertFalse(evolution.evolved)
+                    self.assertEqual(target.get_species_id("party:1"), national_to_native(1, expected_national))
+                    self.assertEqual(target.list_party()[1].species_name, expected_name)
+                    self.assertIsNone(target.get_held_item_id("party:1"))
+                    self.assertTrue(target.is_pokedex_caught(expected_national))
+                    self.assertTrue(target.validate())
 
     def test_downconvert_removes_ability_nature_and_reports_data_loss(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
