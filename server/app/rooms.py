@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import timedelta
+from typing import Iterable
 
 from .models import (
     CANONICAL_CROSS_GENERATION,
@@ -39,15 +40,14 @@ class RoomManager:
     ) -> None:
         self.room_timeout_seconds = room_timeout_seconds or int(os.getenv("ROOM_TIMEOUT_SECONDS", "900"))
         self.max_rooms = max_rooms or int(os.getenv("MAX_ROOMS", "200"))
-        # cross_generation_enabled/enabled_trade_modes are accepted for legacy
-        # deploy configs, but no longer gate product behavior. The server
-        # derives directions automatically and the preflight decides by Pokemon.
-        self.cross_generation_enabled = True
-        self.enabled_trade_modes = {
-            TIME_CAPSULE_GEN1_GEN2,
-            FORWARD_TRANSFER_TO_GEN3,
-            LEGACY_DOWNCONVERT_EXPERIMENTAL,
-        }
+        self.cross_generation_enabled = (
+            bool(cross_generation_enabled)
+            if cross_generation_enabled is not None
+            else os.getenv("ALLOW_CROSS_GENERATION", "false").strip().lower() in {"1", "true", "yes", "on"}
+        )
+        self.enabled_trade_modes = self._normalize_enabled_trade_modes(
+            enabled_trade_modes if enabled_trade_modes is not None else os.getenv("ENABLED_TRADE_MODES", "")
+        )
         self.rooms: dict[str, Room] = {}
         self.client_rooms: dict[str, tuple[str, PlayerSlot]] = {}
         self._lock = asyncio.Lock()
@@ -212,6 +212,8 @@ class RoomManager:
             if not room.has_both_preflight_ok():
                 raise RoomError("preflight_required", "Aguardando validacao preflight dos dois jogadores.")
             room.confirmations[slot] = True
+            if room.is_committed():
+                room.write_phase = "preparing"
             return room, slot, room.is_committed()
 
     async def submit_preflight_result(
@@ -236,6 +238,49 @@ class RoomManager:
             if blocked:
                 room.reset_trade_state("preflight_failed")
             return room, slot, blocked, ready, reports
+
+    async def submit_write_ready(
+        self,
+        *,
+        client_id: str,
+        ready: bool,
+        metadata: dict[str, object] | None = None,
+        error: str = "",
+    ) -> tuple[Room, PlayerSlot, bool, bool]:
+        async with self._lock:
+            room, slot = self._room_for_client_locked(client_id)
+            if not room.is_committed():
+                raise RoomError("write_not_ready", "Aguardando confirmacao dos dois jogadores antes da preparacao de escrita.")
+            room.write_ready[slot] = bool(ready)
+            room.write_errors[slot] = str(error or "")
+            room.write_metadata[slot] = dict(metadata or {}) if metadata is not None else None
+            blocked = not bool(ready)
+            if blocked:
+                room.write_phase = "failed"
+                room.reset_trade_state("write_prepare_failed")
+                return room, slot, True, False
+            room.write_phase = "prepared" if room.has_both_write_ready() else "preparing"
+            return room, slot, False, room.has_both_write_ready()
+
+    async def submit_write_done(
+        self,
+        *,
+        client_id: str,
+        success: bool,
+        error: str = "",
+    ) -> tuple[Room, PlayerSlot, bool, bool]:
+        async with self._lock:
+            room, slot = self._room_for_client_locked(client_id)
+            if not room.has_both_write_ready():
+                raise RoomError("write_not_ready", "Aguardando os dois jogadores prepararem a escrita.")
+            room.write_done[slot] = bool(success)
+            room.write_errors[slot] = str(error or "")
+            failed = not bool(success)
+            if failed:
+                room.write_phase = "failed"
+                return room, slot, True, False
+            room.write_phase = "completed" if room.has_both_write_done() else "committing"
+            return room, slot, False, room.has_both_write_done()
 
     def preflight_requests(self, room: Room) -> dict[PlayerSlot, dict]:
         if not room.has_both_offers() or not room.is_ready():
@@ -352,6 +397,19 @@ class RoomManager:
         room.derived_modes = {"A": mode_for_a, "B": mode_for_b}
         required_cross_modes = {mode for mode in room.derived_modes.values() if mode != SAME_GENERATION}
         if required_cross_modes:
+            if not self.cross_generation_enabled:
+                raise RoomError("game_mismatch", "Este servidor nao habilitou troca entre geracoes.")
+            for slot, mode in room.derived_modes.items():
+                if mode == SAME_GENERATION:
+                    continue
+                if mode not in self.enabled_trade_modes:
+                    peer_slot = room.peer_slot(slot)
+                    source_generation = room.players[peer_slot].generation
+                    target_generation = room.players[slot].generation
+                    raise RoomError(
+                        "game_mismatch",
+                        f"O modo necessario Gen {source_generation} -> Gen {target_generation} nao esta habilitado no servidor.",
+                    )
             for player in room.players.values():
                 if CANONICAL_CROSS_GENERATION not in player.supported_protocols:
                     raise RoomError(
@@ -374,3 +432,12 @@ class RoomManager:
             "data_loss": [],
             "suggested_actions": [],
         }
+
+    def _normalize_enabled_trade_modes(self, enabled_trade_modes: object) -> set[str]:
+        if isinstance(enabled_trade_modes, str):
+            values = [item.strip() for item in enabled_trade_modes.split(",") if item.strip()]
+        elif isinstance(enabled_trade_modes, Iterable):
+            values = [str(item).strip() for item in enabled_trade_modes if str(item).strip()]
+        else:
+            values = []
+        return {value for value in values if value in {TIME_CAPSULE_GEN1_GEN2, FORWARD_TRANSFER_TO_GEN3, LEGACY_DOWNCONVERT_EXPERIMENTAL}}

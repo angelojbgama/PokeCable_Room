@@ -17,8 +17,9 @@ def validate_payload_for_local_save(payload: PokemonPayload, local_generation: i
             )
         raise ValueError(
             f"Payload recebido e Gen {payload.generation}, mas o save local e Gen {local_generation}. "
-            "Cross-generation esta protegido por bloqueio de seguranca enquanto a camada de conversao local "
-            f"esta em desenvolvimento.{_format_report_hint(report)}"
+            "Raw payload de uma geracao nao pode ser gravado diretamente em save de outra geracao. "
+            "Para cross-generation, o client precisa usar o modelo canonico e um conversor local."
+            f"{_format_report_hint(report)}"
         )
 
 

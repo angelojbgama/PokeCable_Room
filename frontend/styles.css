@@ -301,6 +301,26 @@ button.ghost {
   overflow-wrap: anywhere;
 }
 
+.pokemon-summary {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.pokemon-summary-text {
+  display: block;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.pokemon-sprite {
+  width: 56px;
+  height: 56px;
+  image-rendering: pixelated;
+  object-fit: contain;
+}
+
 .log-panel {
   margin-top: 16px;
 }
@@ -381,6 +401,10 @@ pre {
 
 .team-preview-item strong {
   overflow-wrap: anywhere;
+}
+
+.team-preview-name {
+  min-width: 0;
 }
 
 .team-preview-item span {

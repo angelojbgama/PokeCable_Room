@@ -16,6 +16,13 @@ class ShowdownBattleResult:
     battle_id: str
     logs: list[str] = field(default_factory=list)
     finished: bool = False
+    requests: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class ShowdownHealthStatus:
+    status: str
+    detail: str = ""
 
 
 class ShowdownAdapter(Protocol):
@@ -37,6 +44,12 @@ class ShowdownAdapter(Protocol):
         ...
 
     async def forfeit(self, battle_id: str, client_id: str) -> ShowdownBattleResult:
+        ...
+
+    async def ping(self) -> ShowdownHealthStatus:
+        ...
+
+    async def close(self) -> None:
         ...
 
 
@@ -68,8 +81,17 @@ class LocalShowdownAdapter:
             "finished": False,
             "turn": 1,
             "player_ids": {"p1": player_a_id, "p2": player_b_id},
+            "requests": {
+                str(player_a_id or "A"): {"active": [{"moves": [{"move": "Tackle", "id": "tackle", "pp": 35, "maxpp": 35, "disabled": False}]}]},
+                str(player_b_id or "B"): {"active": [{"moves": [{"move": "Tackle", "id": "tackle", "pp": 35, "maxpp": 35, "disabled": False}]}]},
+            },
         }
-        return ShowdownBattleResult(battle_id=battle_id, logs=logs, finished=False)
+        return ShowdownBattleResult(
+            battle_id=battle_id,
+            logs=logs,
+            finished=False,
+            requests=dict(self._battles[battle_id]["requests"]),
+        )
 
     async def send_action(self, battle_id: str, client_id: str, action: str) -> ShowdownBattleResult:
         battle = self._require_battle(battle_id)
@@ -81,8 +103,14 @@ class LocalShowdownAdapter:
         if clean_action.lower() in {"forfeit", "ff", "desistir"}:
             logs.append(f"|win|opponent of {client_id}")
             battle["finished"] = True
+            battle["requests"] = {}
         battle["logs"].extend(logs)
-        return ShowdownBattleResult(battle_id=battle_id, logs=logs, finished=bool(battle["finished"]))
+        return ShowdownBattleResult(
+            battle_id=battle_id,
+            logs=logs,
+            finished=bool(battle["finished"]),
+            requests={} if battle["finished"] else dict(battle["requests"]),
+        )
 
     async def get_logs(self, battle_id: str) -> list[str]:
         return list(self._require_battle(battle_id)["logs"])
@@ -93,8 +121,15 @@ class LocalShowdownAdapter:
             return ShowdownBattleResult(battle_id=battle_id, logs=[], finished=True)
         logs = [f"|forfeit|{client_id}", f"|win|opponent of {client_id}"]
         battle["finished"] = True
+        battle["requests"] = {}
         battle["logs"].extend(logs)
-        return ShowdownBattleResult(battle_id=battle_id, logs=logs, finished=True)
+        return ShowdownBattleResult(battle_id=battle_id, logs=logs, finished=True, requests={})
+
+    async def ping(self) -> ShowdownHealthStatus:
+        return ShowdownHealthStatus(status="local_fallback")
+
+    async def close(self) -> None:
+        return None
 
     def _require_battle(self, battle_id: str) -> dict:
         try:
@@ -142,6 +177,7 @@ class ProcessShowdownAdapter(LocalShowdownAdapter):
                 battle_id=str(response.get("battle_id") or f"battle-{uuid.uuid4().hex[:12]}"),
                 logs=[str(item) for item in response.get("logs") or []],
                 finished=bool(response.get("finished")),
+                requests={str(key): value for key, value in dict(response.get("requests") or {}).items()},
             )
             self._mirror_result(result, player_a_id=player_a_id, player_b_id=player_b_id)
             return result
@@ -162,6 +198,7 @@ class ProcessShowdownAdapter(LocalShowdownAdapter):
                 battle_id=battle_id,
                 logs=[str(item) for item in response.get("logs") or []],
                 finished=bool(response.get("finished")),
+                requests={str(key): value for key, value in dict(response.get("requests") or {}).items()},
             )
             self._mirror_result(result)
             return result
@@ -184,10 +221,21 @@ class ProcessShowdownAdapter(LocalShowdownAdapter):
                 battle_id=battle_id,
                 logs=[str(item) for item in response.get("logs") or []],
                 finished=True,
+                requests={},
             )
             self._mirror_result(result)
             return result
         return await super().forfeit(battle_id, client_id)
+
+    async def ping(self) -> ShowdownHealthStatus:
+        response = await self._request_worker({"type": "ping"})
+        if response and response.get("pong"):
+            return ShowdownHealthStatus(status="process_worker")
+        return ShowdownHealthStatus(status="showdown_unavailable", detail="worker_ping_failed")
+
+    async def close(self) -> None:
+        async with self._process_lock:
+            await self._stop_process_locked()
 
     async def _request_worker(self, request: dict[str, Any]) -> dict[str, Any] | None:
         if not self.command:
@@ -250,10 +298,17 @@ class ProcessShowdownAdapter(LocalShowdownAdapter):
     def _mirror_result(self, result: ShowdownBattleResult, *, player_a_id: str | None = None, player_b_id: str | None = None) -> None:
         battle = self._battles.setdefault(
             result.battle_id,
-            {"logs": [], "finished": False, "turn": 1, "player_ids": {"p1": player_a_id, "p2": player_b_id}},
+            {
+                "logs": [],
+                "finished": False,
+                "turn": 1,
+                "player_ids": {"p1": player_a_id, "p2": player_b_id},
+                "requests": {},
+            },
         )
         battle["logs"].extend(result.logs)
         battle["finished"] = result.finished
+        battle["requests"] = dict(result.requests or {})
 
     async def _local_or_finished_error(self, battle_id: str, client_id: str, action: str) -> ShowdownBattleResult:
         try:
@@ -294,6 +349,7 @@ class HttpShowdownAdapter(LocalShowdownAdapter):
                 battle_id=str(response.get("battle_id") or f"battle-{uuid.uuid4().hex[:12]}"),
                 logs=[str(item) for item in response.get("logs") or []],
                 finished=bool(response.get("finished")),
+                requests={str(key): value for key, value in dict(response.get("requests") or {}).items()},
             )
         return await super().create_battle(
             format_id,
@@ -310,6 +366,7 @@ class HttpShowdownAdapter(LocalShowdownAdapter):
                 battle_id=battle_id,
                 logs=[str(item) for item in response.get("logs") or []],
                 finished=bool(response.get("finished")),
+                requests={str(key): value for key, value in dict(response.get("requests") or {}).items()},
             )
         return await super().send_action(battle_id, client_id, action)
 
@@ -326,8 +383,18 @@ class HttpShowdownAdapter(LocalShowdownAdapter):
                 battle_id=battle_id,
                 logs=[str(item) for item in response.get("logs") or []],
                 finished=True,
+                requests={},
             )
         return await super().forfeit(battle_id, client_id)
+
+    async def ping(self) -> ShowdownHealthStatus:
+        response = await self._get("/ping")
+        if response and response.get("pong"):
+            return ShowdownHealthStatus(status="http_bridge")
+        return ShowdownHealthStatus(status="showdown_unavailable", detail="bridge_ping_failed")
+
+    async def close(self) -> None:
+        return None
 
     async def _post(self, path: str, payload: dict) -> dict | None:
         return await asyncio.to_thread(self._request, path, payload)
@@ -360,6 +427,22 @@ def build_showdown_adapter() -> ShowdownAdapter:
     if command:
         return ProcessShowdownAdapter(command)
     return LocalShowdownAdapter()
+
+
+async def adapter_health_status(adapter: ShowdownAdapter) -> ShowdownHealthStatus:
+    try:
+        return await adapter.ping()
+    except Exception as exc:
+        return ShowdownHealthStatus(status="showdown_unavailable", detail=str(exc))
+
+
+async def ensure_required_showdown(adapter: ShowdownAdapter) -> None:
+    if os.getenv("SHOWDOWN_REQUIRED", "false").strip().lower() not in {"1", "true", "yes", "on"}:
+        return
+    status = await adapter_health_status(adapter)
+    if status.status in {"local_fallback", "showdown_unavailable"}:
+        detail = f" ({status.detail})" if status.detail else ""
+        raise RuntimeError(f"SHOWDOWN_REQUIRED=true, mas o adapter de batalha nao esta pronto: {status.status}{detail}")
 
 
 def _team_label(team: list[dict]) -> str:

@@ -63,16 +63,17 @@ class BattleManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(ready)
         self.assertIsNone(room.players["A"].team[0]["original_data"]["raw_data_base64"])
 
-        _room, _slot, started, logs = await self.manager.confirm_battle(client_id="a")
+        _room, _slot, started, result = await self.manager.confirm_battle(client_id="a")
         self.assertFalse(started)
-        room, _slot, started, logs = await self.manager.confirm_battle(client_id="b")
+        room, _slot, started, result = await self.manager.confirm_battle(client_id="b")
         self.assertTrue(started)
         self.assertTrue(room.battle_id)
-        self.assertIn("|start|", logs)
+        self.assertIn("|start|", result.logs)
+        self.assertTrue(result.requests)
 
-        _room, _slot, logs, finished = await self.manager.send_action(client_id="a", action="move 1")
-        self.assertFalse(finished)
-        self.assertTrue(any("|choice|a|move 1" == line for line in logs))
+        _room, _slot, result = await self.manager.send_action(client_id="a", action="move 1")
+        self.assertFalse(result.finished)
+        self.assertTrue(any("|choice|a|move 1" == line for line in result.logs))
 
     async def test_cross_generation_battle_uses_highest_generation_format(self) -> None:
         room, _slot = await self.manager.create_room(
@@ -103,12 +104,19 @@ class BattleManagerTests(unittest.IsolatedAsyncioTestCase):
         await self.manager.offer_team(client_id="a", team=canonical_team("Mew"))
         await self.manager.offer_team(client_id="b", team=canonical_team("Pikachu"))
         await self.manager.confirm_battle(client_id="a")
-        room, _slot, _started, _logs = await self.manager.confirm_battle(client_id="b")
+        room, _slot, _started, _result = await self.manager.confirm_battle(client_id="b")
 
-        room, _slot, logs = await self.manager.forfeit(client_id="a")
+        room, _slot, result = await self.manager.forfeit(client_id="a")
 
         self.assertEqual(room.status, "finished")
-        self.assertTrue(any("|forfeit|a" == line for line in logs))
+        self.assertTrue(any("|forfeit|a" == line for line in result.logs))
+
+    async def test_cleanup_expired_removes_battle_room(self) -> None:
+        manager = BattleManager(room_timeout_seconds=0, max_rooms=10, adapter=LocalShowdownAdapter())
+        await manager.create_room(room_name="expired", password="pw", client_id="a", generation=3, game="pokemon_emerald")
+        expired = await manager.cleanup_expired()
+        self.assertEqual(expired, ["expired"])
+        self.assertNotIn("expired", manager.rooms)
 
     async def test_process_showdown_adapter_uses_persistent_json_lines_worker(self) -> None:
         worker_source = """
@@ -153,6 +161,7 @@ for line in sys.stdin:
                 )
                 self.assertEqual(result.battle_id, "worker-battle-1")
                 self.assertEqual(result.logs, ["|worker_start|"])
+                self.assertEqual(result.requests, {})
 
                 action_result = await adapter.send_action("worker-battle-1", "a", "move 1")
                 self.assertEqual(action_result.logs, ["|worker_action|a|move 1"])
@@ -164,8 +173,26 @@ for line in sys.stdin:
                 self.assertEqual(forfeit_result.logs, ["|worker_forfeit|b"])
                 self.assertTrue(forfeit_result.finished)
             finally:
-                async with adapter._process_lock:
-                    await adapter._stop_process_locked()
+                await adapter.close()
+
+    async def test_process_showdown_adapter_ping_reports_worker(self) -> None:
+        worker_source = """
+import json
+import sys
+for line in sys.stdin:
+    request = json.loads(line)
+    if request.get('type') == 'ping':
+        print(json.dumps({'request_id': request.get('request_id'), 'ok': True, 'pong': True}), flush=True)
+"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            worker_path = Path(temp_dir) / "fake_showdown_worker.py"
+            worker_path.write_text(textwrap.dedent(worker_source), encoding="utf-8")
+            adapter = ProcessShowdownAdapter(f"{sys.executable} {worker_path}")
+            try:
+                status = await adapter.ping()
+                self.assertEqual(status.status, "process_worker")
+            finally:
+                await adapter.close()
 
 
 if __name__ == "__main__":

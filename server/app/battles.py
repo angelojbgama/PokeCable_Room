@@ -7,7 +7,7 @@ from typing import Any
 from .battle_models import BATTLE_FORMATS_BY_GENERATION, BattlePlayer, BattleRoom
 from .models import PlayerSlot, RoomError, now_utc, parse_client_id, parse_game_id, parse_generation, parse_room_name
 from .security import hash_room_password, verify_room_password
-from .showdown import ShowdownAdapter, build_showdown_adapter
+from .showdown import ShowdownAdapter, ShowdownBattleResult, build_showdown_adapter
 
 
 class BattleManager:
@@ -96,14 +96,14 @@ class BattleManager:
             room.status = "teams_ready" if room.has_both_teams() else "waiting_for_teams"
             return room, slot, room.has_both_teams()
 
-    async def confirm_battle(self, *, client_id: str) -> tuple[BattleRoom, PlayerSlot, bool, list[str]]:
+    async def confirm_battle(self, *, client_id: str) -> tuple[BattleRoom, PlayerSlot, bool, ShowdownBattleResult]:
         async with self._lock:
             room, slot = self._room_for_client_locked(client_id)
             if not room.has_both_teams():
                 raise RoomError("teams_missing", "Aguardando os dois times antes de iniciar a batalha.")
             room.players[slot].confirmed = True
             if not room.has_both_confirmations():
-                return room, slot, False, []
+                return room, slot, False, ShowdownBattleResult(battle_id=room.battle_id or "", logs=[], finished=False)
             result = await self.adapter.create_battle(
                 room.format_id,
                 room.players["A"].team,
@@ -113,9 +113,9 @@ class BattleManager:
             )
             room.battle_id = result.battle_id
             room.status = "started"
-            return room, slot, True, result.logs
+            return room, slot, True, result
 
-    async def send_action(self, *, client_id: str, action: str) -> tuple[BattleRoom, PlayerSlot, list[str], bool]:
+    async def send_action(self, *, client_id: str, action: str) -> tuple[BattleRoom, PlayerSlot, ShowdownBattleResult]:
         async with self._lock:
             room, slot = self._room_for_client_locked(client_id)
             if not room.battle_id:
@@ -123,16 +123,16 @@ class BattleManager:
             result = await self.adapter.send_action(room.battle_id, client_id, action)
             if result.finished:
                 room.status = "finished"
-            return room, slot, result.logs, result.finished
+            return room, slot, result
 
-    async def forfeit(self, *, client_id: str) -> tuple[BattleRoom, PlayerSlot, list[str]]:
+    async def forfeit(self, *, client_id: str) -> tuple[BattleRoom, PlayerSlot, ShowdownBattleResult]:
         async with self._lock:
             room, slot = self._room_for_client_locked(client_id)
             if not room.battle_id:
                 raise RoomError("battle_not_started", "Batalha ainda nao iniciou.")
             result = await self.adapter.forfeit(room.battle_id, client_id)
             room.status = "finished"
-            return room, slot, result.logs
+            return room, slot, result
 
     async def disconnect(self, client_id: str) -> BattleRoom | None:
         async with self._lock:
@@ -149,6 +149,13 @@ class BattleManager:
                 return None
             room.status = "waiting"
             return room
+
+    async def cleanup_expired(self) -> list[str]:
+        async with self._lock:
+            expired = [name for name, room in self.rooms.items() if now_utc() >= room.expires_at]
+            for room_name in expired:
+                self._remove_room_locked(room_name)
+            return expired
 
     def _room_for_client_locked(self, client_id: str) -> tuple[BattleRoom, PlayerSlot]:
         client_id = parse_client_id(client_id)

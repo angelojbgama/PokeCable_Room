@@ -70,6 +70,7 @@ Experimental protegido por flags:
 - Cross-generation deve ser testado com backup.
 - Downconvert Gen 3 -> Gen 1/2 pode perder ability, nature, parte do trainer ID, held item e moves modernos.
 - O jogo/emulador precisa estar fechado antes de gravar no save.
+- O client Python compara `size`, `mtime` e `SHA-256` do save antes de gravar.
 - O adapter real de Pokemon Showdown depende de Node/processo separado. Sem `SHOWDOWN_PROCESS_CMD`, o servidor usa um adapter local deterministico para fluxo e testes.
 
 ## Seguranca De Geracao
@@ -89,7 +90,13 @@ A sala e unica. O usuario nao escolhe Time Capsule, Transfer ou Downconvert ao c
 - Cada client valida localmente o Pokemon que vai receber.
 - Se qualquer lado falhar, o servidor envia `trade_blocked` e ninguem grava save.
 - Se os dois lados passarem, o servidor envia `preflight_ready`.
-- `trade_committed` so acontece depois de `preflight_ready` e da confirmacao dos dois jogadores.
+- Depois da confirmacao dos dois jogadores, o servidor entra em escrita em duas fases:
+  - `prepare_write`
+  - `write_ready`
+  - `trade_commit_write`
+  - `write_done`
+  - `trade_completed`
+- Se qualquer lado falhar antes ou durante a gravacao, o servidor envia `trade_write_failed`.
 
 Modos derivados internamente e protegidos por flags:
 
@@ -129,8 +136,6 @@ Client:
 ```json
 {
   "cross_generation": {
-    "enabled": true,
-    "enabled_modes": ["time_capsule_gen1_gen2", "forward_transfer_to_gen3", "legacy_downconvert_experimental"],
     "policy": "auto_retrocompat",
     "unsafe_auto_confirm_data_loss": false
   }
@@ -244,6 +249,7 @@ Eventos WebSocket de batalha:
 Adapter Showdown:
 
 - `SHOWDOWN_ENABLED=true` por padrao.
+- `SHOWDOWN_REQUIRED=true` faz o servidor falhar no startup se o worker/bridge real nao estiver pronto.
 - `SHOWDOWN_SERVER_URL` fica reservado para bridge HTTP externa.
 - `SHOWDOWN_PROCESS_CMD` aponta para um worker Node/Pokemon Showdown local persistente, por exemplo `node /srv/pokecable-showdown-worker/worker.js`.
 - Se o processo nao estiver configurado ou falhar, o servidor nao bloqueia startup; usa o adapter local para manter o fluxo de sala, logs e testes funcionando.
@@ -261,6 +267,7 @@ Configuracao do servidor:
 
 ```text
 SHOWDOWN_ENABLED=true
+SHOWDOWN_REQUIRED=false
 SHOWDOWN_PROCESS_CMD=node /srv/pokecable-showdown-worker/worker.js
 ```
 
@@ -292,6 +299,7 @@ O menu do R36S tambem possui:
 - Ver time Showdown
 - Confirmar batalha
 - Enviar acao simplificada
+- Receber acoes reais por jogador a partir do `request` do Showdown
 
 Frontend web:
 
@@ -331,6 +339,7 @@ Servidor em producao/cross-generation:
 ALLOW_CROSS_GENERATION=true
 ENABLED_TRADE_MODES=time_capsule_gen1_gen2,forward_transfer_to_gen3,legacy_downconvert_experimental
 SHOWDOWN_ENABLED=true
+SHOWDOWN_REQUIRED=false
 SHOWDOWN_SERVER_URL=
 SHOWDOWN_PROCESS_CMD=node /srv/pokecable-showdown-worker/worker.js
 ```
@@ -342,10 +351,9 @@ Variaveis e opcoes:
 - `ALLOW_CROSS_GENERATION`: liga a feature guard global do servidor.
 - `ENABLED_TRADE_MODES`: lista os modos cross-generation permitidos no servidor.
 - `item_trade_evolutions_enabled`: liga evolucoes por item no client; padrao `false`.
-- `cross_generation.enabled`: liga cross-generation no client; configs antigas com `false` e modos vazios sao migradas para o padrao automatico.
-- `cross_generation.enabled_modes`: modos cross-generation permitidos no client.
 - `cross_generation.policy`: `auto_retrocompat`, `safe_default`, `strict` ou `permissive`.
 - `cross_generation.unsafe_auto_confirm_data_loss`: permite auto-confirm com perda de dados; padrao `false` e nao recomendado.
+- `SHOWDOWN_REQUIRED`: exige worker/bridge real no startup do servidor.
 
 ## Rodar Servidor
 

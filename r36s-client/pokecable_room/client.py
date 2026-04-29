@@ -25,7 +25,7 @@ from pokecable_room.evolutions import apply_trade_evolution_to_parser, preview_t
 from pokecable_room.logs import setup_logging
 from pokecable_room.network import PokeCableNetworkClient
 from pokecable_room.parsers.base import PokemonPayload
-from pokecable_room.backups import create_backup, list_backups, restore_backup
+from pokecable_room.backups import capture_save_signature, create_backup, list_backups, restore_backup, save_signature_matches
 from pokecable_room.saves import detect_parser, find_save_files, load_config, save_config
 from pokecable_room.showdown import canonical_team_to_showdown_text, format_id_for_generation
 from pokecable_room.trade import validate_payload_for_local_save
@@ -49,7 +49,7 @@ async def run_trade(
     auto_confirm: bool,
     backup_dir: str,
     save_path: Path | None,
-    initial_save_signature: tuple[int, int] | None,
+    initial_save_signature: dict[str, object] | None,
     ui: TerminalUI,
     trade_mode: str = SAME_GENERATION,
     auto_trade_evolution: bool = True,
@@ -148,8 +148,10 @@ async def run_trade(
             raise RuntimeError("Troca cancelada pelo usuario.")
 
         await network.send({"type": "confirm_trade"})
-        committed = await network.wait_for({"trade_committed"})
-        received_payload = PokemonPayload.from_dict(committed["received_payload"])
+        prepared = await network.wait_for({"prepare_write", "trade_write_failed"})
+        if prepared["type"] == "trade_write_failed":
+            raise RuntimeError(prepared.get("message") or "Falha na preparacao de escrita da troca.")
+        received_payload = PokemonPayload.from_dict(prepared["received_payload"])
         _committed_ok, conversion_report_dict = _preflight_result_for_payload(
             received_payload,
             local_generation,
@@ -160,11 +162,19 @@ async def run_trade(
             prompt_user=False,
         )
         conversion_report = None
+        backup_path = None
+        metadata_path = None
         if save_path is not None:
-            current_signature = (save_path.stat().st_size, int(save_path.stat().st_mtime))
-            if initial_save_signature is not None and current_signature != initial_save_signature:
+            if initial_save_signature is not None and not save_signature_matches(save_path, initial_save_signature):
+                await network.send(
+                    {
+                        "type": "write_ready",
+                        "ready": False,
+                        "error": "O save foi modificado enquanto a sala estava aberta. Feche o emulador e reinicie a troca.",
+                    }
+                )
                 raise RuntimeError(
-                    "O save foi modificado enquanto a sala estava aberta. "
+                    "O save foi modificado enquanto a sala estava aberta (hash diferente). "
                     "Feche o emulador e reinicie a troca para evitar sobrescrever dados novos."
                 )
             backup_path, metadata_path = create_backup(
@@ -185,30 +195,53 @@ async def run_trade(
                         "level": received_payload.level,
                         "nickname": received_payload.nickname,
                     },
+                    "save_signature_before_write": initial_save_signature,
                 },
             )
-            if received_payload.generation == local_generation:
-                parser.remove_or_replace_sent_pokemon(pokemon_location, received_payload)
-            else:
-                if not received_payload.canonical:
-                    raise RuntimeError("Payload cross-generation confirmado nao contem dados canonicos.")
-                canonical = CanonicalPokemon.from_dict(received_payload.canonical)
-                converter = get_converter(canonical.source_generation, local_generation)
-                conversion = converter.apply_to_save(
-                    parser,
-                    pokemon_location,
-                    canonical,
-                    policy=cross_generation_policy,
-                )
-                conversion_report = conversion.compatibility_report
-            evolution_result = None
-            if auto_trade_evolution:
-                evolution_result = apply_trade_evolution_to_parser(
-                    parser,
-                    pokemon_location,
-                    item_based_evolutions_enabled=item_based_evolutions_enabled,
-                )
-            parser.save(save_path)
+        await network.send(
+            {
+                "type": "write_ready",
+                "ready": True,
+                "metadata": {
+                    "backup_path": str(backup_path) if backup_path else None,
+                    "metadata_path": str(metadata_path) if metadata_path else None,
+                },
+            }
+        )
+        commit_write = await network.wait_for({"trade_commit_write", "trade_write_failed"})
+        if commit_write["type"] == "trade_write_failed":
+            raise RuntimeError(commit_write.get("message") or "Falha na escrita da troca.")
+        if save_path is not None:
+            try:
+                if received_payload.generation == local_generation:
+                    parser.remove_or_replace_sent_pokemon(pokemon_location, received_payload)
+                else:
+                    if not received_payload.canonical:
+                        raise RuntimeError("Payload cross-generation confirmado nao contem dados canonicos.")
+                    canonical = CanonicalPokemon.from_dict(received_payload.canonical)
+                    converter = get_converter(canonical.source_generation, local_generation)
+                    conversion = converter.apply_to_save(
+                        parser,
+                        pokemon_location,
+                        canonical,
+                        policy=cross_generation_policy,
+                    )
+                    conversion_report = conversion.compatibility_report
+                evolution_result = None
+                if auto_trade_evolution:
+                    evolution_result = apply_trade_evolution_to_parser(
+                        parser,
+                        pokemon_location,
+                        item_based_evolutions_enabled=item_based_evolutions_enabled,
+                    )
+                parser.save(save_path)
+            except Exception as exc:
+                await network.send({"type": "write_failed", "stage": "commit_write", "error": str(exc)})
+                raise
+            await network.send({"type": "write_done", "success": True})
+            completed = await network.wait_for({"trade_completed", "trade_write_failed"})
+            if completed["type"] == "trade_write_failed":
+                raise RuntimeError(completed.get("message") or "Falha remota apos a gravacao local.")
             ui.print(f"Troca aplicada no save: {save_path}")
             if conversion_report is not None:
                 _print_report(ui, conversion_report.to_dict())
@@ -220,6 +253,11 @@ async def run_trade(
                     ui.print(f"{evolution_result.consumed_item_name} foi consumido.")
             ui.print(f"Backup: {backup_path}")
             ui.print(f"Metadata: {metadata_path}")
+        else:
+            await network.send({"type": "write_done", "success": True})
+            completed = await network.wait_for({"trade_completed", "trade_write_failed"})
+            if completed["type"] == "trade_write_failed":
+                raise RuntimeError(completed.get("message") or "Falha remota apos a confirmacao da troca.")
         return received_payload
 
 
@@ -506,8 +544,9 @@ async def run_battle(
                     ui.print(str(line))
             if message_type == "battle_request_action":
                 if auto_confirm:
-                    await network.send({"type": "battle_action", "action": "pass"})
+                    await network.send({"type": "battle_action", "action": _default_battle_action(dict(message.get("request") or {}))})
                     continue
+                _print_battle_request(ui, dict(message.get("request") or {}))
                 action_text = ui.input_text("Acao Showdown (ex: move 1, switch 2, pass, forfeit)", "pass")
                 if action_text.lower() in {"forfeit", "desistir"}:
                     await network.send({"type": "battle_forfeit"})
@@ -559,8 +598,7 @@ async def automated_or_prompted_trade(args: argparse.Namespace) -> int:
     save_path = Path(args.save) if args.save else None
     initial_signature = None
     if save_path is not None:
-        stat = save_path.stat()
-        initial_signature = (stat.st_size, int(stat.st_mtime))
+        initial_signature = capture_save_signature(save_path)
     room_name = args.room or ui.input_text("Nome da sala")
     password = args.password or ui.input_password("Senha da sala")
     server_url = args.server or config["server_url"]
@@ -601,6 +639,41 @@ def configure_server(ui: TerminalUI) -> None:
     config.setdefault("cross_generation", {"policy": "auto_retrocompat"})
     save_config(config)
     ui.print("Servidor configurado.")
+
+
+def _print_battle_request(ui: TerminalUI, request: dict) -> None:
+    active = request.get("active") or []
+    if active and isinstance(active[0], dict):
+        moves = active[0].get("moves") or []
+        for index, move in enumerate(moves, start=1):
+            if move.get("disabled"):
+                continue
+            ui.print(f"- move {index}: {move.get('move')} ({move.get('pp')}/{move.get('maxpp')})")
+    if request.get("forceSwitch") and isinstance(request.get("side"), dict):
+        for index, pokemon in enumerate(request["side"].get("pokemon") or [], start=1):
+            if pokemon.get("active"):
+                continue
+            condition = str(pokemon.get("condition") or "")
+            if "fnt" in condition:
+                continue
+            ui.print(f"- switch {index}: {pokemon.get('details') or pokemon.get('ident')}")
+
+
+def _default_battle_action(request: dict) -> str:
+    active = request.get("active") or []
+    if active and isinstance(active[0], dict):
+        moves = active[0].get("moves") or []
+        for index, move in enumerate(moves, start=1):
+            if not move.get("disabled"):
+                return f"move {index}"
+    if request.get("forceSwitch") and isinstance(request.get("side"), dict):
+        for index, pokemon in enumerate(request["side"].get("pokemon") or [], start=1):
+            if pokemon.get("active"):
+                continue
+            if "fnt" in str(pokemon.get("condition") or ""):
+                continue
+            return f"switch {index}"
+    return "move 1"
 
 
 def show_logs(ui: TerminalUI) -> None:

@@ -6,10 +6,10 @@ import os
 
 from fastapi import FastAPI, WebSocket
 
-from .cleanup import cleanup_loop
+from .cleanup import battle_cleanup_loop, cleanup_loop
 from .battles import BattleManager
 from .rooms import RoomManager
-from .showdown import build_showdown_adapter
+from .showdown import adapter_health_status, build_showdown_adapter, ensure_required_showdown
 from .websocket import ConnectionHub
 
 
@@ -25,7 +25,8 @@ def build_app() -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, str]:
-        return {"status": "ok"}
+        showdown_status = await adapter_health_status(battle_manager.adapter)
+        return {"status": "ok", "showdown": showdown_status.status, "showdown_detail": showdown_status.detail}
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
@@ -33,13 +34,19 @@ def build_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup() -> None:
+        await ensure_required_showdown(battle_manager.adapter)
         app.state.cleanup_task = asyncio.create_task(cleanup_loop(room_manager))
+        app.state.battle_cleanup_task = asyncio.create_task(battle_cleanup_loop(battle_manager))
 
     @app.on_event("shutdown")
     async def shutdown() -> None:
         cleanup_task = getattr(app.state, "cleanup_task", None)
         if cleanup_task:
             cleanup_task.cancel()
+        battle_cleanup_task = getattr(app.state, "battle_cleanup_task", None)
+        if battle_cleanup_task:
+            battle_cleanup_task.cancel()
+        await battle_manager.adapter.close()
 
     return app
 

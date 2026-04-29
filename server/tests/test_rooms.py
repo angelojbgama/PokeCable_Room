@@ -110,13 +110,13 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(room.derived_modes["A"], LEGACY_DOWNCONVERT_EXPERIMENTAL)
         self.assertEqual(room.derived_modes["B"], FORWARD_TRANSFER_TO_GEN3)
 
-    async def test_join_cross_generation_ignores_legacy_server_flags(self) -> None:
+    async def test_join_cross_generation_requires_server_flags(self) -> None:
         manager = RoomManager(room_timeout_seconds=60, max_rooms=10, cross_generation_enabled=False)
         await manager.create_room(room_name="off", password="pw", client_id="a", generation=1, game="pokemon_red", supported_protocols=PROTOCOLS)
-        room, slot = await manager.join_room(room_name="off", password="pw", client_id="b", generation=3, game="pokemon_emerald", supported_protocols=PROTOCOLS)
-        self.assertEqual(slot, "B")
-        self.assertEqual(room.derived_modes["A"], LEGACY_DOWNCONVERT_EXPERIMENTAL)
-        self.assertEqual(room.derived_modes["B"], FORWARD_TRANSFER_TO_GEN3)
+        with self.assertRaises(RoomError) as raised:
+            await manager.join_room(room_name="off", password="pw", client_id="b", generation=3, game="pokemon_emerald", supported_protocols=PROTOCOLS)
+        self.assertEqual(raised.exception.code, "game_mismatch")
+        self.assertIn("nao habilitou troca entre geracoes", raised.exception.message)
 
         manager = RoomManager(
             room_timeout_seconds=60,
@@ -125,9 +125,10 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
             enabled_trade_modes=[FORWARD_TRANSFER_TO_GEN3],
         )
         await manager.create_room(room_name="partial", password="pw", client_id="a", generation=1, game="pokemon_red", supported_protocols=PROTOCOLS)
-        room, slot = await manager.join_room(room_name="partial", password="pw", client_id="b", generation=3, game="pokemon_emerald", supported_protocols=PROTOCOLS)
-        self.assertEqual(slot, "B")
-        self.assertEqual(room.derived_modes["A"], LEGACY_DOWNCONVERT_EXPERIMENTAL)
+        with self.assertRaises(RoomError) as raised:
+            await manager.join_room(room_name="partial", password="pw", client_id="b", generation=3, game="pokemon_emerald", supported_protocols=PROTOCOLS)
+        self.assertEqual(raised.exception.code, "game_mismatch")
+        self.assertIn("Gen 3 -> Gen 1", raised.exception.message)
 
     async def test_failed_join_rolls_back_player_slot(self) -> None:
         manager = RoomManager(room_timeout_seconds=60, max_rooms=10, cross_generation_enabled=True, enabled_trade_modes=ALL_CROSS_MODES)
@@ -269,10 +270,50 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
         _room, _slot, blocked, ready, _reports = await manager.submit_preflight_result(client_id="b", compatible=True, report={"compatible": True})
         self.assertFalse(blocked)
         self.assertTrue(ready)
-        _room, _slot, committed = await manager.confirm_trade(client_id="a")
+        room, _slot, committed = await manager.confirm_trade(client_id="a")
         self.assertFalse(committed)
-        _room, _slot, committed = await manager.confirm_trade(client_id="b")
+        room, _slot, committed = await manager.confirm_trade(client_id="b")
         self.assertTrue(committed)
+        self.assertEqual(room.write_phase, "preparing")
+
+    async def test_write_ready_and_write_done_complete_trade(self) -> None:
+        manager, _room = await self._cross_room_with_offers()
+        await manager.submit_preflight_result(client_id="a", compatible=True, report={"compatible": True})
+        await manager.submit_preflight_result(client_id="b", compatible=True, report={"compatible": True})
+        await manager.confirm_trade(client_id="a")
+        room, _slot, committed = await manager.confirm_trade(client_id="b")
+        self.assertTrue(committed)
+
+        room, _slot, blocked, ready = await manager.submit_write_ready(client_id="a", ready=True, metadata={"backup": "a"})
+        self.assertFalse(blocked)
+        self.assertFalse(ready)
+        room, _slot, blocked, ready = await manager.submit_write_ready(client_id="b", ready=True, metadata={"backup": "b"})
+        self.assertFalse(blocked)
+        self.assertTrue(ready)
+        self.assertEqual(room.write_phase, "prepared")
+
+        room, _slot, failed, completed = await manager.submit_write_done(client_id="a", success=True)
+        self.assertFalse(failed)
+        self.assertFalse(completed)
+        room, _slot, failed, completed = await manager.submit_write_done(client_id="b", success=True)
+        self.assertFalse(failed)
+        self.assertTrue(completed)
+        self.assertEqual(room.write_phase, "completed")
+
+    async def test_write_prepare_failure_blocks_trade(self) -> None:
+        manager, _room = await self._cross_room_with_offers()
+        await manager.submit_preflight_result(client_id="a", compatible=True, report={"compatible": True})
+        await manager.submit_preflight_result(client_id="b", compatible=True, report={"compatible": True})
+        await manager.confirm_trade(client_id="a")
+        await manager.confirm_trade(client_id="b")
+        room, _slot, blocked, ready = await manager.submit_write_ready(
+            client_id="a",
+            ready=False,
+            error="save_changed",
+        )
+        self.assertTrue(blocked)
+        self.assertFalse(ready)
+        self.assertEqual(room.offers, {"A": None, "B": None})
 
     async def test_raw_cross_generation_never_commits(self) -> None:
         manager, _room = await self._cross_room()
@@ -304,12 +345,29 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(1.1)
         self.assertEqual(await manager.cleanup_expired(), ["room"])
 
-    async def test_env_cross_generation_flags_do_not_gate_join(self) -> None:
-        manager = RoomManager(room_timeout_seconds=60, max_rooms=10, cross_generation_enabled=None)
+    async def test_enabled_trade_modes_time_capsule_only_liberates_gen1_gen2(self) -> None:
+        manager = RoomManager(
+            room_timeout_seconds=60,
+            max_rooms=10,
+            cross_generation_enabled=True,
+            enabled_trade_modes=[TIME_CAPSULE_GEN1_GEN2],
+        )
         await manager.create_room(room_name="room", password="pw", client_id="a", generation=1, game="pokemon_red", supported_protocols=PROTOCOLS)
         room, slot = await manager.join_room(room_name="room", password="pw", client_id="b", generation=2, game="pokemon_crystal", supported_protocols=PROTOCOLS)
         self.assertEqual(slot, "B")
         self.assertEqual(room.derived_modes["A"], TIME_CAPSULE_GEN1_GEN2)
+
+        manager = RoomManager(
+            room_timeout_seconds=60,
+            max_rooms=10,
+            cross_generation_enabled=True,
+            enabled_trade_modes=[TIME_CAPSULE_GEN1_GEN2],
+        )
+        await manager.create_room(room_name="room13", password="pw", client_id="a", generation=1, game="pokemon_red", supported_protocols=PROTOCOLS)
+        with self.assertRaises(RoomError) as raised:
+            await manager.join_room(room_name="room13", password="pw", client_id="b", generation=3, game="pokemon_emerald", supported_protocols=PROTOCOLS)
+        self.assertEqual(raised.exception.code, "game_mismatch")
+        self.assertIn("Gen 3 -> Gen 1", raised.exception.message)
 
     async def _cross_room(self) -> tuple[RoomManager, object]:
         manager = RoomManager(room_timeout_seconds=60, max_rooms=10, cross_generation_enabled=True, enabled_trade_modes=ALL_CROSS_MODES)

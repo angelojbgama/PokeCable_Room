@@ -114,9 +114,12 @@ async function createBattle(request) {
     playerByClient,
     logs: [],
     finished: false,
+    requestsBySide: { p1: null, p2: null },
   };
   battles.set(battleId, battle);
   collectOutput(battle);
+  collectSideOutput(battle, "p1", streams.p1);
+  collectSideOutput(battle, "p2", streams.p2);
 
   const playerATeam = packTeam(api.Teams, request.player_a_team || [], formatId, api.Dex);
   const playerBTeam = packTeam(api.Teams, request.player_b_team || [], formatId, api.Dex);
@@ -130,23 +133,27 @@ async function createBattle(request) {
     battle_id: battleId,
     logs: battle.logs.slice(),
     finished: battle.finished,
+    requests: requestMapForClients(battle),
   };
 }
 
 async function sendAction(request) {
   const battle = requireBattle(request.battle_id);
   if (battle.finished) {
-    return { battle_id: battle.battleId, logs: [], finished: true };
+    return { battle_id: battle.battleId, logs: [], finished: true, requests: {} };
   }
   const side = sideForClient(battle, request.client_id);
+  battle.requestsBySide[side] = null;
   const action = normalizeAction(request.action);
   const start = battle.logs.length;
   await battle.streams.omniscient.write(`>${side} ${action}`);
   await delay(80);
+  if (battle.finished) battle.requestsBySide = { p1: null, p2: null };
   return {
     battle_id: battle.battleId,
     logs: battle.logs.slice(start),
     finished: battle.finished,
+    requests: requestMapForClients(battle),
   };
 }
 
@@ -156,19 +163,23 @@ async function getLogs(request) {
     battle_id: battle.battleId,
     logs: battle.logs.slice(),
     finished: battle.finished,
+    requests: requestMapForClients(battle),
   };
 }
 
 async function forfeit(request) {
   const battle = requireBattle(request.battle_id);
   const side = sideForClient(battle, request.client_id);
+  battle.requestsBySide[side] = null;
   const start = battle.logs.length;
   await battle.streams.omniscient.write(`>${side} forfeit`);
   await delay(80);
+  battle.requestsBySide = { p1: null, p2: null };
   return {
     battle_id: battle.battleId,
     logs: battle.logs.slice(start),
     finished: true,
+    requests: {},
   };
 }
 
@@ -227,6 +238,35 @@ function collectOutput(battle) {
       battle.finished = true;
     }
   })();
+}
+
+function collectSideOutput(battle, side, stream) {
+  (async () => {
+    try {
+      for await (const chunk of stream) {
+        for (const line of String(chunk).split(/\r?\n/)) {
+          const clean = line.trim();
+          if (!clean) continue;
+          if (!clean.startsWith("|request|")) continue;
+          try {
+            battle.requestsBySide[side] = JSON.parse(clean.slice("|request|".length));
+          } catch (_error) {
+            battle.requestsBySide[side] = { error: "invalid_request_payload" };
+          }
+        }
+      }
+    } catch (_error) {
+      battle.requestsBySide[side] = null;
+    }
+  })();
+}
+
+function requestMapForClients(battle) {
+  const result = {};
+  for (const [clientId, side] of battle.playerByClient.entries()) {
+    if (battle.requestsBySide[side]) result[clientId] = battle.requestsBySide[side];
+  }
+  return result;
 }
 
 function packTeam(Teams, canonicalTeam, formatId, Dex = null) {

@@ -216,6 +216,11 @@ class Room:
     preflight_ok: dict[PlayerSlot, bool] = field(default_factory=lambda: {"A": False, "B": False})
     preflight_errors: dict[PlayerSlot, str] = field(default_factory=lambda: {"A": "", "B": ""})
     confirmations: dict[PlayerSlot, bool] = field(default_factory=lambda: {"A": False, "B": False})
+    write_ready: dict[PlayerSlot, bool] = field(default_factory=lambda: {"A": False, "B": False})
+    write_done: dict[PlayerSlot, bool] = field(default_factory=lambda: {"A": False, "B": False})
+    write_errors: dict[PlayerSlot, str] = field(default_factory=lambda: {"A": "", "B": ""})
+    write_metadata: dict[PlayerSlot, dict[str, Any] | None] = field(default_factory=lambda: {"A": None, "B": None})
+    write_phase: str = "idle"
     max_players: int = 2
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -241,11 +246,22 @@ class Room:
     def is_committed(self) -> bool:
         return self.confirmations["A"] and self.confirmations["B"] and self.has_both_offers() and self.has_both_preflight_ok()
 
+    def has_both_write_ready(self) -> bool:
+        return self.write_ready["A"] and self.write_ready["B"]
+
+    def has_both_write_done(self) -> bool:
+        return self.write_done["A"] and self.write_done["B"]
+
     def reset_preflight(self) -> None:
         self.preflight_reports = {"A": None, "B": None}
         self.preflight_ok = {"A": False, "B": False}
         self.preflight_errors = {"A": "", "B": ""}
         self.confirmations = {"A": False, "B": False}
+        self.write_ready = {"A": False, "B": False}
+        self.write_done = {"A": False, "B": False}
+        self.write_errors = {"A": "", "B": ""}
+        self.write_metadata = {"A": None, "B": None}
+        self.write_phase = "idle"
 
     def reset_trade_state(self, reason: str = "") -> None:
         self.offers = {"A": None, "B": None}
@@ -269,6 +285,10 @@ class Room:
             "offers": {slot: offer.log_summary() if offer else None for slot, offer in self.offers.items()},
             "preflight_ok": self.preflight_ok,
             "preflight_errors": self.preflight_errors,
+            "write_ready": self.write_ready,
+            "write_done": self.write_done,
+            "write_errors": self.write_errors,
+            "write_phase": self.write_phase,
             "created_at": self.created_at.isoformat(),
             "expires_at": self.expires_at.isoformat(),
         }
@@ -359,8 +379,7 @@ def parse_game_id(value: Any, generation: int) -> str:
 def generation_mismatch_message(room_generation: int, client_generation: int) -> str:
     return (
         f"Esta sala e Gen {room_generation}. Seu save e Gen {client_generation}. "
-        "Cross-generation esta protegido por bloqueio de seguranca enquanto a camada de conversao local "
-        "esta em desenvolvimento."
+        "O payload precisa bater com a geracao real do save/jogador que entrou na sala."
     )
 
 

@@ -427,8 +427,8 @@ class Gen1Parser:
     def remove_or_replace_sent_pokemon(self, location: str, received_payload: PokemonPayload) -> None:
         if received_payload.generation != 1:
             raise ValueError(
-                "Payload recebido nao e Gen 1. Cross-generation esta protegido por feature guard enquanto "
-                "o conversor local Gen 1 esta em desenvolvimento."
+                "Payload recebido nao e Gen 1. Raw payload de outra geracao nao pode ser escrito neste save; "
+                "cross-generation exige payload canonico e conversor local."
             )
         index = self._party_index(location)
         data = self._require_data()

@@ -217,18 +217,65 @@ Se qualquer lado falhar, o servidor envia `trade_blocked` para os dois jogadores
 {"type": "confirm_trade"}
 ```
 
-Quando os dois preflights passam e os dois confirmam:
+Quando os dois preflights passam e os dois confirmam, o servidor nao manda a escrita final imediatamente. Primeiro ele pede preparo local:
 
 ```json
 {
-  "type": "trade_committed",
+  "type": "prepare_write",
   "received_payload": {},
   "sent_payload": {},
-  "message": "Troca confirmada pelos dois jogadores."
+  "message": "Preparo de escrita autorizado."
 }
 ```
 
-A sala e removida apos `trade_committed`, e os payloads sao apagados da memoria do servidor.
+Cada client valida novamente a assinatura forte do save local, cria backup e responde:
+
+```json
+{
+  "type": "write_ready",
+  "ready": true,
+  "metadata": {
+    "backup_path": "/tmp/exemplo.sav.bak",
+    "save_signature": {
+      "size": 131072,
+      "mtime": 1714435200.0,
+      "sha256": "..."
+    }
+  }
+}
+```
+
+Se qualquer lado falhar nessa fase, os dois recebem:
+
+```json
+{
+  "type": "trade_write_failed",
+  "stage": "prepare_write",
+  "message": "Falha antes da escrita local."
+}
+```
+
+Se os dois lados responderem `write_ready`, o servidor envia:
+
+```json
+{
+  "type": "trade_commit_write",
+  "received_payload": {},
+  "sent_payload": {},
+  "message": "Escrita liberada para os dois jogadores."
+}
+```
+
+Depois da gravacao local, cada client responde com `write_done` ou `write_failed`. Quando os dois lados concluem com sucesso, o servidor fecha a operacao com:
+
+```json
+{
+  "type": "trade_completed",
+  "message": "Troca concluida com sucesso nos dois lados."
+}
+```
+
+A sala e removida apos `trade_completed`, e os payloads sao apagados da memoria do servidor.
 
 ## Cancelamento
 

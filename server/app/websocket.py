@@ -55,6 +55,12 @@ class ConnectionHub:
                 await self._preflight_result(client_id, message)
             elif message_type == "confirm_trade":
                 await self._confirm_trade(client_id)
+            elif message_type == "write_ready":
+                await self._write_ready(client_id, message)
+            elif message_type == "write_done":
+                await self._write_done(client_id, message)
+            elif message_type == "write_failed":
+                await self._write_failed(client_id, message)
             elif message_type == "cancel_trade":
                 await self._cancel_trade(client_id, "cancelled")
             elif message_type == "create_battle_room":
@@ -160,28 +166,115 @@ class ConnectionHub:
         await self._send(client_id, {"type": "trade_confirmed", "slot": slot})
         if committed:
             offers = {slot_name: offer.to_public_dict() for slot_name, offer in room.offers.items() if offer is not None}
-            await self._send_committed(room, offers)
-            await self.room_manager.remove_room_after_commit(room.room_name)
-            self.room_clients.pop(room.room_name, None)
+            await self._send_prepare_write(room, offers)
         else:
             peer_slot = room.peer_slot(slot)
             peer_client_id = self.room_clients.get(room.room_name, {}).get(peer_slot)
             if peer_client_id:
                 await self._send(peer_client_id, {"type": "peer_confirmed", "slot": slot})
 
-    async def _send_committed(self, room: Room, offers: dict[str, dict[str, Any]]) -> None:
+    async def _send_prepare_write(self, room: Room, offers: dict[str, dict[str, Any]]) -> None:
         clients = self.room_clients.get(room.room_name, {})
         for slot, client_id in clients.items():
             peer_slot = room.peer_slot(slot)
             await self._send(
                 client_id,
                 {
-                    "type": "trade_committed",
+                    "type": "prepare_write",
                     "received_payload": offers[peer_slot],
                     "sent_payload": offers[slot],
-                    "message": "Troca confirmada pelos dois jogadores.",
+                    "message": "Troca confirmada pelos dois jogadores. Prepare o backup local antes da escrita.",
+                    "room": room.to_public_dict(),
                 },
             )
+
+    async def _send_commit_write(self, room: Room, offers: dict[str, dict[str, Any]]) -> None:
+        clients = self.room_clients.get(room.room_name, {})
+        for slot, client_id in clients.items():
+            peer_slot = room.peer_slot(slot)
+            await self._send(
+                client_id,
+                {
+                    "type": "trade_commit_write",
+                    "received_payload": offers[peer_slot],
+                    "sent_payload": offers[slot],
+                    "message": "Os dois jogadores prepararam backup. Pode gravar o save local.",
+                    "room": room.to_public_dict(),
+                },
+            )
+
+    async def _write_ready(self, client_id: str, message: dict[str, Any]) -> None:
+        room, slot, blocked, ready = await self.room_manager.submit_write_ready(
+            client_id=client_id,
+            ready=bool(message.get("ready", True)),
+            metadata=dict(message.get("metadata") or {}),
+            error=str(message.get("error") or ""),
+        )
+        await self._send(client_id, {"type": "write_ready_received", "slot": slot})
+        if blocked:
+            error_message = room.write_errors.get(slot) or "Falha ao preparar backup/escrita local."
+            await self._broadcast(
+                room,
+                {
+                    "type": "trade_write_failed",
+                    "stage": "prepare_write",
+                    "slot": slot,
+                    "message": error_message,
+                    "room": room.to_public_dict(),
+                },
+            )
+            await self.room_manager.remove_room_after_commit(room.room_name)
+            self.room_clients.pop(room.room_name, None)
+            return
+        if ready:
+            offers = {slot_name: offer.to_public_dict() for slot_name, offer in room.offers.items() if offer is not None}
+            await self._send_commit_write(room, offers)
+
+    async def _write_done(self, client_id: str, message: dict[str, Any]) -> None:
+        room, slot, failed, completed = await self.room_manager.submit_write_done(
+            client_id=client_id,
+            success=bool(message.get("success", True)),
+            error=str(message.get("error") or ""),
+        )
+        await self._send(client_id, {"type": "write_done_received", "slot": slot})
+        if failed:
+            error_message = room.write_errors.get(slot) or "Falha ao gravar o save local."
+            await self._broadcast(
+                room,
+                {
+                    "type": "trade_write_failed",
+                    "stage": "commit_write",
+                    "slot": slot,
+                    "message": error_message,
+                    "room": room.to_public_dict(),
+                },
+            )
+            await self.room_manager.remove_room_after_commit(room.room_name)
+            self.room_clients.pop(room.room_name, None)
+            return
+        if completed:
+            await self._broadcast(room, {"type": "trade_completed", "message": "Troca concluida e confirmada pelos dois jogadores.", "room": room.to_public_dict()})
+            await self.room_manager.remove_room_after_commit(room.room_name)
+            self.room_clients.pop(room.room_name, None)
+
+    async def _write_failed(self, client_id: str, message: dict[str, Any]) -> None:
+        room, slot, _failed, _completed = await self.room_manager.submit_write_done(
+            client_id=client_id,
+            success=False,
+            error=str(message.get("error") or "Falha local de escrita."),
+        )
+        await self._broadcast(
+            room,
+            {
+                "type": "trade_write_failed",
+                "stage": str(message.get("stage") or "commit_write"),
+                "slot": slot,
+                "message": room.write_errors.get(slot) or "Falha local de escrita.",
+                "room": room.to_public_dict(),
+            },
+        )
+        await self.room_manager.remove_room_after_commit(room.room_name)
+        self.room_clients.pop(room.room_name, None)
 
     async def _send_preflight_requests(self, room: Room) -> None:
         requests = self.room_manager.preflight_requests(room)
@@ -234,25 +327,33 @@ class ConnectionHub:
             await self._broadcast_battle(room.room_name, {"type": "battle_ready", "room": room.to_public_dict()})
 
     async def _confirm_battle(self, client_id: str) -> None:
-        room, slot, started, logs = await self.battle_manager.confirm_battle(client_id=client_id)
+        room, slot, started, result = await self.battle_manager.confirm_battle(client_id=client_id)
         await self._send(client_id, {"type": "battle_confirmed", "slot": slot})
         if started:
-            await self._broadcast_battle(room.room_name, {"type": "battle_started", "battle_id": room.battle_id, "logs": logs, "room": room.to_public_dict()})
-            await self._broadcast_battle(room.room_name, {"type": "battle_request_action", "battle_id": room.battle_id})
+            await self._broadcast_battle(
+                room.room_name,
+                {
+                    "type": "battle_started",
+                    "battle_id": room.battle_id,
+                    "logs": result.logs,
+                    "room": room.to_public_dict(),
+                },
+            )
+            await self._send_battle_action_requests(room.room_name, room.battle_id, result.requests)
 
     async def _battle_action(self, client_id: str, message: dict[str, Any]) -> None:
-        room, _slot, logs, finished = await self.battle_manager.send_action(client_id=client_id, action=str(message.get("action") or "pass"))
-        await self._broadcast_battle(room.room_name, {"type": "battle_log", "battle_id": room.battle_id, "logs": logs})
-        if finished:
-            await self._broadcast_battle(room.room_name, {"type": "battle_finished", "battle_id": room.battle_id, "logs": logs})
+        room, _slot, result = await self.battle_manager.send_action(client_id=client_id, action=str(message.get("action") or "pass"))
+        await self._broadcast_battle(room.room_name, {"type": "battle_log", "battle_id": room.battle_id, "logs": result.logs})
+        if result.finished:
+            await self._broadcast_battle(room.room_name, {"type": "battle_finished", "battle_id": room.battle_id, "logs": result.logs})
             self.battle_clients.pop(room.room_name, None)
         else:
-            await self._broadcast_battle(room.room_name, {"type": "battle_request_action", "battle_id": room.battle_id})
+            await self._send_battle_action_requests(room.room_name, room.battle_id, result.requests)
 
     async def _battle_forfeit(self, client_id: str) -> None:
-        room, _slot, logs = await self.battle_manager.forfeit(client_id=client_id)
-        await self._broadcast_battle(room.room_name, {"type": "battle_log", "battle_id": room.battle_id, "logs": logs})
-        await self._broadcast_battle(room.room_name, {"type": "battle_finished", "battle_id": room.battle_id, "logs": logs})
+        room, _slot, result = await self.battle_manager.forfeit(client_id=client_id)
+        await self._broadcast_battle(room.room_name, {"type": "battle_log", "battle_id": room.battle_id, "logs": result.logs})
+        await self._broadcast_battle(room.room_name, {"type": "battle_finished", "battle_id": room.battle_id, "logs": result.logs})
         self.battle_clients.pop(room.room_name, None)
 
     async def _disconnect(self, client_id: str) -> None:
@@ -289,6 +390,27 @@ class ConnectionHub:
 
     def _remember_battle_client(self, room_name: str, slot: PlayerSlot, client_id: str) -> None:
         self.battle_clients.setdefault(room_name, {})[slot] = client_id
+
+    async def _send_battle_action_requests(self, room_name: str, battle_id: str | None, requests: dict[str, dict[str, Any]]) -> None:
+        if not battle_id:
+            return
+        room = self.battle_manager.rooms.get(room_name)
+        if room is None:
+            return
+        clients = self.battle_clients.get(room_name, {})
+        for slot, client_id in clients.items():
+            request_payload = dict(requests.get(client_id) or {})
+            if not request_payload:
+                continue
+            await self._send(
+                client_id,
+                {
+                    "type": "battle_request_action",
+                    "battle_id": battle_id,
+                    "request": request_payload,
+                    "slot": slot,
+                },
+            )
 
     async def _broadcast(self, room: Room, payload: dict[str, Any]) -> None:
         await self._broadcast_room_name(room.room_name, payload)

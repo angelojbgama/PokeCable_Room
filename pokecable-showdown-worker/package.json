@@ -11,6 +11,6 @@
     "start": "node worker.js"
   },
   "dependencies": {
-    "pokemon-showdown": "latest"
+    "pokemon-showdown": "0.11.10"
   }
 }

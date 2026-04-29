@@ -545,7 +545,7 @@ class Gen3Parser:
         if received_payload.generation != 3:
             raise ValueError(
                 f"Payload recebido e Gen {received_payload.generation}, mas o save local e Gen 3. "
-                "Cross-generation esta protegido por feature guard enquanto o conversor local Gen 3 esta em desenvolvimento."
+                "Raw payload de outra geracao nao pode ser escrito neste save; cross-generation exige payload canonico e conversor local."
             )
         index = self._party_index(location)
         if index >= self._party_count():

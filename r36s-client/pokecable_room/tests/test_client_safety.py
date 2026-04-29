@@ -4,8 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pokecable_room.backups import create_backup, restore_backup
+from pokecable_room.backups import capture_save_signature, create_backup, restore_backup, save_signature_matches
 from pokecable_room.client import (
+    _default_battle_action,
     _can_continue_with_report,
     _client_supported_protocols,
     _client_supported_trade_modes,
@@ -76,6 +77,15 @@ class ClientSafetyTests(unittest.TestCase):
             save.write_bytes(b"changed")
             restore_backup(backup, save)
             self.assertEqual(save.read_bytes(), b"synthetic-save")
+
+    def test_save_signature_uses_sha256_and_detects_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            save = Path(tempdir) / "test.sav"
+            save.write_bytes(b"first")
+            signature = capture_save_signature(save)
+            self.assertTrue(save_signature_matches(save, signature))
+            save.write_bytes(b"second")
+            self.assertFalse(save_signature_matches(save, signature))
 
     def test_auto_confirm_does_not_pass_data_loss_without_unsafe_flag(self) -> None:
         report = CompatibilityReport(
@@ -213,6 +223,19 @@ class ClientSafetyTests(unittest.TestCase):
         self.assertIn("Item removido: King's Rock", output)
         self.assertIn("Campo removido: ability", output)
         self.assertIn("Conversao: Trainer ID sera reduzido para 16 bits.", output)
+
+    def test_default_battle_action_prefers_first_available_move(self) -> None:
+        request = {
+            "active": [
+                {
+                    "moves": [
+                        {"move": "Tackle", "pp": 35, "maxpp": 35, "disabled": False},
+                        {"move": "Growl", "pp": 40, "maxpp": 40, "disabled": False},
+                    ]
+                }
+            ]
+        }
+        self.assertEqual(_default_battle_action(request), "move 1")
 
 
 def canonical_payload(
