@@ -100,6 +100,10 @@ class Gen2ParserTests(unittest.TestCase):
             party = parser_a.list_party()
             self.assertEqual(party[0].species_name, "Onix")
             self.assertEqual(party[1].species_name, "Quilava")
+            parser_a.set_held_item_id("party:0", 0x8F)
+            onix = parser_a.list_party()[0]
+            self.assertEqual(onix.held_item_name, "Metal Coat")
+            self.assertIn("Item: Metal Coat", onix.display_summary)
 
             payload = parser_a.export_pokemon("party:0")
             parser_b.remove_or_replace_sent_pokemon("party:1", payload)

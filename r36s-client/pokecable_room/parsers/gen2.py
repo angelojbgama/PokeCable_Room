@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pokecable_room.canonical import CanonicalItem, CanonicalMove, CanonicalOriginalData, CanonicalPokemon
 from pokecable_room.compatibility import CompatibilityReport, build_compatibility_report
-from pokecable_room.data.items import equivalent_item_id, item_exists
+from pokecable_room.data.items import equivalent_item_id, item_exists, item_name
 from pokecable_room.data.moves import move_exists
 
 from .base import PokemonPayload, PokemonSummary, SaveData
@@ -401,6 +401,7 @@ class Gen2Parser:
             ot_name = self._decode_text(self._ot_bytes(index))
             trainer_id = int.from_bytes(mon[0x06:0x08], "big")
             level = mon[0x1F]
+            held_item_id = mon[0x01] or None
             party.append(
                 PokemonSummary(
                     location=f"party:{index}",
@@ -410,6 +411,9 @@ class Gen2Parser:
                     nickname=nickname,
                     ot_name=ot_name,
                     trainer_id=trainer_id,
+                    national_dex_id=species_id if not is_egg else None,
+                    held_item_id=held_item_id,
+                    held_item_name=item_name(held_item_id, 2),
                 )
             )
         return party
@@ -473,7 +477,9 @@ class Gen2Parser:
             trainer_id=summary.trainer_id,
             experience=int.from_bytes(mon[0x08:0x0B], "big"),
             moves=moves,
-            held_item=CanonicalItem(item_id=held_item_id, source_generation=2) if held_item_id is not None else None,
+            held_item=CanonicalItem(item_id=held_item_id, name=item_name(held_item_id, 2), source_generation=2)
+            if held_item_id is not None
+            else None,
             original_data=CanonicalOriginalData(
                 generation=2,
                 game=self.game_id,

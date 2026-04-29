@@ -114,6 +114,10 @@ class Gen3ParserTests(unittest.TestCase):
 
             self.assertEqual(parser_a.list_party()[0].species_name, "Kadabra")
             self.assertEqual(parser_a.list_party()[1].species_name, "Clamperl")
+            parser_a.set_held_item_id("party:1", 192)
+            clamperl = parser_a.list_party()[1]
+            self.assertEqual(clamperl.held_item_name, "Deep Sea Tooth")
+            self.assertIn("Item: Deep Sea Tooth", clamperl.display_summary)
 
             payload = parser_a.export_pokemon("party:1")
             parser_b.remove_or_replace_sent_pokemon("party:0", payload)

@@ -11,18 +11,62 @@ const joinButton = document.querySelector("#joinRoom");
 const confirmButton = document.querySelector("#confirmTrade");
 const cancelButton = document.querySelector("#cancelTrade");
 const downloadArea = document.querySelector("#downloadArea");
+const createBattleButton = document.querySelector("#createBattleRoom");
+const joinBattleButton = document.querySelector("#joinBattleRoom");
+const confirmBattleButton = document.querySelector("#confirmBattle");
+const forfeitBattleButton = document.querySelector("#forfeitBattle");
+const battleLogEl = document.querySelector("#battleLog");
+const battleStatusEl = document.querySelector("#battleStatus");
+const battleFormatEl = document.querySelector("#battleFormat");
+const battleTeamCountEl = document.querySelector("#battleTeamCount");
+const battleTeamPreviewEl = document.querySelector("#battleTeamPreview");
+const battleActionButtons = Array.from(document.querySelectorAll("[data-battle-action]"));
+const tabButtons = Array.from(document.querySelectorAll("[data-tab]"));
+const tabPanels = Array.from(document.querySelectorAll("[data-tab-panel]"));
+const openTradeTabButton = document.querySelector("#openTradeTab");
+const openBattleTabButton = document.querySelector("#openBattleTab");
+const setupStatusEl = document.querySelector("#setupStatus");
+const setupPartyPreviewEl = document.querySelector("#setupPartyPreview");
+const tradeSaveStatusEl = document.querySelector("#tradeSaveStatus");
 
-const speciesNames = {
-  9: "Blastoise",
-  25: "Pikachu",
-  38: "Kadabra",
-  41: "Machoke",
-  64: "Kadabra",
-  67: "Machoke",
-  75: "Graveler",
-  93: "Haunter",
-  95: "Onix",
-  151: "Mew",
+const kantoSpeciesNames = [
+  "",
+  "Bulbasaur", "Ivysaur", "Venusaur", "Charmander", "Charmeleon", "Charizard",
+  "Squirtle", "Wartortle", "Blastoise", "Caterpie", "Metapod", "Butterfree",
+  "Weedle", "Kakuna", "Beedrill", "Pidgey", "Pidgeotto", "Pidgeot",
+  "Rattata", "Raticate", "Spearow", "Fearow", "Ekans", "Arbok",
+  "Pikachu", "Raichu", "Sandshrew", "Sandslash", "Nidoran-F", "Nidorina",
+  "Nidoqueen", "Nidoran-M", "Nidorino", "Nidoking", "Clefairy", "Clefable",
+  "Vulpix", "Ninetales", "Jigglypuff", "Wigglytuff", "Zubat", "Golbat",
+  "Oddish", "Gloom", "Vileplume", "Paras", "Parasect", "Venonat",
+  "Venomoth", "Diglett", "Dugtrio", "Meowth", "Persian", "Psyduck",
+  "Golduck", "Mankey", "Primeape", "Growlithe", "Arcanine", "Poliwag",
+  "Poliwhirl", "Poliwrath", "Abra", "Kadabra", "Alakazam", "Machop",
+  "Machoke", "Machamp", "Bellsprout", "Weepinbell", "Victreebel",
+  "Tentacool", "Tentacruel", "Geodude", "Graveler", "Golem", "Ponyta",
+  "Rapidash", "Slowpoke", "Slowbro", "Magnemite", "Magneton",
+  "Farfetch'd", "Doduo", "Dodrio", "Seel", "Dewgong", "Grimer", "Muk",
+  "Shellder", "Cloyster", "Gastly", "Haunter", "Gengar", "Onix",
+  "Drowzee", "Hypno", "Krabby", "Kingler", "Voltorb", "Electrode",
+  "Exeggcute", "Exeggutor", "Cubone", "Marowak", "Hitmonlee",
+  "Hitmonchan", "Lickitung", "Koffing", "Weezing", "Rhyhorn", "Rhydon",
+  "Chansey", "Tangela", "Kangaskhan", "Horsea", "Seadra", "Goldeen",
+  "Seaking", "Staryu", "Starmie", "Mr. Mime", "Scyther", "Jynx",
+  "Electabuzz", "Magmar", "Pinsir", "Tauros", "Magikarp", "Gyarados",
+  "Lapras", "Ditto", "Eevee", "Vaporeon", "Jolteon", "Flareon",
+  "Porygon", "Omanyte", "Omastar", "Kabuto", "Kabutops", "Aerodactyl",
+  "Snorlax", "Articuno", "Zapdos", "Moltres", "Dratini", "Dragonair",
+  "Dragonite", "Mewtwo", "Mew"
+];
+
+const speciesNames = Object.fromEntries(
+  kantoSpeciesNames.map((name, index) => [index, name]).filter(([index, name]) => index && name)
+);
+Object.assign(speciesNames, {
+  152: "Chikorita",
+  153: "Bayleef",
+  154: "Meganium",
+  155: "Cyndaquil",
   156: "Quilava",
   175: "Togepi",
   201: "Unown",
@@ -30,14 +74,21 @@ const speciesNames = {
   212: "Scizor",
   230: "Kingdra",
   251: "Celebi",
-  277: "Treecko",
-  280: "Torchic",
-  283: "Mudkip",
-  373: "Clamperl",
-  374: "Huntail",
-  375: "Gorebyss",
+  252: "Treecko",
+  253: "Grovyle",
+  254: "Sceptile",
+  255: "Torchic",
+  256: "Combusken",
+  257: "Blaziken",
+  258: "Mudkip",
+  259: "Marshtomp",
+  260: "Swampert",
+  358: "Chimecho",
+  366: "Clamperl",
+  367: "Huntail",
+  368: "Gorebyss",
   412: "Egg"
-};
+});
 
 const gen1InternalNames = {
   14: "Gengar",
@@ -91,6 +142,23 @@ const nationalToGen3Native = Object.fromEntries(
   Object.entries(gen3NativeToNational).map(([internal, national]) => [national, Number(internal)])
 );
 
+const itemNames = {
+  2: {
+    0x52: "King's Rock",
+    0x8f: "Metal Coat",
+    0x97: "Dragon Scale",
+    0xac: "Up-Grade"
+  },
+  3: {
+    187: "King's Rock",
+    192: "Deep Sea Tooth",
+    193: "Deep Sea Scale",
+    199: "Metal Coat",
+    201: "Dragon Scale",
+    218: "Up-Grade"
+  }
+};
+
 function nativeToNational(generation, speciesId) {
   if (generation === 1) return gen1InternalToNational[speciesId] || speciesId;
   if (generation === 3) return gen3NativeToNational[speciesId] || speciesId;
@@ -111,13 +179,51 @@ function speciesExistsInGeneration(nationalId, generation) {
   return nationalToNative(generation, nationalId) > 0;
 }
 
+function itemName(itemId, generation) {
+  if (!itemId) return null;
+  return itemNames[generation]?.[Number(itemId)] || null;
+}
+
+function cleanName(value) {
+  return String(value || "").replace(/\0/g, "").trim().replace(/\s+/g, " ");
+}
+
+function isSpeciesPlaceholder(value) {
+  return /^species\s*#?\s*\d+$/i.test(cleanName(value));
+}
+
+function speciesNameFor(generation, speciesId, fallback = "") {
+  const nationalId = nativeToNational(generation, speciesId);
+  const fallbackName = cleanName(fallback);
+  if (fallbackName && !isSpeciesPlaceholder(fallbackName)) return fallbackName;
+  return speciesNames[nationalId] || fallbackName || (nationalId ? `Species #${nationalId}` : "Pokemon");
+}
+
+function sameName(left, right) {
+  return cleanName(left).toLowerCase().replace(/[^a-z0-9]/g, "") === cleanName(right).toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function normalizePokemonDisplay({ national_dex_id, species_name, level, nickname, gender, held_item_name }) {
+  let speciesName = cleanName(species_name);
+  if ((!speciesName || isSpeciesPlaceholder(speciesName)) && national_dex_id && speciesNames[national_dex_id]) {
+    speciesName = speciesNames[national_dex_id];
+  }
+  if (!speciesName) speciesName = national_dex_id ? `Species #${national_dex_id}` : "Pokemon";
+  let text = `${national_dex_id ? `#${national_dex_id} ` : ""}${speciesName}${gender ? ` ${gender}` : ""} Lv. ${Number(level || 1)}`;
+  text += held_item_name ? ` — Item: ${held_item_name}` : " — Sem item";
+  const nick = cleanName(nickname);
+  if (nick && !sameName(nick, speciesName)) text += ` "${nick}"`;
+  return text;
+}
+
 function canonicalSpeciesFor(generation, speciesId, speciesName) {
   const nationalId = nativeToNational(generation, speciesId);
+  const resolvedName = speciesNameFor(generation, speciesId, speciesName);
   return {
     national_dex_id: nationalId || speciesId,
     source_species_id: speciesId,
     source_species_id_space: generation === 1 ? "gen1_internal" : generation === 2 ? "national_dex" : "gen3_internal",
-    name: speciesName
+    name: resolvedName
   };
 }
 
@@ -221,6 +327,8 @@ let currentAction = null;
 let localPayload = null;
 let peerPayload = null;
 let hasJoinedRoom = false;
+let hasJoinedBattleRoom = false;
+let currentBattleId = null;
 let loadedSave = null;
 let selectedLocation = "party:0";
 
@@ -230,8 +338,49 @@ function log(message) {
   eventLogEl.scrollTop = eventLogEl.scrollHeight;
 }
 
+function battleLog(message) {
+  if (!battleLogEl) return;
+  battleLogEl.textContent += `${message}\n`;
+  battleLogEl.scrollTop = battleLogEl.scrollHeight;
+}
+
 function setStatus(message) {
   tradeStatusEl.textContent = message;
+}
+
+function setBattleStatus(message) {
+  if (battleStatusEl) battleStatusEl.textContent = message;
+}
+
+function setBattleActionsEnabled(enabled) {
+  for (const button of battleActionButtons) button.disabled = !enabled;
+}
+
+function activateTab(tabName) {
+  tabButtons.forEach((button) => {
+    const active = button.dataset.tab === tabName;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  tabPanels.forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.tabPanel === tabName);
+  });
+}
+
+function battleFormatLabel(room) {
+  const formatId = room?.format_id || "automatico";
+  if (formatId === "gen1customgame") return "Gen 1 Custom Game";
+  if (formatId === "gen2customgame") return "Gen 2 Custom Game";
+  if (formatId === "gen3customgame") return "Gen 3 Custom Game";
+  return formatId;
+}
+
+function updateBattleRoomDisplay(room) {
+  if (!room) return;
+  battleFormatEl.textContent = battleFormatLabel(room);
+  const players = room.players || {};
+  const teamSizes = Object.values(players).map((player) => `${player.team_size || 0}`);
+  if (teamSizes.length) battleTeamCountEl.textContent = teamSizes.join(" x ");
 }
 
 function wsUrl() {
@@ -381,17 +530,21 @@ function parseGen1Party(save) {
     const otStart = gen1.otOffset + index * gen1.nameSize;
     const nickStart = gen1.nickOffset + index * gen1.nameSize;
     const speciesId = save.bytes[monStart];
-    const speciesName = gen1InternalNames[speciesId] || `Species #${speciesId}`;
-    party.push({
+    const nationalId = nativeToNational(1, speciesId);
+    const speciesName = speciesNameFor(1, speciesId, gen1InternalNames[speciesId]);
+    const pokemon = {
       location: `party:${index}`,
       species_id: speciesId,
       species_name: speciesName,
+      national_dex_id: nationalId,
       level: save.bytes[monStart + 0x21],
       nickname: decodeGbcText(save.bytes.slice(nickStart, nickStart + gen1.nameSize)) || speciesName,
       ot_name: decodeGbcText(save.bytes.slice(otStart, otStart + gen1.nameSize)),
       trainer_id: (save.bytes[monStart + 0x0c] << 8) | save.bytes[monStart + 0x0d],
       moves: Array.from(save.bytes.slice(monStart + 0x08, monStart + 0x0c)).filter(Boolean)
-    });
+    };
+    pokemon.display_summary = normalizePokemonDisplay(pokemon);
+    party.push(pokemon);
   }
   return party;
 }
@@ -406,18 +559,23 @@ function parseGen2Party(save) {
     const otStart = constants.otOffset + index * constants.nameSize;
     const nickStart = constants.nickOffset + index * constants.nameSize;
     const speciesId = save.bytes[monStart];
-    party.push({
+    const heldItemId = save.bytes[monStart + 0x01] || null;
+    const pokemon = {
       location: `party:${index}`,
       species_id: speciesId,
-      species_name: speciesEntry === 0xfd ? "Egg" : speciesNames[speciesId] || `Species #${speciesId}`,
+      species_name: speciesEntry === 0xfd ? "Egg" : speciesNameFor(2, speciesId),
+      national_dex_id: speciesEntry === 0xfd ? null : speciesId,
       level: save.bytes[monStart + 0x1f],
       nickname: decodeGbcText(save.bytes.slice(nickStart, nickStart + constants.nameSize)),
       ot_name: decodeGbcText(save.bytes.slice(otStart, otStart + constants.nameSize)),
       trainer_id: (save.bytes[monStart + 0x06] << 8) | save.bytes[monStart + 0x07],
-      held_item_id: save.bytes[monStart + 0x01] || null,
+      held_item_id: heldItemId,
+      held_item_name: itemName(heldItemId, 2),
       moves: Array.from(save.bytes.slice(monStart + 0x02, monStart + 0x06)).filter(Boolean),
       is_egg: speciesEntry === 0xfd
-    });
+    };
+    pokemon.display_summary = normalizePokemonDisplay(pokemon);
+    party.push(pokemon);
   }
   return party;
 }
@@ -434,7 +592,7 @@ function exportGbcPayload(save, constants, location, generation, game, format) {
   raw.set(save.bytes.slice(otStart, otStart + constants.nameSize), constants.monSize);
   raw.set(save.bytes.slice(nickStart, nickStart + constants.nameSize), constants.monSize + constants.nameSize);
   const rawBase64 = bytesToBase64(raw);
-  const displaySummary = `${pokemon.species_name} Lv. ${pokemon.level}`;
+  const displaySummary = pokemon.display_summary || normalizePokemonDisplay(pokemon);
   const summary = {
     species_id: pokemon.species_id,
     species_name: pokemon.species_name,
@@ -442,6 +600,7 @@ function exportGbcPayload(save, constants, location, generation, game, format) {
     nickname: pokemon.nickname || pokemon.species_name,
     display_summary: displaySummary
   };
+  const canonicalSpecies = canonicalSpeciesFor(generation, pokemon.species_id, pokemon.species_name);
   return {
     payload_version: 2,
     generation,
@@ -463,15 +622,15 @@ function exportGbcPayload(save, constants, location, generation, game, format) {
     canonical: {
       source_generation: generation,
       source_game: game,
-      species: canonicalSpeciesFor(generation, pokemon.species_id, pokemon.species_name),
-      species_national_id: canonicalSpeciesFor(generation, pokemon.species_id, pokemon.species_name).national_dex_id,
+      species: canonicalSpecies,
+      species_national_id: canonicalSpecies.national_dex_id,
       species_name: pokemon.species_name,
       nickname: pokemon.nickname || pokemon.species_name,
       level: pokemon.level,
       ot_name: pokemon.ot_name,
       trainer_id: pokemon.trainer_id,
       moves: (pokemon.moves || []).map((moveId) => ({ move_id: moveId, source_generation: generation })),
-      held_item: pokemon.held_item_id ? { item_id: pokemon.held_item_id, source_generation: generation } : null
+      held_item: pokemon.held_item_id ? { item_id: pokemon.held_item_id, name: pokemon.held_item_name || itemName(pokemon.held_item_id, generation), source_generation: generation } : null
     },
     compatibility_report: {
       compatible: true,
@@ -621,7 +780,7 @@ function parseGen3Pokemon(raw) {
   }
   return {
     species_id: speciesId,
-    species_name: speciesNames[speciesId] || `Species #${speciesId}`,
+    species_name: speciesNameFor(3, speciesId),
     level: raw[0x54],
     nickname: decodeGen3Text(raw.slice(0x08, 0x12)),
     ot_name: decodeGen3Text(raw.slice(0x14, 0x1b)),
@@ -703,18 +862,23 @@ function parseGen3Party(save) {
     const start = section1 + save.layout.partyOffset + index * gen3.monSize;
     const details = parseGen3Pokemon(save.bytes.slice(start, start + gen3.monSize));
     const speciesName = details.is_egg ? "Egg" : details.species_name;
-    party.push({
+    const nationalId = details.is_egg ? null : nativeToNational(3, details.species_id);
+    const pokemon = {
       location: `party:${index}`,
       species_id: details.species_id,
       species_name: speciesName,
+      national_dex_id: nationalId,
       level: details.level,
       nickname: details.nickname || speciesName,
       ot_name: details.ot_name,
       trainer_id: details.trainer_id,
       held_item_id: details.held_item_id,
+      held_item_name: itemName(details.held_item_id, 3),
       moves: details.moves,
       is_egg: details.is_egg
-    });
+    };
+    pokemon.display_summary = normalizePokemonDisplay(pokemon);
+    party.push(pokemon);
   }
   return party;
 }
@@ -726,7 +890,7 @@ function exportGen3Payload(save, location) {
   const start = save.slot.sectionOffsets[1] + save.layout.partyOffset + index * gen3.monSize;
   const raw = save.bytes.slice(start, start + gen3.monSize);
   const rawBase64 = bytesToBase64(raw);
-  const displaySummary = `${pokemon.species_name} Lv. ${pokemon.level}`;
+  const displaySummary = pokemon.display_summary || normalizePokemonDisplay(pokemon);
   const summary = {
     species_id: pokemon.species_id,
     species_name: pokemon.species_name,
@@ -734,6 +898,7 @@ function exportGen3Payload(save, location) {
     nickname: pokemon.nickname || pokemon.species_name,
     display_summary: displaySummary
   };
+  const canonicalSpecies = canonicalSpeciesFor(3, pokemon.species_id, pokemon.species_name);
   return {
     payload_version: 2,
     generation: 3,
@@ -754,15 +919,15 @@ function exportGen3Payload(save, location) {
     canonical: {
       source_generation: 3,
       source_game: save.game,
-      species: canonicalSpeciesFor(3, pokemon.species_id, pokemon.species_name),
-      species_national_id: canonicalSpeciesFor(3, pokemon.species_id, pokemon.species_name).national_dex_id,
+      species: canonicalSpecies,
+      species_national_id: canonicalSpecies.national_dex_id,
       species_name: pokemon.species_name,
       nickname: pokemon.nickname || pokemon.species_name,
       level: pokemon.level,
       ot_name: pokemon.ot_name,
       trainer_id: pokemon.trainer_id,
       moves: (pokemon.moves || []).map((moveId) => ({ move_id: moveId, source_generation: 3 })),
-      held_item: pokemon.held_item_id ? { item_id: pokemon.held_item_id, source_generation: 3 } : null
+      held_item: pokemon.held_item_id ? { item_id: pokemon.held_item_id, name: pokemon.held_item_name || itemName(pokemon.held_item_id, 3), source_generation: 3 } : null
     },
     raw: { format: "gen3-party-v1", data_base64: rawBase64 },
     compatibility_report: {
@@ -896,18 +1061,74 @@ function updatePokemonOptions() {
     pokemonChoiceEl.append(option);
     createButton.disabled = true;
     joinButton.disabled = true;
+    createBattleButton.disabled = true;
+    joinBattleButton.disabled = true;
+    openTradeTabButton.disabled = true;
+    openBattleTabButton.disabled = true;
+    battleTeamCountEl.textContent = "0 Pokémon";
+    battleTeamPreviewEl.textContent = "";
+    setupPartyPreviewEl.textContent = "";
+    tradeSaveStatusEl.textContent = "Nenhum save carregado.";
+    setupStatusEl.textContent = "Carregue um save para liberar troca e batalha.";
+    setBattleStatus("Carregue um save para montar o time.");
     return;
   }
   loadedSave.party.forEach((pokemon) => {
     if (pokemon.species_name === "Egg") return;
     const option = document.createElement("option");
     option.value = pokemon.location;
-    option.textContent = `${pokemon.species_name} Lv. ${pokemon.level} (${pokemon.nickname})`;
+    option.textContent = pokemon.display_summary || normalizePokemonDisplay(pokemon);
     pokemonChoiceEl.append(option);
   });
   const enabled = pokemonChoiceEl.options.length > 0;
   createButton.disabled = !enabled;
   joinButton.disabled = !enabled;
+  createBattleButton.disabled = !enabled;
+  joinBattleButton.disabled = !enabled;
+  openTradeTabButton.disabled = !enabled;
+  openBattleTabButton.disabled = !enabled;
+  tradeSaveStatusEl.textContent = `${loadedSave.label}: ${loadedSave.party.length} Pokémon na party.`;
+  setupStatusEl.textContent = enabled
+    ? `${loadedSave.label} carregado. Você pode ir para troca ou batalha.`
+    : "A party não possui Pokémon válido para troca ou batalha.";
+  const selected = loadedSave.party.find((pokemon) => pokemon.location === pokemonChoiceEl.value);
+  localOfferEl.textContent = selected ? selected.display_summary || normalizePokemonDisplay(selected) : "-";
+  updateBattleTeamPreview();
+  updateSetupPartyPreview();
+}
+
+function updateBattleTeamPreview() {
+  battleTeamPreviewEl.textContent = "";
+  if (!loadedSave) return;
+  const team = loadedSave.party.filter((pokemon) => !pokemon.is_egg).slice(0, 6);
+  battleTeamCountEl.textContent = `${team.length} Pokémon`;
+  battleFormatEl.textContent = `Gen ${loadedSave.generation} local`;
+  setBattleStatus(team.length ? "Time pronto para batalha." : "Nenhum Pokémon válido na party.");
+  for (const pokemon of team) {
+    const item = document.createElement("div");
+    item.className = "team-preview-item";
+    const name = document.createElement("strong");
+    name.textContent = pokemon.display_summary || normalizePokemonDisplay(pokemon);
+    const meta = document.createElement("span");
+    meta.textContent = `${pokemon.moves?.length || 0} golpes exportados`;
+    item.append(name, meta);
+    battleTeamPreviewEl.append(item);
+  }
+}
+
+function updateSetupPartyPreview() {
+  setupPartyPreviewEl.textContent = "";
+  if (!loadedSave) return;
+  for (const pokemon of loadedSave.party.filter((item) => !item.is_egg).slice(0, 6)) {
+    const item = document.createElement("div");
+    item.className = "team-preview-item";
+    const name = document.createElement("strong");
+    name.textContent = pokemon.display_summary || normalizePokemonDisplay(pokemon);
+    const meta = document.createElement("span");
+    meta.textContent = pokemon.location === pokemonChoiceEl.value ? "Selecionado para troca" : "Disponível";
+    item.append(name, meta);
+    setupPartyPreviewEl.append(item);
+  }
 }
 
 function selectedPayload() {
@@ -953,7 +1174,11 @@ function connect() {
       heartbeatTimer = null;
       confirmButton.disabled = true;
       cancelButton.disabled = true;
+      confirmBattleButton.disabled = true;
+      forfeitBattleButton.disabled = true;
+      setBattleActionsEnabled(false);
       if (hasJoinedRoom) setStatus("Conexao encerrada.");
+      if (hasJoinedBattleRoom) setBattleStatus("Conexao de batalha encerrada.");
     });
     socket.addEventListener("error", () => reject(new Error("Falha ao conectar no WebSocket.")));
   });
@@ -1057,7 +1282,16 @@ function handleMessage(message) {
     case "game_mismatch":
     case "error":
       setStatus(message.message || "Erro no servidor.");
+      if (currentAction && currentAction.startsWith("battle")) {
+        setBattleStatus(message.message || "Erro no servidor.");
+        setBattleActionsEnabled(false);
+      }
       log(`Erro: ${message.message || message.code}`);
+      break;
+    case "battle_error":
+      setBattleStatus(message.message || "Erro na batalha.");
+      setBattleActionsEnabled(false);
+      log(`Erro de batalha: ${message.message || message.code}`);
       break;
     case "trade_cancelled":
       if (message.reason === "peer_disconnected") {
@@ -1072,6 +1306,80 @@ function handleMessage(message) {
       cancelButton.disabled = !hasJoinedRoom;
       log(`Troca cancelada: ${message.reason}`);
       break;
+    case "battle_room_created":
+      hasJoinedBattleRoom = true;
+      updateBattleRoomDisplay(message.room);
+      setBattleStatus("Sala de batalha criada. Aguardando segundo usuário.");
+      setStatus("Sala de batalha criada. Aguardando segundo usuario.");
+      log("Sala de batalha criada.");
+      forfeitBattleButton.disabled = false;
+      break;
+    case "battle_room_joined":
+      hasJoinedBattleRoom = true;
+      updateBattleRoomDisplay(message.room);
+      setBattleStatus("Entrou na sala de batalha. Enviando time.");
+      setStatus("Entrou na sala de batalha. Enviando time.");
+      log("Entrou na sala de batalha.");
+      forfeitBattleButton.disabled = false;
+      sendBattleTeam();
+      break;
+    case "battle_room_ready":
+      updateBattleRoomDisplay(message.room);
+      log("Sala de batalha pronta.");
+      if (currentAction === "battle_create") {
+        setBattleStatus("Segundo usuário entrou. Enviando time.");
+        setStatus("Segundo usuario entrou. Enviando time.");
+        sendBattleTeam();
+      }
+      break;
+    case "battle_team_received":
+      updateBattleRoomDisplay(message.room);
+      setBattleStatus(`Servidor recebeu seu time (${message.team_size || 0} Pokémon).`);
+      log("Servidor recebeu seu time de batalha.");
+      break;
+    case "battle_ready":
+      updateBattleRoomDisplay(message.room);
+      setBattleStatus("Times prontos. Confirme para iniciar.");
+      setStatus("Times prontos. Confirme para iniciar batalha.");
+      confirmBattleButton.disabled = false;
+      log("Batalha pronta.");
+      break;
+    case "battle_confirmed":
+      setBattleStatus("Confirmação enviada. Aguardando o outro jogador.");
+      setStatus("Confirmacao de batalha enviada.");
+      log("Confirmacao de batalha enviada.");
+      break;
+    case "battle_started":
+      currentBattleId = message.battle_id;
+      updateBattleRoomDisplay(message.room);
+      setBattleStatus("Batalha iniciada. Aguarde sua ação.");
+      setStatus("Batalha iniciada.");
+      confirmBattleButton.disabled = true;
+      forfeitBattleButton.disabled = false;
+      setBattleActionsEnabled(false);
+      for (const line of message.logs || []) battleLog(line);
+      log("Batalha iniciada.");
+      break;
+    case "battle_log":
+      for (const line of message.logs || []) battleLog(line);
+      break;
+    case "battle_request_action":
+      currentBattleId = message.battle_id || currentBattleId;
+      setBattleStatus("Escolha uma ação de batalha.");
+      setBattleActionsEnabled(true);
+      battleLog("|request|escolha um golpe ou passe o turno");
+      break;
+    case "battle_finished":
+      currentBattleId = null;
+      hasJoinedBattleRoom = false;
+      setBattleStatus("Batalha finalizada.");
+      setStatus("Batalha finalizada.");
+      for (const line of message.logs || []) battleLog(line);
+      confirmBattleButton.disabled = true;
+      forfeitBattleButton.disabled = true;
+      setBattleActionsEnabled(false);
+      log("Batalha finalizada.");
+      break;
     case "heartbeat":
       break;
     default:
@@ -1083,6 +1391,29 @@ function sendOffer() {
   localPayload = selectedPayload();
   localOfferEl.textContent = localPayload.display_summary;
   send({ type: "offer_pokemon", payload: localPayload });
+}
+
+function battleTeam() {
+  if (!loadedSave) throw new Error("Escolha um save local.");
+  const team = loadedSave.party
+    .filter((pokemon) => !pokemon.is_egg)
+    .slice(0, 6)
+    .map((pokemon) => {
+      const payload = loadedSave.exportPayload(pokemon.location);
+      const canonical = payload.canonical;
+      if (canonical && canonical.original_data) {
+        canonical.original_data = { ...canonical.original_data, raw_data_base64: null };
+      }
+      return canonical;
+    });
+  if (!team.length) throw new Error("A party nao possui Pokemon validos para batalha.");
+  return team;
+}
+
+function sendBattleTeam() {
+  const team = battleTeam();
+  battleTeamCountEl.textContent = `${team.length} Pokémon enviados`;
+  send({ type: "offer_battle_team", team });
 }
 
 function handlePreflightRequired(message) {
@@ -1219,11 +1550,66 @@ async function startRoom(action) {
   });
 }
 
+async function startBattleRoom(action) {
+  const roomName = document.querySelector("#roomName").value.trim();
+  const password = document.querySelector("#roomPassword").value;
+  if (!roomName || !password) {
+    setStatus("Informe nome da sala e senha.");
+    return;
+  }
+  if (!loadedSave || !loadedSave.party.length) {
+    setStatus("Carregue um save com party antes da batalha.");
+    return;
+  }
+  currentAction = action === "create" ? "battle_create" : "battle_join";
+  hasJoinedBattleRoom = false;
+  currentBattleId = null;
+  battleLogEl.textContent = "";
+  setBattleActionsEnabled(false);
+  confirmBattleButton.disabled = true;
+  forfeitBattleButton.disabled = true;
+  setStatus("Conectando para batalha...");
+  setBattleStatus("Conectando para batalha...");
+  await connect();
+  send({
+    type: action === "create" ? "create_battle_room" : "join_battle_room",
+    room_name: roomName,
+    password,
+    generation: loadedSave.generation,
+    game: loadedSave.game
+  });
+}
+
 createButton.addEventListener("click", () => startRoom("create").catch((error) => setStatus(error.message)));
 joinButton.addEventListener("click", () => startRoom("join").catch((error) => setStatus(error.message)));
+createBattleButton.addEventListener("click", () => startBattleRoom("create").catch((error) => setStatus(error.message)));
+joinBattleButton.addEventListener("click", () => startBattleRoom("join").catch((error) => setStatus(error.message)));
+tabButtons.forEach((button) => {
+  button.addEventListener("click", () => activateTab(button.dataset.tab));
+});
+openTradeTabButton.addEventListener("click", () => activateTab("trade"));
+openBattleTabButton.addEventListener("click", () => activateTab("battle"));
 confirmButton.addEventListener("click", () => {
   confirmButton.disabled = true;
   send({ type: "confirm_trade" });
+});
+confirmBattleButton.addEventListener("click", () => {
+  confirmBattleButton.disabled = true;
+  setBattleStatus("Confirmação enviada. Aguardando início da batalha.");
+  send({ type: "confirm_battle" });
+});
+forfeitBattleButton.addEventListener("click", () => {
+  setBattleActionsEnabled(false);
+  setBattleStatus("Desistência enviada.");
+  send({ type: "battle_forfeit" });
+});
+battleActionButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const action = button.dataset.battleAction || "pass";
+    setBattleActionsEnabled(false);
+    setBattleStatus(`Ação enviada: ${action}.`);
+    send({ type: "battle_action", battle_id: currentBattleId, action });
+  });
 });
 cancelButton.addEventListener("click", () => {
   send({ type: "cancel_trade" });
@@ -1236,6 +1622,12 @@ window.addEventListener("beforeunload", (event) => {
 });
 document.querySelector("#clearLog").addEventListener("click", () => {
   eventLogEl.textContent = "";
+});
+pokemonChoiceEl.addEventListener("change", () => {
+  if (!loadedSave) return;
+  const selected = loadedSave.party.find((pokemon) => pokemon.location === pokemonChoiceEl.value);
+  localOfferEl.textContent = selected ? selected.display_summary || normalizePokemonDisplay(selected) : "-";
+  updateSetupPartyPreview();
 });
 saveFileEl.addEventListener("change", async () => {
   const file = saveFileEl.files?.[0];
@@ -1255,4 +1647,5 @@ saveFileEl.addEventListener("change", async () => {
 });
 
 updatePokemonOptions();
+activateTab("setup");
 log(`Frontend pronto em ${wsUrl()}`);

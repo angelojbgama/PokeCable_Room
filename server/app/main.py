@@ -7,7 +7,9 @@ import os
 from fastapi import FastAPI, WebSocket
 
 from .cleanup import cleanup_loop
+from .battles import BattleManager
 from .rooms import RoomManager
+from .showdown import build_showdown_adapter
 from .websocket import ConnectionHub
 
 
@@ -15,8 +17,10 @@ def build_app() -> FastAPI:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
     app = FastAPI(title="PokeCable Room", version="0.2.0")
     room_manager = RoomManager(cross_generation_enabled=None)
-    hub = ConnectionHub(room_manager)
+    battle_manager = BattleManager(adapter=build_showdown_adapter())
+    hub = ConnectionHub(room_manager, battle_manager)
     app.state.room_manager = room_manager
+    app.state.battle_manager = battle_manager
     app.state.hub = hub
 
     @app.get("/health")

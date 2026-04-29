@@ -6,6 +6,7 @@ from typing import Any, Protocol
 
 from pokecable_room.canonical import CanonicalPokemon
 from pokecable_room.compatibility import CompatibilityReport
+from pokecable_room.display import normalize_pokemon_display
 
 
 @dataclass(slots=True)
@@ -17,10 +18,21 @@ class PokemonSummary:
     nickname: str
     ot_name: str = ""
     trainer_id: int = 0
+    national_dex_id: int | None = None
+    held_item_id: int | None = None
+    held_item_name: str | None = None
+    gender: str | None = None
 
     @property
     def display_summary(self) -> str:
-        return f"{self.species_name} Lv. {self.level}"
+        return normalize_pokemon_display(
+            self.national_dex_id,
+            self.species_name,
+            self.level,
+            nickname=self.nickname,
+            gender=self.gender,
+            held_item_name=self.held_item_name,
+        )
 
 
 @dataclass(slots=True)
@@ -58,6 +70,7 @@ class PokemonPayload:
                 "level": self.level,
                 "nickname": self.nickname,
                 "display_summary": self.display_summary,
+                "national_dex_id": self.canonical.get("species", {}).get("national_dex_id") if self.canonical else None,
             }
         if not payload["raw"]:
             payload["raw"] = {

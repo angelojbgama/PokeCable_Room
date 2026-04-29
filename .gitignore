@@ -1,8 +1,19 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+htmlcov/
 .venv/
 *.log
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+node_modules/
 .env
 server/.env
 r36s-client/.env
@@ -16,6 +27,7 @@ r36s-client/.env
 .codex
 codex
 save/
+*.pid
 r36s-client/pokecable_room/config.json
 r36s-client/pokecable_room/backups/*
 r36s-client/pokecable_room/logs/*

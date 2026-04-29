@@ -10,6 +10,7 @@ from pokecable_room.evolutions import apply_trade_evolution_to_parser
 from pokecable_room.parsers.gen1 import Gen1Parser
 from pokecable_room.parsers.gen2 import Gen2Parser
 from pokecable_room.parsers.gen3 import Gen3Parser
+from pokecable_room.showdown import canonical_team_to_showdown_text
 
 
 REAL_SAVE_ROOT = Path("/srv/save")
@@ -127,6 +128,20 @@ class RealSaveIntegrationTests(unittest.TestCase):
                     self.assertTrue(reloaded.is_pokedex_seen(151))
                     self.assertTrue(reloaded.is_pokedex_caught(151))
                     self.assertTrue(reloaded.validate())
+
+    def test_real_save_exports_showdown_team_without_raw_save_data(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            save_path = copy_real_save("gen 3/Pokémon - Ruby Version.sav", tempdir, "ruby.sav")
+            parser = Gen3Parser()
+            parser.load(save_path)
+            canonical = parser.export_canonical("party:0")
+            text = canonical_team_to_showdown_text([canonical], 3)
+
+            self.assertIn("Level:", text)
+            payload = canonical.to_dict()
+            self.assertIn("original_data", payload)
+            payload["original_data"]["raw_data_base64"] = None
+            self.assertIsNone(payload["original_data"]["raw_data_base64"])
 
 
 if __name__ == "__main__":

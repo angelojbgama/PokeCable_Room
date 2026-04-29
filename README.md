@@ -4,6 +4,8 @@ PokeCable Room e uma tool para R36S/ArkOS/dArkOS que permite dois usuarios troca
 
 Nao e emulacao de cabo link. A troca e feita por edicao local e segura do arquivo de save, sempre com backup antes de qualquer escrita. O servidor apenas orquestra sala, compatibilidade, ofertas e confirmacao.
 
+O projeto tambem possui modo de batalha separado do fluxo de troca. A batalha usa o modelo canonico dos Pokemon da party e um adapter compativel com Pokemon Showdown; ela nao escreve save, nao envia ROM e nao envia save completo ao servidor.
+
 ## Direcao Do Produto
 
 Same-generation trade e o modo estavel: Gen 1 com Gen 1, Gen 2 com Gen 2 e Gen 3 com Gen 3 usando payload raw da mesma geracao.
@@ -35,6 +37,10 @@ Estavel:
 - Same-generation trade usando raw payload somente entre saves da mesma geracao.
 - Cross-generation trade usando payload canonico, preflight local e conversores locais.
 - Evolucao simples por troca aplicada localmente depois da troca, quando `auto_trade_evolution` esta ligado.
+- Display normalizado no R36S e web: National Dex, nome, level, held item, sexo quando existir e apelido quando for diferente.
+- Salas de batalha separadas das salas de troca.
+- Exportacao de times canonicos para formato de time Pokemon Showdown.
+- Battle room via WebSocket com dois jogadores, oferta de times, confirmacao, logs, acoes basicas e desistir.
 
 Experimental protegido por flags:
 
@@ -64,6 +70,7 @@ Experimental protegido por flags:
 - Cross-generation deve ser testado com backup.
 - Downconvert Gen 3 -> Gen 1/2 pode perder ability, nature, parte do trainer ID, held item e moves modernos.
 - O jogo/emulador precisa estar fechado antes de gravar no save.
+- O adapter real de Pokemon Showdown depende de Node/processo separado. Sem `SHOWDOWN_PROCESS_CMD`, o servidor usa um adapter local deterministico para fluxo e testes.
 
 ## Seguranca De Geracao
 
@@ -200,6 +207,107 @@ Suporte Gen 3:
 - Clamperl + Deep Sea Tooth -> Huntail
 - Clamperl + Deep Sea Scale -> Gorebyss
 
+## Battle Mode Via Showdown
+
+O modo de batalha e separado da troca por save:
+
+- Troca por save altera o arquivo local com backup.
+- Batalha nao altera save.
+- Batalha envia somente `CanonicalPokemon` sanitizado do time escolhido.
+- `original_data.raw_data_base64` e removido do payload de batalha antes de ir ao servidor.
+- O servidor cria uma `BattleRoom`, recebe dois times, espera confirmacao dos dois jogadores e passa eventos para um `ShowdownAdapter`.
+
+Formatos iniciais:
+
+- Gen 1: `gen1customgame`
+- Gen 2: `gen2customgame`
+- Gen 3: `gen3customgame`
+
+Eventos WebSocket de batalha:
+
+- `create_battle_room`
+- `join_battle_room`
+- `offer_battle_team`
+- `confirm_battle`
+- `battle_action`
+- `battle_forfeit`
+- `battle_room_created`
+- `battle_room_joined`
+- `battle_team_received`
+- `battle_ready`
+- `battle_started`
+- `battle_log`
+- `battle_request_action`
+- `battle_finished`
+- `battle_error`
+
+Adapter Showdown:
+
+- `SHOWDOWN_ENABLED=true` por padrao.
+- `SHOWDOWN_SERVER_URL` fica reservado para bridge HTTP externa.
+- `SHOWDOWN_PROCESS_CMD` aponta para um worker Node/Pokemon Showdown local persistente, por exemplo `node /srv/pokecable-showdown-worker/worker.js`.
+- Se o processo nao estiver configurado ou falhar, o servidor nao bloqueia startup; usa o adapter local para manter o fluxo de sala, logs e testes funcionando.
+- O adapter local nao e simulacao competitiva completa de Pokemon Showdown; ele e o fallback de protocolo. Para batalha real completa, instale o worker em `/srv/pokecable-showdown-worker` e configure `SHOWDOWN_PROCESS_CMD`.
+
+Worker Node local:
+
+```bash
+cd /srv/pokecable-showdown-worker
+npm install
+npm run check
+```
+
+Configuracao do servidor:
+
+```text
+SHOWDOWN_ENABLED=true
+SHOWDOWN_PROCESS_CMD=node /srv/pokecable-showdown-worker/worker.js
+```
+
+O worker usa JSON-lines por `stdin/stdout` e guarda o estado da batalha em
+memoria. O FastAPI inicia o processo automaticamente quando a primeira batalha
+precisar do adapter real.
+
+Observacao para Docker: a imagem Python padrao nao instala Node nem copia o
+worker. Em Docker, use `SHOWDOWN_SERVER_URL` para um bridge externo ou monte um
+worker Node dentro do container antes de definir `SHOWDOWN_PROCESS_CMD`.
+
+Client R36S:
+
+```bash
+PYTHONPATH=r36s-client python3 r36s-client/pokecable_room/client.py \
+  --mode battle \
+  --action create \
+  --server ws://127.0.0.1:8000/ws \
+  --room batalha \
+  --password 123 \
+  --save /caminho/para/save.sav
+```
+
+O menu do R36S tambem possui:
+
+- Criar sala de batalha
+- Entrar em sala de batalha
+- Escolher time do save
+- Ver time Showdown
+- Confirmar batalha
+- Enviar acao simplificada
+
+Frontend web:
+
+- Cria/entra em sala de troca.
+- Cria/entra em sala de batalha.
+- Mostra party com display normalizado.
+- Envia time canonico para batalha.
+- Mostra logs de batalha.
+
+Limites atuais:
+
+- A UI visual de batalha ainda e simplificada.
+- Sprites, animacoes e seletores completos de move/switch podem ser adicionados depois.
+- A batalha real completa depende de um processo Pokemon Showdown externo.
+- O front web continua sem editar save no servidor; ele edita localmente no navegador apenas no fluxo de troca.
+
 ## Feature Flags
 
 Config local do client:
@@ -222,6 +330,9 @@ Servidor em producao/cross-generation:
 ```text
 ALLOW_CROSS_GENERATION=true
 ENABLED_TRADE_MODES=time_capsule_gen1_gen2,forward_transfer_to_gen3,legacy_downconvert_experimental
+SHOWDOWN_ENABLED=true
+SHOWDOWN_SERVER_URL=
+SHOWDOWN_PROCESS_CMD=node /srv/pokecable-showdown-worker/worker.js
 ```
 
 `ALLOW_CROSS_GENERATION=true` sozinho nao libera tudo. Cada modo derivado precisa aparecer em `ENABLED_TRADE_MODES`.
@@ -272,4 +383,6 @@ Use `--action join` no segundo terminal.
 ```bash
 PYTHONPATH=server python3 -m unittest discover server/tests
 PYTHONPATH=r36s-client python3 -m unittest discover r36s-client/pokecable_room/tests
+python3 -m compileall server r36s-client
+node --check frontend/app.js
 ```

@@ -268,6 +268,7 @@ class Gen1Parser:
                     nickname=nickname,
                     ot_name=ot_name,
                     trainer_id=trainer_id,
+                    national_dex_id=gen1_internal_to_national(species_id),
                 )
             )
         return party

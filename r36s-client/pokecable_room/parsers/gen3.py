@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pokecable_room.canonical import CanonicalItem, CanonicalMove, CanonicalOriginalData, CanonicalPokemon
 from pokecable_room.compatibility import CompatibilityReport, build_compatibility_report
-from pokecable_room.data.items import equivalent_item_id, item_exists
+from pokecable_room.data.items import equivalent_item_id, item_exists, item_name
 from pokecable_room.data.moves import move_exists
 from pokecable_room.data.species import native_to_national, national_to_native, species_exists_in_generation
 
@@ -312,6 +312,8 @@ class Gen3Parser:
             species_name = "Egg" if details["is_egg"] else GEN3_SPECIES.get(details["species_id"], f"Species #{details['species_id']}")
             nickname = self._decode_text(raw[0x08 : 0x08 + NICKNAME_SIZE]) or species_name
             ot_name = self._decode_text(raw[0x14 : 0x14 + OT_NAME_SIZE])
+            held_item_id = int(details["held_item_id"]) if details.get("held_item_id") else None
+            national_dex_id = None if details["is_egg"] else native_to_national(3, int(details["species_id"]))
             party.append(
                 PokemonSummary(
                     location=f"party:{index}",
@@ -321,6 +323,9 @@ class Gen3Parser:
                     nickname=nickname,
                     ot_name=ot_name,
                     trainer_id=int(details["trainer_id"]),
+                    national_dex_id=national_dex_id,
+                    held_item_id=held_item_id,
+                    held_item_name=item_name(held_item_id, 3),
                 )
             )
         return party
@@ -389,7 +394,9 @@ class Gen3Parser:
             trainer_id=summary.trainer_id,
             experience=int.from_bytes(secure[growth + 4 : growth + 8], "little"),
             moves=moves,
-            held_item=CanonicalItem(item_id=held_item_id, source_generation=3) if held_item_id is not None else None,
+            held_item=CanonicalItem(item_id=held_item_id, name=item_name(held_item_id, 3), source_generation=3)
+            if held_item_id is not None
+            else None,
             original_data=CanonicalOriginalData(
                 generation=3,
                 game=self.game_id,
@@ -712,9 +719,11 @@ class Gen3Parser:
         growth_index = SUBSTRUCT_ORDERS[personality % 24][0]
         growth = secure[growth_index * 12 : growth_index * 12 + 12]
         species_id = int.from_bytes(growth[0:2], "little")
+        held_item_id = int.from_bytes(growth[2:4], "little")
         is_egg = species_id == 412 or bool(box[0x13] & 0x04)
         return {
             "species_id": species_id,
+            "held_item_id": held_item_id,
             "trainer_id": trainer_id,
             "checksum": checksum,
             "is_egg": is_egg,

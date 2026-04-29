@@ -69,6 +69,8 @@ class Gen1SyntheticParserTests(unittest.TestCase):
             parser_b.load(save_b)
 
             self.assertEqual(parser_a.list_party()[0].species_name, "Kadabra")
+            self.assertIn("#64 Kadabra", parser_a.list_party()[0].display_summary)
+            self.assertIn("Sem item", parser_a.list_party()[0].display_summary)
             payload = parser_a.export_pokemon("party:0")
             parser_b.remove_or_replace_sent_pokemon("party:1", payload)
             parser_b.save(save_b)

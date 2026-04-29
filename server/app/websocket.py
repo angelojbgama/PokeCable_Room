@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from .battles import BattleManager
 from .models import PlayerSlot, Room, RoomError
 from .rooms import RoomManager
 
@@ -16,10 +17,12 @@ logger = logging.getLogger("pokecable.websocket")
 
 
 class ConnectionHub:
-    def __init__(self, room_manager: RoomManager) -> None:
+    def __init__(self, room_manager: RoomManager, battle_manager: BattleManager | None = None) -> None:
         self.room_manager = room_manager
+        self.battle_manager = battle_manager or BattleManager()
         self.connections: dict[str, WebSocket] = {}
         self.room_clients: dict[str, dict[PlayerSlot, str]] = {}
+        self.battle_clients: dict[str, dict[PlayerSlot, str]] = {}
 
     async def handle(self, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -54,6 +57,18 @@ class ConnectionHub:
                 await self._confirm_trade(client_id)
             elif message_type == "cancel_trade":
                 await self._cancel_trade(client_id, "cancelled")
+            elif message_type == "create_battle_room":
+                await self._create_battle_room(client_id, message)
+            elif message_type == "join_battle_room":
+                await self._join_battle_room(client_id, message)
+            elif message_type == "offer_battle_team":
+                await self._offer_battle_team(client_id, message)
+            elif message_type == "confirm_battle":
+                await self._confirm_battle(client_id)
+            elif message_type == "battle_action":
+                await self._battle_action(client_id, message)
+            elif message_type == "battle_forfeit":
+                await self._battle_forfeit(client_id)
             else:
                 raise RoomError("unknown_message", f"Mensagem desconhecida: {message_type}")
         except RoomError as exc:
@@ -184,6 +199,62 @@ class ConnectionHub:
             await self._broadcast_room_name(room_name, {"type": "trade_cancelled", "reason": reason})
             self.room_clients.pop(room_name, None)
 
+    async def _create_battle_room(self, client_id: str, message: dict[str, Any]) -> None:
+        room, slot = await self.battle_manager.create_room(
+            room_name=message.get("room_name"),
+            password=str(message.get("password") or ""),
+            client_id=client_id,
+            generation=message.get("generation"),
+            game=message.get("game"),
+            format_id=message.get("format_id"),
+        )
+        self._remember_battle_client(room.room_name, slot, client_id)
+        await self._send(client_id, {"type": "battle_room_created", "client_id": client_id, "slot": slot, "room": room.to_public_dict()})
+        await self._send(client_id, {"type": "battle_waiting", "message": "Aguardando segundo jogador para batalha."})
+
+    async def _join_battle_room(self, client_id: str, message: dict[str, Any]) -> None:
+        room, slot = await self.battle_manager.join_room(
+            room_name=message.get("room_name"),
+            password=str(message.get("password") or ""),
+            client_id=client_id,
+            generation=message.get("generation"),
+            game=message.get("game"),
+        )
+        self._remember_battle_client(room.room_name, slot, client_id)
+        await self._send(client_id, {"type": "battle_room_joined", "client_id": client_id, "slot": slot, "room": room.to_public_dict()})
+        await self._broadcast_battle(room.room_name, {"type": "battle_room_ready", "room": room.to_public_dict()})
+
+    async def _offer_battle_team(self, client_id: str, message: dict[str, Any]) -> None:
+        team = message.get("team")
+        if not isinstance(team, list):
+            raise RoomError("invalid_team", "offer_battle_team precisa conter team JSON.")
+        room, slot, ready = await self.battle_manager.offer_team(client_id=client_id, team=team)
+        await self._send(client_id, {"type": "battle_team_received", "slot": slot, "team_size": len(team), "room": room.to_public_dict()})
+        if ready:
+            await self._broadcast_battle(room.room_name, {"type": "battle_ready", "room": room.to_public_dict()})
+
+    async def _confirm_battle(self, client_id: str) -> None:
+        room, slot, started, logs = await self.battle_manager.confirm_battle(client_id=client_id)
+        await self._send(client_id, {"type": "battle_confirmed", "slot": slot})
+        if started:
+            await self._broadcast_battle(room.room_name, {"type": "battle_started", "battle_id": room.battle_id, "logs": logs, "room": room.to_public_dict()})
+            await self._broadcast_battle(room.room_name, {"type": "battle_request_action", "battle_id": room.battle_id})
+
+    async def _battle_action(self, client_id: str, message: dict[str, Any]) -> None:
+        room, _slot, logs, finished = await self.battle_manager.send_action(client_id=client_id, action=str(message.get("action") or "pass"))
+        await self._broadcast_battle(room.room_name, {"type": "battle_log", "battle_id": room.battle_id, "logs": logs})
+        if finished:
+            await self._broadcast_battle(room.room_name, {"type": "battle_finished", "battle_id": room.battle_id, "logs": logs})
+            self.battle_clients.pop(room.room_name, None)
+        else:
+            await self._broadcast_battle(room.room_name, {"type": "battle_request_action", "battle_id": room.battle_id})
+
+    async def _battle_forfeit(self, client_id: str) -> None:
+        room, _slot, logs = await self.battle_manager.forfeit(client_id=client_id)
+        await self._broadcast_battle(room.room_name, {"type": "battle_log", "battle_id": room.battle_id, "logs": logs})
+        await self._broadcast_battle(room.room_name, {"type": "battle_finished", "battle_id": room.battle_id, "logs": logs})
+        self.battle_clients.pop(room.room_name, None)
+
     async def _disconnect(self, client_id: str) -> None:
         self.connections.pop(client_id, None)
         known = self.room_manager.client_rooms.get(client_id)
@@ -199,16 +270,36 @@ class ConnectionHub:
             else:
                 await self._broadcast_room_name(room_name, {"type": "trade_cancelled", "reason": "peer_disconnected"})
                 await self._broadcast_room_name(room_name, {"type": "room_waiting", "message": "Outro usuario desconectou. A sala continua aguardando."})
+        battle_known = self.battle_manager.client_rooms.get(client_id)
+        battle_room_name = battle_known[0] if battle_known else None
+        battle_slot = battle_known[1] if battle_known else None
+        battle_room = await self.battle_manager.disconnect(client_id)
+        if battle_room_name:
+            battle_clients = self.battle_clients.get(battle_room_name, {})
+            if battle_slot:
+                battle_clients.pop(battle_slot, None)
+            if battle_room is None or not battle_clients:
+                self.battle_clients.pop(battle_room_name, None)
+            else:
+                await self._broadcast_battle(battle_room_name, {"type": "battle_finished", "reason": "peer_disconnected"})
         logger.info("client_disconnected client_id=%s room=%s", client_id, room_name)
 
     def _remember_client(self, room_name: str, slot: PlayerSlot, client_id: str) -> None:
         self.room_clients.setdefault(room_name, {})[slot] = client_id
+
+    def _remember_battle_client(self, room_name: str, slot: PlayerSlot, client_id: str) -> None:
+        self.battle_clients.setdefault(room_name, {})[slot] = client_id
 
     async def _broadcast(self, room: Room, payload: dict[str, Any]) -> None:
         await self._broadcast_room_name(room.room_name, payload)
 
     async def _broadcast_room_name(self, room_name: str, payload: dict[str, Any]) -> None:
         tasks = [self._safe_send(client_id, payload) for client_id in self.room_clients.get(room_name, {}).values()]
+        if tasks:
+            await asyncio.gather(*tasks)
+
+    async def _broadcast_battle(self, room_name: str, payload: dict[str, Any]) -> None:
+        tasks = [self._safe_send(client_id, payload) for client_id in self.battle_clients.get(room_name, {}).values()]
         if tasks:
             await asyncio.gather(*tasks)
 
