@@ -61,6 +61,10 @@ class ConnectionHub:
                 await self._write_done(client_id, message)
             elif message_type == "write_failed":
                 await self._write_failed(client_id, message)
+            elif message_type == "cancel_trade_round":
+                await self._cancel_trade_round(client_id, message)
+            elif message_type == "update_player_context":
+                await self._update_player_context(client_id, message)
             elif message_type == "cancel_trade":
                 await self._cancel_trade(client_id, "cancelled")
             elif message_type == "create_battle_room":
@@ -220,11 +224,12 @@ class ConnectionHub:
                     "stage": "prepare_write",
                     "slot": slot,
                     "message": error_message,
+                    "error_code": str((room.write_metadata.get(slot) or {}).get("error_code") or room.write_errors.get(slot) or ""),
+                    "error_metadata": self._safe_write_error_metadata(room, slot),
                     "room": room.to_public_dict(),
                 },
             )
-            await self.room_manager.remove_room_after_commit(room.room_name)
-            self.room_clients.pop(room.room_name, None)
+            await self.room_manager.reset_room_after_round(room.room_name, "prepare_write_failed")
             return
         if ready:
             offers = {slot_name: offer.to_public_dict() for slot_name, offer in room.offers.items() if offer is not None}
@@ -235,6 +240,7 @@ class ConnectionHub:
             client_id=client_id,
             success=bool(message.get("success", True)),
             error=str(message.get("error") or ""),
+            metadata=dict(message.get("metadata") or {}),
         )
         await self._send(client_id, {"type": "write_done_received", "slot": slot})
         if failed:
@@ -246,22 +252,23 @@ class ConnectionHub:
                     "stage": "commit_write",
                     "slot": slot,
                     "message": error_message,
+                    "error_code": str((room.write_metadata.get(slot) or {}).get("error_code") or room.write_errors.get(slot) or ""),
+                    "error_metadata": self._safe_write_error_metadata(room, slot),
                     "room": room.to_public_dict(),
                 },
             )
-            await self.room_manager.remove_room_after_commit(room.room_name)
-            self.room_clients.pop(room.room_name, None)
+            await self.room_manager.reset_room_after_round(room.room_name, "commit_write_failed")
             return
         if completed:
             await self._broadcast(room, {"type": "trade_completed", "message": "Troca concluida e confirmada pelos dois jogadores.", "room": room.to_public_dict()})
-            await self.room_manager.remove_room_after_commit(room.room_name)
-            self.room_clients.pop(room.room_name, None)
+            await self.room_manager.reset_room_after_round(room.room_name, "trade_completed")
 
     async def _write_failed(self, client_id: str, message: dict[str, Any]) -> None:
         room, slot, _failed, _completed = await self.room_manager.submit_write_done(
             client_id=client_id,
             success=False,
             error=str(message.get("error") or "Falha local de escrita."),
+            metadata=dict(message.get("metadata") or {}),
         )
         await self._broadcast(
             room,
@@ -270,11 +277,12 @@ class ConnectionHub:
                 "stage": str(message.get("stage") or "commit_write"),
                 "slot": slot,
                 "message": room.write_errors.get(slot) or "Falha local de escrita.",
+                "error_code": str((room.write_metadata.get(slot) or {}).get("error_code") or message.get("error") or ""),
+                "error_metadata": self._safe_write_error_metadata(room, slot),
                 "room": room.to_public_dict(),
             },
         )
-        await self.room_manager.remove_room_after_commit(room.room_name)
-        self.room_clients.pop(room.room_name, None)
+        await self.room_manager.reset_room_after_round(room.room_name, "write_failed")
 
     async def _send_preflight_requests(self, room: Room) -> None:
         requests = self.room_manager.preflight_requests(room)
@@ -291,6 +299,71 @@ class ConnectionHub:
         if room_name:
             await self._broadcast_room_name(room_name, {"type": "trade_cancelled", "reason": reason})
             self.room_clients.pop(room_name, None)
+
+    async def _cancel_trade_round(self, client_id: str, message: dict[str, Any]) -> None:
+        room, slot = await self.room_manager.cancel_trade_round(
+            client_id=client_id,
+            reason=str(message.get("reason") or "cancelled"),
+        )
+        await self._broadcast(
+            room,
+            {
+                "type": "trade_round_cancelled",
+                "slot": slot,
+                "reason": str(message.get("reason") or "cancelled"),
+                "room": room.to_public_dict(),
+            },
+        )
+
+    async def _update_player_context(self, client_id: str, message: dict[str, Any]) -> None:
+        generation = message.get("generation")
+        game = message.get("game")
+        supported_trade_modes = list(message.get("supported_trade_modes") or [])
+        supported_protocols = list(message.get("supported_protocols") or [])
+        trade_result = await self.room_manager.update_player_context(
+            client_id=client_id,
+            generation=generation,
+            game=game,
+            supported_trade_modes=supported_trade_modes,
+            supported_protocols=supported_protocols,
+        )
+        battle_result = await self.battle_manager.update_player_context(
+            client_id=client_id,
+            generation=generation,
+            game=game,
+        )
+        trade_room = trade_result[0] if trade_result else None
+        trade_slot = trade_result[1] if trade_result else None
+        battle_room = battle_result[0] if battle_result else None
+        battle_slot = battle_result[1] if battle_result else None
+        await self._send(
+            client_id,
+            {
+                "type": "player_context_updated",
+                "generation": generation,
+                "game": game,
+                "trade_room": trade_room.to_public_dict() if trade_room else None,
+                "battle_room": battle_room.to_public_dict() if battle_room else None,
+            },
+        )
+        if trade_room and trade_slot:
+            await self._broadcast(
+                trade_room,
+                {
+                    "type": "room_context_updated",
+                    "slot": trade_slot,
+                    "room": trade_room.to_public_dict(),
+                },
+            )
+        if battle_room and battle_slot:
+            await self._broadcast_battle(
+                battle_room.room_name,
+                {
+                    "type": "battle_room_updated",
+                    "slot": battle_slot,
+                    "room": battle_room.to_public_dict(),
+                },
+            )
 
     async def _create_battle_room(self, client_id: str, message: dict[str, Any]) -> None:
         room, slot = await self.battle_manager.create_room(
@@ -346,7 +419,6 @@ class ConnectionHub:
         await self._broadcast_battle(room.room_name, {"type": "battle_log", "battle_id": room.battle_id, "logs": result.logs})
         if result.finished:
             await self._broadcast_battle(room.room_name, {"type": "battle_finished", "battle_id": room.battle_id, "logs": result.logs})
-            self.battle_clients.pop(room.room_name, None)
         else:
             await self._send_battle_action_requests(room.room_name, room.battle_id, result.requests)
 
@@ -354,7 +426,6 @@ class ConnectionHub:
         room, _slot, result = await self.battle_manager.forfeit(client_id=client_id)
         await self._broadcast_battle(room.room_name, {"type": "battle_log", "battle_id": room.battle_id, "logs": result.logs})
         await self._broadcast_battle(room.room_name, {"type": "battle_finished", "battle_id": room.battle_id, "logs": result.logs})
-        self.battle_clients.pop(room.room_name, None)
 
     async def _disconnect(self, client_id: str) -> None:
         self.connections.pop(client_id, None)
@@ -390,6 +461,22 @@ class ConnectionHub:
 
     def _remember_battle_client(self, room_name: str, slot: PlayerSlot, client_id: str) -> None:
         self.battle_clients.setdefault(room_name, {})[slot] = client_id
+
+    def _safe_write_error_metadata(self, room: Room, slot: PlayerSlot) -> dict[str, Any]:
+        metadata = dict(room.write_metadata.get(slot) or {})
+        allowed = {
+            "error_code",
+            "message",
+            "expected_signature",
+            "current_signature",
+            "save_signature_before_write",
+            "save_signature_after_write",
+            "write_result",
+            "timestamp_before_write",
+            "timestamp_after_write",
+            "rollback_ok",
+        }
+        return {key: metadata[key] for key in allowed if key in metadata}
 
     async def _send_battle_action_requests(self, room_name: str, battle_id: str | None, requests: dict[str, dict[str, Any]]) -> None:
         if not battle_id:

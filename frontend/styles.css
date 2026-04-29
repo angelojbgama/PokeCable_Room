@@ -195,6 +195,41 @@ select:focus {
   margin-bottom: 14px;
 }
 
+.status-box small {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.flow-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.flow-block {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+  padding: 14px;
+}
+
+.flow-heading {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 12px;
+}
+
+.flow-heading span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.flow-heading strong {
+  font-size: 0.98rem;
+}
+
 .save-summary span,
 .status-box span,
 .pokemon-card span,
@@ -246,6 +281,11 @@ button.ghost {
   background: transparent;
   color: var(--muted);
   padding: 6px 10px;
+}
+
+button.ghost:hover:not(:disabled) {
+  background: #eef3f8;
+  color: var(--ink);
 }
 
 .mode-grid {
@@ -301,11 +341,52 @@ button.ghost {
   overflow-wrap: anywhere;
 }
 
+.pokemon-card-details {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.pokemon-card-details-empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.pokemon-detail-block {
+  display: grid;
+  gap: 4px;
+}
+
+.pokemon-detail-block strong {
+  font-size: 0.82rem;
+}
+
+.pokemon-detail-block span,
+.pokemon-detail-block li {
+  color: #33404c;
+  font-size: 0.88rem;
+}
+
+.pokemon-detail-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 3px;
+}
+
 .pokemon-summary {
   display: grid;
   grid-template-columns: 56px 1fr;
   gap: 10px;
   align-items: center;
+}
+
+.pokemon-summary-trade {
+  grid-template-columns: 76px 1fr;
+  gap: 12px;
+  min-height: 76px;
 }
 
 .pokemon-summary-text {
@@ -319,6 +400,118 @@ button.ghost {
   height: 56px;
   image-rendering: pixelated;
   object-fit: contain;
+}
+
+.pokemon-sprite-trade {
+  width: 76px;
+  height: 76px;
+}
+
+.trade-preview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.trade-preview-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+  padding: 14px;
+}
+
+.trade-preview-body {
+  display: grid;
+  gap: 10px;
+}
+
+.trade-preview-empty {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.trade-report-status {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.trade-report-status.compatible {
+  background: #e7f6ee;
+  color: var(--green);
+}
+
+.trade-report-status.blocked {
+  background: #fdebec;
+  color: var(--accent-dark);
+}
+
+.trade-report-meta {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.trade-report-meta p {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.trade-report-sections {
+  display: grid;
+  gap: 10px;
+}
+
+.trade-report-section {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.trade-report-section strong {
+  font-size: 0.88rem;
+}
+
+.trade-report-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: #33404c;
+}
+
+.trade-evolution-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.trade-evolution-arrow {
+  color: var(--blue);
+  font-size: 1.2rem;
+  font-weight: 900;
+}
+
+.trade-evolution-caption {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
 }
 
 .log-panel {
@@ -350,14 +543,20 @@ pre {
 }
 
 .download-area a {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   width: fit-content;
+  border: 1px solid var(--line);
   border-radius: 7px;
-  background: var(--green);
-  color: #fff;
+  background: #f1f8f4;
+  color: var(--green);
   padding: 9px 12px;
   text-decoration: none;
   font-weight: 900;
+}
+
+.download-area a:hover {
+  background: #e6f4eb;
 }
 
 .battle-meta {
@@ -433,12 +632,17 @@ pre {
   .tabs,
   .grid,
   .pokemon-row,
+  .trade-preview-grid,
   .battle-meta,
   .battle-actions,
   .mode-grid,
   .notice {
     grid-template-columns: 1fr;
     display: grid;
+  }
+
+  .trade-evolution-flow {
+    grid-template-columns: 1fr;
   }
 
   .server-pill {

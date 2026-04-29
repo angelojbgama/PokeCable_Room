@@ -60,10 +60,10 @@ class CrossGenerationRoomFlowTests(unittest.IsolatedAsyncioTestCase):
             parser.clear_held_item(location)
 
     def _offer(self, parser, target_generation: int, trade_mode: str | None = None) -> dict:
+        del trade_mode
         return _build_offer_payload(
             parser,
             "party:0",
-            trade_mode=trade_mode,
             target_generation=target_generation,
             cross_generation_policy="safe_default",
         ).to_dict()

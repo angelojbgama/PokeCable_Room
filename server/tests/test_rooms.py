@@ -309,11 +309,40 @@ class RoomManagerTests(unittest.IsolatedAsyncioTestCase):
         room, _slot, blocked, ready = await manager.submit_write_ready(
             client_id="a",
             ready=False,
-            error="save_changed",
+            error="save_changed_during_room",
+            metadata={
+                "error_code": "save_changed_during_room",
+                "message": "Save mudou durante a sala.",
+            },
         )
         self.assertTrue(blocked)
         self.assertFalse(ready)
-        self.assertEqual(room.offers, {"A": None, "B": None})
+        self.assertEqual(room.write_phase, "failed")
+
+    async def test_update_player_context_resets_trade_state_and_recalculates_modes(self) -> None:
+        manager, room = await self._cross_room_with_offers()
+        self.assertEqual(room.derived_modes["A"], LEGACY_DOWNCONVERT_EXPERIMENTAL)
+        updated, slot = await manager.update_player_context(
+            client_id="b",
+            generation=2,
+            game="pokemon_crystal",
+            supported_protocols=PROTOCOLS,
+        )
+        self.assertEqual(slot, "B")
+        self.assertEqual(updated.players["B"].generation, 2)
+        self.assertEqual(updated.derived_modes, {"A": TIME_CAPSULE_GEN1_GEN2, "B": TIME_CAPSULE_GEN1_GEN2})
+        self.assertFalse(updated.has_both_offers())
+        self.assertEqual(updated.write_phase, "idle")
+        self.assertEqual(updated.offers, {"A": None, "B": None})
+
+    async def test_cancel_trade_round_preserves_room_players(self) -> None:
+        manager, room = await self._cross_room_with_offers()
+        cancelled, slot = await manager.cancel_trade_round(client_id="a", reason="user_cancelled")
+        self.assertEqual(slot, "A")
+        self.assertEqual(set(cancelled.players), {"A", "B"})
+        self.assertFalse(cancelled.has_both_offers())
+        self.assertEqual(cancelled.compatibility_status.get("last_reset_reason"), "user_cancelled")
+        self.assertEqual(cancelled.write_errors, {"A": "", "B": ""})
 
     async def test_raw_cross_generation_never_commits(self) -> None:
         manager, _room = await self._cross_room()

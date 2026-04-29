@@ -111,6 +111,36 @@ class BattleManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(room.status, "finished")
         self.assertTrue(any("|forfeit|a" == line for line in result.logs))
 
+    async def test_finished_battle_room_can_be_reused_for_new_match(self) -> None:
+        await self.manager.create_room(room_name="reuse", password="pw", client_id="a", generation=3, game="pokemon_emerald")
+        await self.manager.join_room(room_name="reuse", password="pw", client_id="b", generation=3, game="pokemon_ruby")
+        await self.manager.offer_team(client_id="a", team=canonical_team("Mew"))
+        await self.manager.offer_team(client_id="b", team=canonical_team("Pikachu"))
+        await self.manager.confirm_battle(client_id="a")
+        room, _slot, _started, _result = await self.manager.confirm_battle(client_id="b")
+        self.assertTrue(room.battle_id)
+
+        room, _slot, result = await self.manager.forfeit(client_id="a")
+        self.assertTrue(result.finished)
+        self.assertEqual(room.status, "finished")
+
+        room, _slot, ready = await self.manager.offer_team(client_id="a", team=canonical_team("Mew"))
+        self.assertFalse(ready)
+        self.assertIsNone(room.battle_id)
+        self.assertEqual(room.status, "waiting_for_teams")
+        self.assertFalse(room.players["B"].ready)
+
+    async def test_update_player_context_recalculates_battle_format(self) -> None:
+        await self.manager.create_room(room_name="ctx", password="pw", client_id="a", generation=1, game="pokemon_red")
+        room, _slot = await self.manager.join_room(room_name="ctx", password="pw", client_id="b", generation=1, game="pokemon_blue")
+        self.assertEqual(room.format_id, "gen1customgame")
+
+        room, slot = await self.manager.update_player_context(client_id="b", generation=3, game="pokemon_emerald")
+        self.assertEqual(slot, "B")
+        self.assertEqual(room.generation, 3)
+        self.assertEqual(room.format_id, "gen3customgame")
+        self.assertEqual(room.status, "ready")
+
     async def test_cleanup_expired_removes_battle_room(self) -> None:
         manager = BattleManager(room_timeout_seconds=0, max_rooms=10, adapter=LocalShowdownAdapter())
         await manager.create_room(room_name="expired", password="pw", client_id="a", generation=3, game="pokemon_emerald")

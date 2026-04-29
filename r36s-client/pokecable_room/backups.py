@@ -8,6 +8,28 @@ from pathlib import Path
 from typing import Any
 
 
+def _resolve_backup_dir(backup_dir: str | Path) -> Path:
+    target_dir = Path(backup_dir)
+    if target_dir.is_absolute() and len(target_dir.parts) > 1 and target_dir.parts[1] == "roms" and not Path("/roms").exists():
+        target_dir = Path(__file__).resolve().parent / "backups"
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        target_dir = Path(__file__).resolve().parent / "backups"
+        target_dir.mkdir(parents=True, exist_ok=True)
+    return target_dir
+
+
+def _merge_patch(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in patch.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _merge_patch(dict(merged[key]), value)
+        else:
+            merged[key] = value
+    return merged
+
+
 def capture_save_signature(save_path: str | Path) -> dict[str, Any]:
     path = Path(save_path)
     stat = path.stat()
@@ -33,22 +55,14 @@ def create_backup(save_path: str | Path, backup_dir: str | Path, metadata: dict[
     source = Path(save_path)
     if not source.is_file():
         raise FileNotFoundError(f"Save nao encontrado para backup: {source}")
-    target_dir = Path(backup_dir)
-    if target_dir.is_absolute() and len(target_dir.parts) > 1 and target_dir.parts[1] == "roms" and not Path("/roms").exists():
-        target_dir = Path(__file__).resolve().parent / "backups"
-    try:
-        target_dir.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        target_dir = Path(__file__).resolve().parent / "backups"
-        target_dir.mkdir(parents=True, exist_ok=True)
+    target_dir = _resolve_backup_dir(backup_dir)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     backup_path = target_dir / f"{source.stem}_{timestamp}{source.suffix}.bak"
     metadata_path = target_dir / f"{source.stem}_{timestamp}.metadata.json"
     try:
         shutil.copy2(source, backup_path)
     except OSError:
-        target_dir = Path(__file__).resolve().parent / "backups"
-        target_dir.mkdir(parents=True, exist_ok=True)
+        target_dir = _resolve_backup_dir(Path(__file__).resolve().parent / "backups")
         backup_path = target_dir / f"{source.stem}_{timestamp}{source.suffix}.bak"
         metadata_path = target_dir / f"{source.stem}_{timestamp}.metadata.json"
         shutil.copy2(source, backup_path)
@@ -57,8 +71,32 @@ def create_backup(save_path: str | Path, backup_dir: str | Path, metadata: dict[
     metadata = dict(metadata)
     metadata.setdefault("timestamp", datetime.now().isoformat(timespec="seconds"))
     metadata.setdefault("original_signature", capture_save_signature(source))
+    metadata.setdefault("backup_path", str(backup_path))
+    metadata.setdefault("metadata_path", str(metadata_path))
     metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
     return backup_path, metadata_path
+
+
+def update_backup_metadata(metadata_path: str | Path, patch: dict[str, Any]) -> None:
+    path = Path(metadata_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Metadata de backup nao encontrado: {path}")
+    current = json.loads(path.read_text(encoding="utf-8"))
+    merged = _merge_patch(dict(current), dict(patch))
+    path.write_text(json.dumps(merged, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def create_forensic_failed_save_copy(save_path: str | Path, backup_dir: str | Path) -> Path:
+    source = Path(save_path)
+    if not source.is_file():
+        raise FileNotFoundError(f"Save nao encontrado para copia forense: {source}")
+    target_dir = _resolve_backup_dir(backup_dir)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    forensic_path = target_dir / f"{source.stem}_{timestamp}.failed-after-write{source.suffix}"
+    shutil.copy2(source, forensic_path)
+    if forensic_path.stat().st_size != source.stat().st_size:
+        raise OSError("Copia forense foi gravada com tamanho diferente do save atual.")
+    return forensic_path
 
 
 def list_backups(backup_dir: str | Path) -> list[Path]:
@@ -69,8 +107,14 @@ def list_backups(backup_dir: str | Path) -> list[Path]:
 
 
 def restore_backup(backup_path: str | Path, destination: str | Path) -> None:
+    restore_backup_checked(backup_path, destination)
+
+
+def restore_backup_checked(backup_path: str | Path, destination: str | Path) -> None:
     backup = Path(backup_path)
     if not backup.is_file():
         raise FileNotFoundError(f"Backup nao encontrado: {backup}")
     destination_path = Path(destination)
     shutil.copy2(backup, destination_path)
+    if capture_save_signature(backup) != capture_save_signature(destination_path):
+        raise OSError("Restore do backup falhou: assinatura final nao bate com o backup original.")

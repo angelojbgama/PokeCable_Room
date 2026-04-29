@@ -251,13 +251,13 @@ class RoomManager:
             room, slot = self._room_for_client_locked(client_id)
             if not room.is_committed():
                 raise RoomError("write_not_ready", "Aguardando confirmacao dos dois jogadores antes da preparacao de escrita.")
+            metadata_dict = dict(metadata or {}) if metadata is not None else None
             room.write_ready[slot] = bool(ready)
-            room.write_errors[slot] = str(error or "")
-            room.write_metadata[slot] = dict(metadata or {}) if metadata is not None else None
+            room.write_errors[slot] = str((metadata_dict or {}).get("message") or error or "")
+            room.write_metadata[slot] = metadata_dict
             blocked = not bool(ready)
             if blocked:
                 room.write_phase = "failed"
-                room.reset_trade_state("write_prepare_failed")
                 return room, slot, True, False
             room.write_phase = "prepared" if room.has_both_write_ready() else "preparing"
             return room, slot, False, room.has_both_write_ready()
@@ -268,19 +268,89 @@ class RoomManager:
         client_id: str,
         success: bool,
         error: str = "",
+        metadata: dict[str, object] | None = None,
     ) -> tuple[Room, PlayerSlot, bool, bool]:
         async with self._lock:
             room, slot = self._room_for_client_locked(client_id)
             if not room.has_both_write_ready():
                 raise RoomError("write_not_ready", "Aguardando os dois jogadores prepararem a escrita.")
+            metadata_dict = dict(metadata or {}) if metadata is not None else None
             room.write_done[slot] = bool(success)
-            room.write_errors[slot] = str(error or "")
+            room.write_errors[slot] = str((metadata_dict or {}).get("message") or error or "")
+            if metadata_dict is not None:
+                room.write_metadata[slot] = metadata_dict
             failed = not bool(success)
             if failed:
                 room.write_phase = "failed"
                 return room, slot, True, False
             room.write_phase = "completed" if room.has_both_write_done() else "committing"
             return room, slot, False, room.has_both_write_done()
+
+    async def cancel_trade_round(self, *, client_id: str, reason: str = "cancelled") -> tuple[Room, PlayerSlot]:
+        async with self._lock:
+            room, slot = self._room_for_client_locked(client_id)
+            room.reset_trade_state(reason or "cancelled")
+            return room, slot
+
+    async def update_player_context(
+        self,
+        *,
+        client_id: str,
+        generation: int,
+        game: str,
+        supported_trade_modes: list[str] | None = None,
+        supported_protocols: list[str] | None = None,
+    ) -> tuple[Room, PlayerSlot] | None:
+        async with self._lock:
+            known = self.client_rooms.get(parse_client_id(client_id))
+            if not known:
+                return None
+            room, slot = self._room_for_client_locked(client_id)
+            player = room.players.get(slot)
+            if player is None:
+                return None
+            generation = parse_generation(generation)
+            game = parse_game_id(game, generation)
+            previous = {
+                "generation": player.generation,
+                "game": player.game,
+                "supported_trade_modes": list(player.supported_trade_modes),
+                "supported_protocols": list(player.supported_protocols),
+            }
+            player.generation = generation
+            player.game = game
+            player.supported_trade_modes = (
+                list(supported_trade_modes)
+                if supported_trade_modes is not None
+                else supported_trade_modes_for_generation(generation)
+            )
+            player.supported_protocols = self._normalize_supported_protocols(
+                supported_protocols,
+                player.supported_trade_modes,
+            )
+            room.reset_trade_state("player_context_updated")
+            try:
+                self._derive_and_validate_room_modes_locked(room)
+            except Exception:
+                player.generation = previous["generation"]
+                player.game = previous["game"]
+                player.supported_trade_modes = previous["supported_trade_modes"]
+                player.supported_protocols = previous["supported_protocols"]
+                room.reset_trade_state("player_context_rollback")
+                self._derive_and_validate_room_modes_locked(room)
+                raise
+            if "A" in room.players:
+                room.generation = room.players["A"].generation
+                room.game_family = game_family_for_generation(room.generation)
+            return room, slot
+
+    async def reset_room_after_round(self, room_name: str, reason: str = "") -> Room | None:
+        async with self._lock:
+            room = self.rooms.get(parse_room_name(room_name))
+            if room is None:
+                return None
+            room.reset_trade_state(reason or "round_reset")
+            return room
 
     def preflight_requests(self, room: Room) -> dict[PlayerSlot, dict]:
         if not room.has_both_offers() or not room.is_ready():

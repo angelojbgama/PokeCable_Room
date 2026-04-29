@@ -6,6 +6,7 @@ import json
 import logging
 import sys
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 if __package__ is None or __package__ == "":
@@ -25,7 +26,16 @@ from pokecable_room.evolutions import apply_trade_evolution_to_parser, preview_t
 from pokecable_room.logs import setup_logging
 from pokecable_room.network import PokeCableNetworkClient
 from pokecable_room.parsers.base import PokemonPayload
-from pokecable_room.backups import capture_save_signature, create_backup, list_backups, restore_backup, save_signature_matches
+from pokecable_room.backups import (
+    capture_save_signature,
+    create_backup,
+    create_forensic_failed_save_copy,
+    list_backups,
+    restore_backup,
+    restore_backup_checked,
+    save_signature_matches,
+    update_backup_metadata,
+)
 from pokecable_room.saves import detect_parser, find_save_files, load_config, save_config
 from pokecable_room.showdown import canonical_team_to_showdown_text, format_id_for_generation
 from pokecable_room.trade import validate_payload_for_local_save
@@ -36,6 +46,7 @@ logger = logging.getLogger("pokecable.client")
 
 RAW_SAME_GENERATION_PROTOCOL = "raw_same_generation"
 CANONICAL_CROSS_GENERATION_PROTOCOL = "canonical_cross_generation"
+SAVE_CHANGED_DURING_ROOM = "save_changed_during_room"
 
 
 async def run_trade(
@@ -109,6 +120,7 @@ async def run_trade(
         await network.send({"type": "offer_pokemon", "payload": offer.to_dict()})
         preflight_message = await _wait_for_preflight_required(network)
         received_preview = PokemonPayload.from_dict(preflight_message["received_payload"])
+        derived_mode = str(preflight_message.get("derived_mode") or get_trade_mode(received_preview.generation, local_generation))
         ui.print(f"Pokemon do outro jogador: {received_preview.display_summary}")
         preflight_ok, received_report = _preflight_result_for_payload(
             received_preview,
@@ -164,40 +176,68 @@ async def run_trade(
         conversion_report = None
         backup_path = None
         metadata_path = None
+        save_signature_before_write = None
+        local_write_completed = False
         if save_path is not None:
-            if initial_save_signature is not None and not save_signature_matches(save_path, initial_save_signature):
+            current_signature = capture_save_signature(save_path)
+            if initial_save_signature is not None and current_signature != initial_save_signature:
+                error_message, error_metadata = _save_changed_failure(
+                    save_path=save_path,
+                    expected_signature=initial_save_signature,
+                )
                 await network.send(
                     {
                         "type": "write_ready",
                         "ready": False,
-                        "error": "O save foi modificado enquanto a sala estava aberta. Feche o emulador e reinicie a troca.",
+                        "error": SAVE_CHANGED_DURING_ROOM,
+                        "metadata": error_metadata,
                     }
                 )
-                raise RuntimeError(
-                    "O save foi modificado enquanto a sala estava aberta (hash diferente). "
-                    "Feche o emulador e reinicie a troca para evitar sobrescrever dados novos."
-                )
+                raise RuntimeError(error_message)
+            save_signature_before_write = current_signature
+            timestamp_before_write = _now_iso()
+            ui.print("Preparando backup local...")
             backup_path, metadata_path = create_backup(
                 save_path,
                 backup_dir,
+                _build_trade_backup_metadata(
+                    room_name=room_name,
+                    local_generation=local_generation,
+                    local_game=local_game,
+                    location=pokemon_location,
+                    sent_payload=offer,
+                    received_payload=received_payload,
+                    source_generation=received_payload.source_generation or received_payload.generation,
+                    target_generation=local_generation,
+                    trade_mode=prepared.get("room", {}).get("trade_mode") if isinstance(prepared.get("room"), dict) else None,
+                    derived_mode=derived_mode,
+                    save_signature_before_room=initial_save_signature,
+                    save_signature_before_write=save_signature_before_write,
+                    timestamp_before_write=timestamp_before_write,
+                ),
+            )
+            if not backup_path.exists() or not metadata_path.exists():
+                await network.send(
+                    {
+                        "type": "write_ready",
+                        "ready": False,
+                        "error": "backup_creation_failed",
+                        "metadata": {
+                            "error_code": "backup_creation_failed",
+                            "message": "Falha ao preparar backup local antes da escrita.",
+                        },
+                    }
+                )
+                raise RuntimeError("Falha ao preparar backup local antes da escrita.")
+            update_backup_metadata(
+                metadata_path,
                 {
-                    "original_save": str(save_path),
-                    "generation": local_generation,
-                    "game": local_game,
-                    "room": room_name,
-                    "sent": {
-                        "species": offer.species_name,
-                        "level": offer.level,
-                        "nickname": offer.nickname,
-                    },
-                    "received": {
-                        "species": received_payload.species_name,
-                        "level": received_payload.level,
-                        "nickname": received_payload.nickname,
-                    },
-                    "save_signature_before_write": initial_save_signature,
+                    "backup_path": str(backup_path),
+                    "metadata_path": str(metadata_path),
+                    "write_result": "pending",
                 },
             )
+            ui.print(f"Backup criado: {backup_path}")
         await network.send(
             {
                 "type": "write_ready",
@@ -205,13 +245,52 @@ async def run_trade(
                 "metadata": {
                     "backup_path": str(backup_path) if backup_path else None,
                     "metadata_path": str(metadata_path) if metadata_path else None,
+                    "save_signature_before_write": save_signature_before_write,
                 },
             }
         )
+        ui.print("Aguardando o outro jogador preparar backup...")
         commit_write = await network.wait_for({"trade_commit_write", "trade_write_failed"})
         if commit_write["type"] == "trade_write_failed":
             raise RuntimeError(commit_write.get("message") or "Falha na escrita da troca.")
         if save_path is not None:
+            if backup_path is None or metadata_path is None or not backup_path.exists() or not metadata_path.exists():
+                await network.send(
+                    {
+                        "type": "write_failed",
+                        "stage": "commit_write",
+                        "error": "backup_missing_before_write",
+                        "metadata": {
+                            "error_code": "backup_missing_before_write",
+                            "message": "Backup local nao esta pronto para a gravacao.",
+                        },
+                    }
+                )
+                raise RuntimeError("Backup local nao esta pronto para a gravacao.")
+            current_signature = capture_save_signature(save_path)
+            if initial_save_signature is not None and current_signature != initial_save_signature:
+                error_message, error_metadata = _save_changed_failure(
+                    save_path=save_path,
+                    expected_signature=initial_save_signature,
+                )
+                update_backup_metadata(
+                    metadata_path,
+                    {
+                        "write_result": "pending",
+                        "error_code": SAVE_CHANGED_DURING_ROOM,
+                        "error_message": error_message,
+                    },
+                )
+                await network.send(
+                    {
+                        "type": "write_failed",
+                        "stage": "commit_write",
+                        "error": SAVE_CHANGED_DURING_ROOM,
+                        "metadata": error_metadata,
+                    }
+                )
+                raise RuntimeError(error_message)
+            ui.print("Commit autorizado. Gravando save...")
             try:
                 if received_payload.generation == local_generation:
                     parser.remove_or_replace_sent_pokemon(pokemon_location, received_payload)
@@ -235,13 +314,63 @@ async def run_trade(
                         item_based_evolutions_enabled=item_based_evolutions_enabled,
                     )
                 parser.save(save_path)
+                save_signature_after_write = capture_save_signature(save_path)
+                update_backup_metadata(
+                    metadata_path,
+                    {
+                        "save_signature_after_write": save_signature_after_write,
+                        "timestamp_after_write": _now_iso(),
+                        "write_result": "completed",
+                    },
+                )
+                local_write_completed = True
             except Exception as exc:
-                await network.send({"type": "write_failed", "stage": "commit_write", "error": str(exc)})
+                rollback_message = f"Falha local ao gravar o save: {exc}"
+                rollback_ok = False
+                if backup_path is not None and metadata_path is not None and backup_path.exists() and metadata_path.exists():
+                    ui.print("Falha remota após escrita local. Restaurando backup..." if local_write_completed else "Restaurando backup apos falha local...")
+                    rollback_ok, _forensic_path = _rollback_local_save(
+                        save_path=save_path,
+                        backup_path=backup_path,
+                        metadata_path=metadata_path,
+                        ui=ui,
+                        error_code="local_write_failed",
+                        error_message=rollback_message,
+                    )
+                await network.send(
+                    {
+                        "type": "write_failed",
+                        "stage": "commit_write",
+                        "error": "local_write_failed",
+                        "metadata": {
+                            "error_code": "local_write_failed",
+                            "message": rollback_message,
+                            "rollback_ok": rollback_ok,
+                        },
+                    }
+                )
                 raise
+            ui.print("Save gravado. Aguardando confirmação remota...")
             await network.send({"type": "write_done", "success": True})
             completed = await network.wait_for({"trade_completed", "trade_write_failed"})
             if completed["type"] == "trade_write_failed":
-                raise RuntimeError(completed.get("message") or "Falha remota apos a gravacao local.")
+                failure_message = completed.get("message") or "Falha remota apos a gravacao local."
+                if local_write_completed and backup_path is not None and metadata_path is not None:
+                    ui.print("Falha remota após escrita local. Restaurando backup...")
+                    rollback_ok, _forensic_path = _rollback_local_save(
+                        save_path=save_path,
+                        backup_path=backup_path,
+                        metadata_path=metadata_path,
+                        ui=ui,
+                        error_code=str(completed.get("error_code") or "remote_write_failed"),
+                        error_message=failure_message,
+                    )
+                    if rollback_ok:
+                        ui.print("A escrita local foi revertida porque o outro lado falhou após o commit.")
+                        raise RuntimeError("A escrita local foi revertida porque o outro lado falhou após o commit.")
+                    raise RuntimeError("Falha ao restaurar backup automaticamente. Use o menu Restore Backup.")
+                raise RuntimeError(failure_message)
+            ui.print("Troca concluída nos dois lados.")
             ui.print(f"Troca aplicada no save: {save_path}")
             if conversion_report is not None:
                 _print_report(ui, conversion_report.to_dict())
@@ -258,6 +387,7 @@ async def run_trade(
             completed = await network.wait_for({"trade_completed", "trade_write_failed"})
             if completed["type"] == "trade_write_failed":
                 raise RuntimeError(completed.get("message") or "Falha remota apos a confirmacao da troca.")
+            ui.print("Troca concluída nos dois lados.")
         return received_payload
 
 
@@ -265,7 +395,6 @@ def _build_offer_payload(
     parser,
     location: str,
     *,
-    trade_mode: str | None = None,
     target_generation: int,
     cross_generation_policy: str,
 ) -> PokemonPayload:
@@ -453,6 +582,131 @@ def _print_report(ui: TerminalUI, report: dict) -> None:
         ui.print(f"Conversao: {transformation}")
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _payload_metadata_summary(payload: PokemonPayload) -> dict:
+    national_dex_id = None
+    held_item = None
+    if payload.canonical:
+        canonical = CanonicalPokemon.from_dict(payload.canonical)
+        national_dex_id = canonical.species.national_dex_id if canonical.species else canonical.species_national_id
+        if canonical.held_item and canonical.held_item.item_id is not None:
+            held_item = {
+                "item_id": canonical.held_item.item_id,
+                "name": canonical.held_item.name,
+                "source_generation": canonical.held_item.source_generation,
+            }
+    return {
+        "species_id": payload.species_id,
+        "species_name": payload.species_name,
+        "national_dex_id": national_dex_id,
+        "level": payload.level,
+        "nickname": payload.nickname,
+        "held_item": held_item,
+    }
+
+
+def _build_trade_backup_metadata(
+    *,
+    room_name: str,
+    local_generation: int,
+    local_game: str,
+    location: str,
+    sent_payload: PokemonPayload,
+    received_payload: PokemonPayload,
+    source_generation: int,
+    target_generation: int,
+    trade_mode: str | None,
+    derived_mode: str | None,
+    save_signature_before_room: dict[str, object] | None,
+    save_signature_before_write: dict[str, object] | None,
+    timestamp_before_write: str,
+) -> dict:
+    return {
+        "room": room_name,
+        "generation_local": local_generation,
+        "game_local": local_game,
+        "location": location,
+        "species_sent": _payload_metadata_summary(sent_payload),
+        "species_received": _payload_metadata_summary(received_payload),
+        "source_generation": source_generation,
+        "target_generation": target_generation,
+        "trade_mode": trade_mode,
+        "derived_mode": derived_mode,
+        "save_signature_before_room": dict(save_signature_before_room or {}),
+        "save_signature_before_write": dict(save_signature_before_write or {}),
+        "save_signature_after_write": None,
+        "write_result": "pending",
+        "error_code": None,
+        "error_message": None,
+        "timestamp_before_write": timestamp_before_write,
+        "timestamp_after_write": None,
+    }
+
+
+def _save_changed_failure(
+    *,
+    save_path: Path,
+    expected_signature: dict[str, object] | None,
+) -> tuple[str, dict]:
+    current_signature = capture_save_signature(save_path)
+    message = "O save foi modificado enquanto a sala estava aberta. Feche o emulador e reinicie a troca."
+    metadata = {
+        "error_code": SAVE_CHANGED_DURING_ROOM,
+        "message": message,
+        "expected_signature": dict(expected_signature or {}),
+        "current_signature": current_signature,
+    }
+    return message, metadata
+
+
+def _rollback_local_save(
+    *,
+    save_path: Path,
+    backup_path: Path,
+    metadata_path: Path,
+    ui: TerminalUI,
+    error_code: str,
+    error_message: str,
+) -> tuple[bool, Path | None]:
+    forensic_path: Path | None = None
+    forensic_error: str | None = None
+    try:
+        forensic_path = create_forensic_failed_save_copy(save_path, backup_path.parent)
+    except Exception as exc:
+        forensic_error = str(exc)
+    try:
+        restore_backup_checked(backup_path, save_path)
+    except Exception as exc:
+        update_backup_metadata(
+            metadata_path,
+            {
+                "write_result": "rollback_failed",
+                "error_code": error_code,
+                "error_message": error_message,
+                "rollback_error": str(exc),
+                "forensic_failed_save_path": str(forensic_path) if forensic_path else None,
+                "forensic_copy_error": forensic_error,
+            },
+        )
+        ui.print("Falha ao restaurar backup automaticamente. Use o menu Restore Backup.")
+        return False, forensic_path
+    update_backup_metadata(
+        metadata_path,
+        {
+            "write_result": "rolled_back",
+            "error_code": error_code,
+            "error_message": error_message,
+            "forensic_failed_save_path": str(forensic_path) if forensic_path else None,
+            "forensic_copy_error": forensic_error,
+        },
+    )
+    ui.print("Backup restaurado.")
+    return True, forensic_path
+
+
 def build_parser_from_args(args: argparse.Namespace, ui: TerminalUI):
     if args.save:
         return detect_parser(args.save)
@@ -617,7 +871,7 @@ async def automated_or_prompted_trade(args: argparse.Namespace) -> int:
             save_path=save_path,
             initial_save_signature=initial_signature,
             ui=ui,
-            trade_mode=args.trade_mode,
+            trade_mode=getattr(args, "trade_mode", SAME_GENERATION),
             auto_trade_evolution=bool(config.get("auto_trade_evolution", True)),
             item_based_evolutions_enabled=bool(config.get("item_trade_evolutions_enabled", False)),
             cross_generation_policy=str(cross_generation_config.get("policy") or "auto_retrocompat"),
@@ -795,7 +1049,6 @@ def interactive_menu() -> int:
                 save=None,
                 pokemon_location=None,
                 auto_confirm=False,
-                trade_mode=SAME_GENERATION,
             )
             return asyncio.run(automated_or_prompted_trade(args))
         elif choice == "join":
@@ -807,7 +1060,6 @@ def interactive_menu() -> int:
                 save=None,
                 pokemon_location=None,
                 auto_confirm=False,
-                trade_mode=SAME_GENERATION,
             )
             return asyncio.run(automated_or_prompted_trade(args))
         elif choice == "save":
@@ -825,7 +1077,6 @@ def interactive_menu() -> int:
                 save=None,
                 pokemon_location=None,
                 auto_confirm=False,
-                trade_mode=SAME_GENERATION,
             )
             return asyncio.run(automated_or_prompted_battle(args))
         elif choice == "battle_join":
@@ -837,7 +1088,6 @@ def interactive_menu() -> int:
                 save=None,
                 pokemon_location=None,
                 auto_confirm=False,
-                trade_mode=SAME_GENERATION,
             )
             return asyncio.run(automated_or_prompted_battle(args))
         elif choice == "server":

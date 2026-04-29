@@ -2,17 +2,24 @@ const statusEl = document.querySelector("#connectionStatus");
 const tradeStatusEl = document.querySelector("#tradeStatus");
 const localOfferEl = document.querySelector("#localOffer");
 const peerOfferEl = document.querySelector("#peerOffer");
+const localOfferDetailsEl = document.querySelector("#localOfferDetails");
+const peerOfferDetailsEl = document.querySelector("#peerOfferDetails");
+const tradeCompatibilityPreviewEl = document.querySelector("#tradeCompatibilityPreview");
+const tradeEvolutionPreviewEl = document.querySelector("#tradeEvolutionPreview");
 const eventLogEl = document.querySelector("#eventLog");
 const pokemonChoiceEl = document.querySelector("#pokemonChoice");
 const saveFileEl = document.querySelector("#saveFile");
 const saveSummaryEl = document.querySelector("#saveSummary");
-const createButton = document.querySelector("#createRoom");
-const joinButton = document.querySelector("#joinRoom");
+const createSessionButton = document.querySelector("#createSession");
+const joinSessionButton = document.querySelector("#joinSession");
+const leaveSessionButton = document.querySelector("#leaveSession");
+const sessionStatusEl = document.querySelector("#sessionStatus");
+const sessionDetailEl = document.querySelector("#sessionDetail");
+const sendTradeOfferButton = document.querySelector("#sendTradeOffer");
 const confirmButton = document.querySelector("#confirmTrade");
 const cancelButton = document.querySelector("#cancelTrade");
 const downloadArea = document.querySelector("#downloadArea");
-const createBattleButton = document.querySelector("#createBattleRoom");
-const joinBattleButton = document.querySelector("#joinBattleRoom");
+const sendBattleTeamButton = document.querySelector("#sendBattleTeam");
 const confirmBattleButton = document.querySelector("#confirmBattle");
 const forfeitBattleButton = document.querySelector("#forfeitBattle");
 const battleLogEl = document.querySelector("#battleLog");
@@ -29,135 +36,61 @@ const setupStatusEl = document.querySelector("#setupStatus");
 const setupPartyPreviewEl = document.querySelector("#setupPartyPreview");
 const tradeSaveStatusEl = document.querySelector("#tradeSaveStatus");
 
-const kantoSpeciesNames = [
-  "",
-  "Bulbasaur", "Ivysaur", "Venusaur", "Charmander", "Charmeleon", "Charizard",
-  "Squirtle", "Wartortle", "Blastoise", "Caterpie", "Metapod", "Butterfree",
-  "Weedle", "Kakuna", "Beedrill", "Pidgey", "Pidgeotto", "Pidgeot",
-  "Rattata", "Raticate", "Spearow", "Fearow", "Ekans", "Arbok",
-  "Pikachu", "Raichu", "Sandshrew", "Sandslash", "Nidoran-F", "Nidorina",
-  "Nidoqueen", "Nidoran-M", "Nidorino", "Nidoking", "Clefairy", "Clefable",
-  "Vulpix", "Ninetales", "Jigglypuff", "Wigglytuff", "Zubat", "Golbat",
-  "Oddish", "Gloom", "Vileplume", "Paras", "Parasect", "Venonat",
-  "Venomoth", "Diglett", "Dugtrio", "Meowth", "Persian", "Psyduck",
-  "Golduck", "Mankey", "Primeape", "Growlithe", "Arcanine", "Poliwag",
-  "Poliwhirl", "Poliwrath", "Abra", "Kadabra", "Alakazam", "Machop",
-  "Machoke", "Machamp", "Bellsprout", "Weepinbell", "Victreebel",
-  "Tentacool", "Tentacruel", "Geodude", "Graveler", "Golem", "Ponyta",
-  "Rapidash", "Slowpoke", "Slowbro", "Magnemite", "Magneton",
-  "Farfetch'd", "Doduo", "Dodrio", "Seel", "Dewgong", "Grimer", "Muk",
-  "Shellder", "Cloyster", "Gastly", "Haunter", "Gengar", "Onix",
-  "Drowzee", "Hypno", "Krabby", "Kingler", "Voltorb", "Electrode",
-  "Exeggcute", "Exeggutor", "Cubone", "Marowak", "Hitmonlee",
-  "Hitmonchan", "Lickitung", "Koffing", "Weezing", "Rhyhorn", "Rhydon",
-  "Chansey", "Tangela", "Kangaskhan", "Horsea", "Seadra", "Goldeen",
-  "Seaking", "Staryu", "Starmie", "Mr. Mime", "Scyther", "Jynx",
-  "Electabuzz", "Magmar", "Pinsir", "Tauros", "Magikarp", "Gyarados",
-  "Lapras", "Ditto", "Eevee", "Vaporeon", "Jolteon", "Flareon",
-  "Porygon", "Omanyte", "Omastar", "Kabuto", "Kabutops", "Aerodactyl",
-  "Snorlax", "Articuno", "Zapdos", "Moltres", "Dratini", "Dragonair",
-  "Dragonite", "Mewtwo", "Mew"
-];
+const speciesData = window.POKECABLE_SPECIES_DATA;
+if (!speciesData) {
+  console.error("POKECABLE_SPECIES_DATA nao foi carregado. Verifique frontend/species-data.js.");
+}
+const speciesNames = speciesData?.speciesNames || Object.create(null);
+const gen1InternalNames = speciesData?.gen1InternalNames || Object.create(null);
+const gen1InternalToNational = speciesData?.gen1InternalToNational || Object.create(null);
+const nationalToGen1Internal = speciesData?.nationalToGen1Internal || Object.create(null);
+const gen3NativeToNational = speciesData?.gen3NativeToNational || Object.create(null);
+const nationalToGen3Native = speciesData?.nationalToGen3Native || Object.create(null);
+const tradeRules = window.POKECABLE_TRADE_RULES;
+if (!tradeRules) {
+  console.error("POKECABLE_TRADE_RULES nao foi carregado. Verifique frontend/trade-rules.js.");
+}
+const simpleTradeEvolutionByNational = tradeRules?.simpleTradeEvolutionByNational || Object.create(null);
+const itemTradeEvolutionRules = tradeRules?.itemTradeEvolutionRules || [];
+const tradePreviewModule = window.POKECABLE_TRADE_PREVIEW;
+if (!tradePreviewModule) {
+  console.error("POKECABLE_TRADE_PREVIEW nao foi carregado. Verifique frontend/trade-preview.js.");
+}
+const pokemonUiModule = window.POKECABLE_POKEMON_UI;
+if (!pokemonUiModule) {
+  console.error("POKECABLE_POKEMON_UI nao foi carregado. Verifique frontend/pokemon-ui.js.");
+}
+const webCompatibilityModule = window.POKECABLE_WEB_COMPATIBILITY;
+if (!webCompatibilityModule) {
+  console.error("POKECABLE_WEB_COMPATIBILITY nao foi carregado. Verifique frontend/web-compatibility.js.");
+}
+const tradeFlowModule = window.POKECABLE_TRADE_FLOW;
+if (!tradeFlowModule) {
+  console.error("POKECABLE_TRADE_FLOW nao foi carregado. Verifique frontend/trade-flow.js.");
+}
+const battleFlowModule = window.POKECABLE_BATTLE_FLOW;
+if (!battleFlowModule) {
+  console.error("POKECABLE_BATTLE_FLOW nao foi carregado. Verifique frontend/battle-flow.js.");
+}
+const wsClientModule = window.POKECABLE_WS_CLIENT;
+if (!wsClientModule) {
+  console.error("POKECABLE_WS_CLIENT nao foi carregado. Verifique frontend/websocket-client.js.");
+}
 
-const speciesNames = Object.fromEntries(
-  kantoSpeciesNames.map((name, index) => [index, name]).filter(([index, name]) => index && name)
-);
-Object.assign(speciesNames, {
-  152: "Chikorita",
-  153: "Bayleef",
-  154: "Meganium",
-  155: "Cyndaquil",
-  156: "Quilava",
-  175: "Togepi",
-  201: "Unown",
-  208: "Steelix",
-  212: "Scizor",
-  230: "Kingdra",
-  251: "Celebi",
-  252: "Treecko",
-  253: "Grovyle",
-  254: "Sceptile",
-  255: "Torchic",
-  256: "Combusken",
-  257: "Blaziken",
-  258: "Mudkip",
-  259: "Marshtomp",
-  260: "Swampert",
-  358: "Chimecho",
-  366: "Clamperl",
-  367: "Huntail",
-  368: "Gorebyss",
-  412: "Egg"
-});
+const LOCAL_FALLBACK_SPRITE = "pokemon-fallback.svg";
 
-const gen1InternalNames = {
-  14: "Gengar",
-  21: "Mew",
-  28: "Blastoise",
-  34: "Onix",
-  38: "Kadabra",
-  39: "Graveler",
-  41: "Machoke",
-  49: "Golem",
-  84: "Pikachu",
-  126: "Machamp",
-  147: "Haunter",
-  149: "Alakazam"
-};
-
-const gen1InternalToNational = {
-  1: 112, 2: 115, 3: 32, 4: 35, 5: 21, 6: 100, 7: 34, 8: 80, 9: 2, 10: 103,
-  11: 108, 12: 102, 13: 88, 14: 94, 15: 29, 16: 31, 17: 104, 18: 111, 19: 131,
-  20: 59, 21: 151, 22: 130, 23: 90, 24: 72, 25: 92, 26: 123, 27: 120, 28: 9,
-  29: 127, 30: 114, 33: 58, 34: 95, 35: 22, 36: 16, 37: 79, 38: 64, 39: 75,
-  40: 113, 41: 67, 42: 122, 43: 106, 44: 107, 45: 24, 46: 47, 47: 54, 48: 96,
-  49: 76, 51: 126, 53: 125, 54: 82, 55: 109, 57: 56, 58: 86, 59: 50, 60: 128,
-  64: 83, 65: 48, 66: 149, 70: 84, 71: 60, 72: 124, 73: 146, 74: 144, 75: 145,
-  76: 132, 77: 52, 78: 98, 82: 37, 83: 38, 84: 25, 85: 26, 88: 147, 89: 148,
-  90: 140, 91: 141, 92: 116, 93: 117, 96: 27, 97: 28, 98: 138, 99: 139,
-  100: 39, 101: 40, 102: 133, 103: 136, 104: 135, 105: 134, 106: 66, 107: 41,
-  108: 23, 109: 46, 110: 61, 111: 62, 112: 13, 113: 14, 114: 15, 116: 85,
-  117: 57, 118: 51, 119: 49, 120: 87, 123: 10, 124: 11, 125: 12, 126: 68,
-  128: 55, 129: 97, 130: 42, 131: 150, 132: 143, 133: 129, 136: 89, 138: 99,
-  139: 91, 141: 101, 142: 36, 143: 110, 144: 53, 145: 105, 147: 93, 148: 63,
-  149: 65, 150: 17, 151: 18, 152: 121, 153: 1, 154: 3, 155: 73, 157: 118,
-  158: 119, 163: 77, 164: 78, 165: 19, 166: 20, 167: 33, 168: 30, 169: 74,
-  170: 137, 171: 142, 173: 81, 176: 4, 177: 7, 178: 5, 179: 8, 180: 6,
-  185: 43, 186: 44, 187: 45, 188: 69, 189: 70, 190: 71
-};
-const nationalToGen1Internal = Object.fromEntries(
-  Object.entries(gen1InternalToNational).map(([internal, national]) => [national, Number(internal)])
-);
-
-const gen3NativeToNational = {
-  277: 252, 278: 253, 279: 254,
-  280: 255, 281: 256, 282: 257,
-  283: 258, 284: 259, 285: 260,
-  373: 366, 374: 367, 375: 368,
-  411: 358,
-  412: 0
-};
-for (let unownId = 252; unownId <= 276; unownId += 1) gen3NativeToNational[unownId] = 201;
-const nationalToGen3Native = Object.fromEntries(
-  Object.entries(gen3NativeToNational).map(([internal, national]) => [national, Number(internal)])
-);
-
-const itemNames = {
-  2: {
-    0x52: "King's Rock",
-    0x8f: "Metal Coat",
-    0x97: "Dragon Scale",
-    0xac: "Up-Grade"
-  },
-  3: {
-    187: "King's Rock",
-    192: "Deep Sea Tooth",
-    193: "Deep Sea Scale",
-    199: "Metal Coat",
-    201: "Dragon Scale",
-    218: "Up-Grade"
-  }
-};
+const moveNames = window.POKECABLE_MOVE_NAMES;
+if (!moveNames) {
+  console.error("POKECABLE_MOVE_NAMES nao foi carregado. Verifique frontend/move-names.js.");
+}
+const abilityNames = window.POKECABLE_ABILITY_NAMES;
+if (!abilityNames) {
+  console.error("POKECABLE_ABILITY_NAMES nao foi carregado. Verifique frontend/ability-names.js.");
+}
+const itemNames = window.POKECABLE_ITEM_NAMES;
+if (!itemNames) {
+  console.error("POKECABLE_ITEM_NAMES nao foi carregado. Verifique frontend/item-names.js.");
+}
 
 function nativeToNational(generation, speciesId) {
   if (generation === 1) return gen1InternalToNational[speciesId] || speciesId;
@@ -181,7 +114,45 @@ function speciesExistsInGeneration(nationalId, generation) {
 
 function itemName(itemId, generation) {
   if (!itemId) return null;
-  return itemNames[generation]?.[Number(itemId)] || null;
+  return (itemNames && itemNames[generation]?.[Number(itemId)]) || null;
+}
+
+function moveName(moveId) {
+  const numericId = Number(moveId || 0);
+  if (!numericId) return null;
+  return (moveNames && moveNames[numericId]) || `Move #${numericId}`;
+}
+
+function abilityName(value) {
+  if (value == null || value === "") return null;
+  if (typeof value === "object") {
+    const named = cleanName(value.name || value.ability_name || "");
+    if (named) return named;
+    const objectId = Number(value.ability_id || value.id || 0);
+    if (objectId) return (abilityNames && abilityNames[objectId]) || `Ability #${objectId}`;
+    return null;
+  }
+  if (typeof value === "number") {
+    return (abilityNames && abilityNames[value]) || `Ability #${value}`;
+  }
+  const text = cleanName(value);
+  if (!text) return null;
+  if (/^\d+$/.test(text)) {
+    const numericId = Number(text);
+    return (abilityNames && abilityNames[numericId]) || `Ability #${numericId}`;
+  }
+  return text;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value).replace(/"/g, "&quot;");
 }
 
 function cleanName(value) {
@@ -203,6 +174,15 @@ function pokemonSpriteUrl(nationalDexId) {
   const dex = Number(nationalDexId || 0);
   if (!dex) return "";
   return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${dex}.png`;
+}
+
+function pokemonSpriteImgHtml(nationalDexId, altText, className = "pokemon-sprite") {
+  const remoteSprite = pokemonSpriteUrl(nationalDexId);
+  const sprite = remoteSprite || LOCAL_FALLBACK_SPRITE;
+  const escapedAlt = escapeAttribute(altText || "Pokemon");
+  const escapedSrc = escapeAttribute(sprite);
+  const escapedFallback = escapeAttribute(LOCAL_FALLBACK_SPRITE);
+  return `<img class="${className}" src="${escapedSrc}" alt="${escapedAlt}" loading="lazy" onerror="if(!this.dataset.fallbackApplied){this.dataset.fallbackApplied='1';this.src='${escapedFallback}';return;}this.style.display='none';" />`;
 }
 
 function sameName(left, right) {
@@ -231,21 +211,19 @@ function payloadNationalDexId(payload) {
   return nativeToNational(Number(payload.generation || 0), Number(payload.species_id || 0)) || null;
 }
 
-function renderPokemonSummaryHtml(pokemonLike, textOverride = "") {
+function renderPokemonSummaryHtml(pokemonLike, textOverride = "", options = {}) {
   if (!pokemonLike) return "-";
+  const variant = String(options.variant || "default");
   const payloadDexId = payloadNationalDexId(pokemonLike);
   const explicitDexId = Number(pokemonLike.national_dex_id || 0) || null;
   const nationalDexId = payloadDexId ?? explicitDexId;
-  const sprite = pokemonSpriteUrl(nationalDexId);
   const text = textOverride || pokemonLike.display_summary || normalizePokemonDisplay(pokemonLike);
-  const escapedText = String(text)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  if (!sprite) return `<span class="pokemon-summary-text">${escapedText}</span>`;
+  const escapedText = escapeHtml(text);
+  const summaryClass = variant === "trade" ? "pokemon-summary pokemon-summary-trade" : "pokemon-summary";
+  const spriteClass = variant === "trade" ? "pokemon-sprite pokemon-sprite-trade" : "pokemon-sprite";
   return `
-    <span class="pokemon-summary">
-      <img class="pokemon-sprite" src="${sprite}" alt="${escapedText}" loading="lazy" />
+    <span class="${summaryClass}">
+      ${pokemonSpriteImgHtml(nationalDexId, text, spriteClass)}
       <span class="pokemon-summary-text">${escapedText}</span>
     </span>
   `;
@@ -287,6 +265,149 @@ function canonicalFromPayload(payload) {
     nature: canonical.nature || null,
     metadata: canonical.metadata || {}
   };
+}
+
+let loadedSave = null;
+let selectedLocation = "party:0";
+const sessionState = {
+  action: null,
+  joined: false,
+  tradeJoined: false,
+  battleJoined: false
+};
+const tradeState = {
+  localPayload: null,
+  peerPayload: null,
+  preparedTradeBackup: null,
+  pendingTradePayload: null,
+  hasJoinedRoom: false,
+  roomReady: false,
+  roundActive: false
+};
+const battleState = {
+  hasJoinedBattleRoom: false,
+  roomReady: false,
+  readyToConfirm: false,
+  currentBattleId: null,
+  currentBattleRequest: null
+};
+
+const pokemonUiRenderer = pokemonUiModule?.createPokemonUiRenderer({
+  canonicalFromPayload,
+  itemName,
+  moveName,
+  abilityName,
+  cleanName,
+  escapeHtml,
+  normalizePokemonDisplay,
+  payloadNationalDexId,
+  renderPokemonSummaryHtml,
+  getLoadedSaveGeneration: () => loadedSave?.generation
+});
+
+function renderOfferCard(summaryEl, detailsEl, pokemonLike, textOverride = "", options = {}) {
+  pokemonUiRenderer?.renderOfferCard(summaryEl, detailsEl, pokemonLike, textOverride, options);
+}
+
+const tradePreviewRenderer = tradePreviewModule?.createTradePreviewRenderer({
+  elements: {
+    tradeCompatibilityPreviewEl,
+    tradeEvolutionPreviewEl,
+    localOfferDetailsEl,
+    peerOfferDetailsEl
+  },
+  canonicalFromPayload,
+  payloadNationalDexId,
+  itemName,
+  sameName,
+  cleanName,
+  escapeHtml,
+  normalizePokemonDisplay,
+  renderPokemonSummaryHtml,
+  speciesNames,
+  simpleTradeEvolutionByNational,
+  itemTradeEvolutionRules,
+  getLoadedSaveGeneration: () => loadedSave?.generation
+});
+
+const buildWebCompatibilityReport = webCompatibilityModule?.createCompatibilityBuilder({
+  canonicalFromPayload,
+  payloadNationalDexId,
+  nationalToNative,
+  speciesExistsInGeneration,
+  itemName,
+  moveName,
+  getLoadedSaveGeneration: () => loadedSave?.generation
+});
+
+const tradeFlowController = tradeFlowModule?.createTradeFlowController({
+  state: tradeState,
+  getLoadedSave: () => loadedSave,
+  getSelectedLocation: () => selectedLocation,
+  getSelectedPokemon: () => loadedSave?.party.find((pokemon) => pokemon.location === pokemonChoiceEl.value) || null,
+  getRoomCredentials: () => ({
+    roomName: document.querySelector("#roomName").value.trim(),
+    password: document.querySelector("#roomPassword").value
+  }),
+  getSessionAction: () => sessionState.action,
+  selectedPayload,
+  supportedTradeModes,
+  supportedProtocols,
+  renderOfferCard,
+  buildWebCompatibilityReport,
+  renderTradeCompatibilityPreview,
+  renderTradeEvolutionPreview,
+  clearTradePreviews,
+  send,
+  setStatus,
+  log,
+  sha256Hex,
+  downloadBlob,
+  elements: {
+    sendOfferButton: sendTradeOfferButton,
+    confirmButton,
+    cancelButton,
+    downloadArea,
+    peerOfferEl,
+    peerOfferDetailsEl,
+    localOfferEl,
+    localOfferDetailsEl
+  }
+});
+
+const battleFlowController = battleFlowModule?.createBattleFlowController({
+  state: battleState,
+  getLoadedSave: () => loadedSave,
+  getRoomCredentials: () => ({
+    roomName: document.querySelector("#roomName").value.trim(),
+    password: document.querySelector("#roomPassword").value
+  }),
+  send,
+  setStatus,
+  setBattleStatus,
+  log,
+  battleLog,
+  elements: {
+    battleLogEl,
+    battleActionsEl,
+    battleFormatEl,
+    battleTeamCountEl,
+    sendBattleTeamButton,
+    confirmBattleButton,
+    forfeitBattleButton
+  }
+});
+
+function clearTradePreviews() {
+  tradePreviewRenderer?.clearTradePreviews();
+}
+
+function renderTradeCompatibilityPreview(payload, report) {
+  tradePreviewRenderer?.renderTradeCompatibilityPreview(payload, report);
+}
+
+function renderTradeEvolutionPreview(payload, report) {
+  tradePreviewRenderer?.renderTradeEvolutionPreview(payload, report);
 }
 
 const gen1 = {
@@ -356,20 +477,6 @@ const gen3 = {
   ]
 };
 
-let socket = null;
-let heartbeatTimer = null;
-let currentAction = null;
-let localPayload = null;
-let peerPayload = null;
-let preparedTradeBackup = null;
-let pendingTradePayload = null;
-let hasJoinedRoom = false;
-let hasJoinedBattleRoom = false;
-let currentBattleId = null;
-let currentBattleRequest = null;
-let loadedSave = null;
-let selectedLocation = "party:0";
-
 function log(message) {
   const time = new Date().toLocaleTimeString();
   eventLogEl.textContent += `[${time}] ${message}\n`;
@@ -390,47 +497,53 @@ function setBattleStatus(message) {
   if (battleStatusEl) battleStatusEl.textContent = message;
 }
 
-function setBattleActionsEnabled(enabled) {
-  for (const button of battleActionsEl.querySelectorAll("[data-battle-action]")) button.disabled = !enabled;
+function setSessionStatus(message, detail = "") {
+  if (sessionStatusEl) sessionStatusEl.textContent = message;
+  if (sessionDetailEl) sessionDetailEl.textContent = detail || "A mesma sessão web mantém troca e batalha sob o mesmo nome de sala.";
 }
 
-function renderBattleActions(request = null) {
-  battleActionsEl.innerHTML = "";
-  const actions = [];
-  if (request && Array.isArray(request.active) && request.active[0] && Array.isArray(request.active[0].moves)) {
-    request.active[0].moves.forEach((move, index) => {
-      if (move.disabled) return;
-      actions.push({
-        action: `move ${index + 1}`,
-        label: `${move.move} (${move.pp}/${move.maxpp})`,
-        secondary: false
-      });
-    });
+function supportedTradeModes(generation) {
+  void generation;
+  return ["same_generation", "time_capsule_gen1_gen2", "forward_transfer_to_gen3", "legacy_downconvert_experimental"];
+}
+
+function supportedProtocols() {
+  return ["raw_same_generation", "canonical_cross_generation"];
+}
+
+function roomCredentialsReady() {
+  const roomName = document.querySelector("#roomName").value.trim();
+  const password = document.querySelector("#roomPassword").value;
+  return Boolean(roomName && password);
+}
+
+function refreshSessionUi() {
+  const hasSave = Boolean(loadedSave && loadedSave.party.length);
+  const canJoinSession = hasSave && roomCredentialsReady() && !sessionState.joined;
+  createSessionButton.disabled = !canJoinSession;
+  joinSessionButton.disabled = !canJoinSession;
+  leaveSessionButton.disabled = !sessionState.joined;
+  openTradeTabButton.disabled = !hasSave;
+  openBattleTabButton.disabled = !hasSave;
+  tradeFlowController?.syncButtons();
+  battleFlowController?.syncButtons();
+  if (!loadedSave) {
+    setSessionStatus("Defina sala e senha. Depois carregue um save para entrar.");
+    return;
   }
-  if (request && request.forceSwitch && request.side && Array.isArray(request.side.pokemon)) {
-    request.side.pokemon.forEach((pokemon, index) => {
-      if (pokemon.active) return;
-      if (String(pokemon.condition || "").includes("fnt")) return;
-      actions.push({
-        action: `switch ${index + 1}`,
-        label: `Trocar ${pokemon.details || pokemon.ident || `Pokémon ${index + 1}`}`,
-        secondary: true
-      });
-    });
+  if (!sessionState.joined) {
+    setSessionStatus(
+      "Save carregado. Escolha criar ou entrar na sala.",
+      `${loadedSave.label}. Você pode trocar de save antes de abrir a sessão.`
+    );
+    return;
   }
-  if (!actions.length) {
-    actions.push({ action: "move 1", label: "Golpe 1", secondary: false });
-    actions.push({ action: "pass", label: "Passar", secondary: true });
-  }
-  for (const item of actions) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.battleAction = item.action;
-    button.textContent = item.label;
-    if (item.secondary) button.classList.add("secondary");
-    button.disabled = true;
-    battleActionsEl.append(button);
-  }
+  const tradeLabel = sessionState.tradeJoined ? (tradeState.roomReady ? "troca pronta" : "troca aguardando") : "troca desconectada";
+  const battleLabel = sessionState.battleJoined ? (battleState.roomReady ? "batalha pronta" : "batalha aguardando") : "batalha desconectada";
+  setSessionStatus(
+    "Sessão ativa na mesma sala para troca e batalha.",
+    `${tradeLabel}; ${battleLabel}. Trocar o save ressincroniza seu lado sem derrubar a sessão.`
+  );
 }
 
 function activateTab(tabName) {
@@ -444,26 +557,30 @@ function activateTab(tabName) {
   });
 }
 
-function battleFormatLabel(room) {
-  const formatId = room?.format_id || "automatico";
-  if (formatId === "gen1customgame") return "Gen 1 Custom Game";
-  if (formatId === "gen2customgame") return "Gen 2 Custom Game";
-  if (formatId === "gen3customgame") return "Gen 3 Custom Game";
-  return formatId;
-}
-
-function updateBattleRoomDisplay(room) {
-  if (!room) return;
-  battleFormatEl.textContent = battleFormatLabel(room);
-  const players = room.players || {};
-  const teamSizes = Object.values(players).map((player) => `${player.team_size || 0}`);
-  if (teamSizes.length) battleTeamCountEl.textContent = teamSizes.join(" x ");
-}
-
 function wsUrl() {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}/ws`;
 }
+
+const wsClient = wsClientModule?.createWsClient({
+  wsUrl,
+  statusEl,
+  onMessage: (message) => {
+    handleMessage(message);
+  },
+  onClosed: () => {
+    resetSessionState();
+    confirmButton.disabled = true;
+    cancelButton.disabled = true;
+    sendTradeOfferButton.disabled = true;
+    sendBattleTeamButton.disabled = true;
+    confirmBattleButton.disabled = true;
+    forfeitBattleButton.disabled = true;
+    setStatus("Conexao encerrada.");
+    setSessionStatus("Conexão encerrada.", "Reabra a sessão para continuar usando a mesma sala.");
+    battleFlowController?.handleBattleSocketClosed();
+  }
+});
 
 function readLe16(data, offset) {
   return data[offset] | (data[offset + 1] << 8);
@@ -1134,23 +1251,20 @@ function loadSave(bytes, name) {
 
 function updatePokemonOptions() {
   pokemonChoiceEl.innerHTML = "";
+  clearTradePreviews();
   if (!loadedSave || !loadedSave.party.length) {
     const option = document.createElement("option");
     option.value = "";
     option.textContent = "Carregue um save";
     pokemonChoiceEl.append(option);
-    createButton.disabled = true;
-    joinButton.disabled = true;
-    createBattleButton.disabled = true;
-    joinBattleButton.disabled = true;
-    openTradeTabButton.disabled = true;
-    openBattleTabButton.disabled = true;
     battleTeamCountEl.textContent = "0 Pokémon";
     battleTeamPreviewEl.textContent = "";
     setupPartyPreviewEl.textContent = "";
     tradeSaveStatusEl.textContent = "Nenhum save carregado.";
     setupStatusEl.textContent = "Carregue um save para liberar troca e batalha.";
     setBattleStatus("Carregue um save para montar o time.");
+    setStatus("Carregue um save para começar.");
+    refreshSessionUi();
     return;
   }
   loadedSave.party.forEach((pokemon) => {
@@ -1161,20 +1275,15 @@ function updatePokemonOptions() {
     pokemonChoiceEl.append(option);
   });
   const enabled = pokemonChoiceEl.options.length > 0;
-  createButton.disabled = !enabled;
-  joinButton.disabled = !enabled;
-  createBattleButton.disabled = !enabled;
-  joinBattleButton.disabled = !enabled;
-  openTradeTabButton.disabled = !enabled;
-  openBattleTabButton.disabled = !enabled;
   tradeSaveStatusEl.textContent = `${loadedSave.label}: ${loadedSave.party.length} Pokémon na party.`;
   setupStatusEl.textContent = enabled
-    ? `${loadedSave.label} carregado. Você pode ir para troca ou batalha.`
+    ? `${loadedSave.label} carregado. Abra ou sincronize a sessão e depois escolha troca ou batalha.`
     : "A party não possui Pokémon válido para troca ou batalha.";
   const selected = loadedSave.party.find((pokemon) => pokemon.location === pokemonChoiceEl.value);
-  localOfferEl.innerHTML = selected ? renderPokemonSummaryHtml(selected) : "-";
+  renderOfferCard(localOfferEl, localOfferDetailsEl, selected || null, "", { emptyMessage: "Escolha um Pokémon da party." });
   updateBattleTeamPreview();
   updateSetupPartyPreview();
+  refreshSessionUi();
 }
 
 function updateBattleTeamPreview() {
@@ -1230,273 +1339,136 @@ function downloadBlob(name, bytes, label) {
 }
 
 function connect() {
-  return new Promise((resolve, reject) => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      resolve();
-      return;
-    }
-    socket = new WebSocket(wsUrl());
-    socket.addEventListener("open", () => {
-      statusEl.textContent = "Conectando";
-      statusEl.classList.remove("online");
-    });
-    socket.addEventListener("message", (event) => {
-      const message = JSON.parse(event.data);
-      handleMessage(message);
-      if (message.type === "connected") {
-        statusEl.textContent = "Online";
-        statusEl.classList.add("online");
-        resolve();
-      }
-    });
-    socket.addEventListener("close", () => {
-      statusEl.textContent = "Desconectado";
-      statusEl.classList.remove("online");
-      if (heartbeatTimer) window.clearInterval(heartbeatTimer);
-      heartbeatTimer = null;
-      confirmButton.disabled = true;
-      cancelButton.disabled = true;
-      confirmBattleButton.disabled = true;
-      forfeitBattleButton.disabled = true;
-      currentBattleRequest = null;
-      renderBattleActions(null);
-      setBattleActionsEnabled(false);
-      if (hasJoinedRoom) setStatus("Conexao encerrada.");
-      if (hasJoinedBattleRoom) setBattleStatus("Conexao de batalha encerrada.");
-    });
-    socket.addEventListener("error", () => reject(new Error("Falha ao conectar no WebSocket.")));
-  });
+  return wsClient?.connect();
 }
 
 function send(payload) {
-  if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error("WebSocket nao conectado.");
-  socket.send(JSON.stringify(payload));
+  return wsClient?.send(payload);
+}
+
+function resetSessionState() {
+  sessionState.action = null;
+  sessionState.joined = false;
+  sessionState.tradeJoined = false;
+  sessionState.battleJoined = false;
+  tradeState.hasJoinedRoom = false;
+  tradeState.roomReady = false;
+  tradeFlowController?.resetTradeRoundUi();
+  battleState.hasJoinedBattleRoom = false;
+  battleState.roomReady = false;
+  battleState.readyToConfirm = false;
+  battleState.currentBattleId = null;
+  battleState.currentBattleRequest = null;
+  battleFlowController?.resetBattleUiForContextChange();
+  refreshSessionUi();
+}
+
+async function startSession(action) {
+  if (sessionState.joined) {
+    setSessionStatus("Já existe uma sessão aberta.", "Saia da sala atual antes de criar ou entrar em outra.");
+    return;
+  }
+  if (!loadedSave) {
+    setSessionStatus("Carregue um save antes de abrir a sessão.");
+    return;
+  }
+  if (!roomCredentialsReady()) {
+    setSessionStatus("Informe nome da sala e senha.");
+    return;
+  }
+  sessionState.action = action;
+  sessionState.joined = false;
+  sessionState.tradeJoined = false;
+  sessionState.battleJoined = false;
+  tradeFlowController?.resetTradeRoundUi();
+  battleFlowController?.resetBattleUiForContextChange();
+  setSessionStatus("Conectando a mesma sala para troca e batalha...");
+  await connect();
+  tradeFlowController?.joinTradeRoom(action);
+  battleFlowController?.joinBattleRoom(action);
+  refreshSessionUi();
+}
+
+async function syncSessionWithLoadedSave() {
+  if (!sessionState.joined || !loadedSave) return;
+  if (battleState.currentBattleId) {
+    setSessionStatus("Finalize a batalha antes de trocar o save.");
+    return;
+  }
+  if (tradeState.pendingTradePayload || tradeState.preparedTradeBackup) {
+    setSessionStatus("Finalize a escrita da troca atual antes de trocar o save.");
+    return;
+  }
+  if (tradeState.localPayload || tradeState.peerPayload) {
+    send({ type: "cancel_trade_round", reason: "save_changed" });
+  }
+  send({
+    type: "update_player_context",
+    generation: loadedSave.generation,
+    game: loadedSave.game,
+    supported_trade_modes: supportedTradeModes(loadedSave.generation),
+    supported_protocols: supportedProtocols()
+  });
+  tradeFlowController?.resetTradeRoundUi({ peerMessage: "Aguardando o Pokémon do outro jogador." });
+  battleFlowController?.resetBattleUiForContextChange();
+  setSessionStatus("Novo save carregado. Sincronizando a sessão sem sair da sala...");
+  refreshSessionUi();
+}
+
+function leaveSession() {
+  wsClient?.close();
+  resetSessionState();
+  setStatus("Sessão encerrada.");
+  setBattleStatus("Sessão encerrada.");
+  setSessionStatus("Sessão encerrada.", "Você pode carregar outro save ou entrar em outra sala.");
 }
 
 function handleMessage(message) {
+  if (message.type !== "connected" && tradeFlowController?.handleTradeMessage(message)) {
+    if (message.type === "room_created" || message.type === "room_joined") {
+      sessionState.tradeJoined = true;
+    }
+    if (message.type === "room_ready") {
+      sessionState.tradeJoined = true;
+    }
+    if (message.type === "trade_cancelled" && message.reason !== "peer_disconnected") {
+      sessionState.tradeJoined = false;
+    }
+    sessionState.joined = sessionState.tradeJoined || sessionState.battleJoined;
+    refreshSessionUi();
+    return;
+  }
+  if (message.type !== "connected" && battleFlowController?.handleBattleMessage(message)) {
+    if (message.type === "battle_room_created" || message.type === "battle_room_joined") {
+      sessionState.battleJoined = true;
+    }
+    if (message.type === "battle_room_ready") {
+      sessionState.battleJoined = true;
+    }
+    sessionState.joined = sessionState.tradeJoined || sessionState.battleJoined;
+    refreshSessionUi();
+    return;
+  }
   switch (message.type) {
     case "connected":
       log("Conectado ao servidor.");
-      if (heartbeatTimer) window.clearInterval(heartbeatTimer);
-      heartbeatTimer = window.setInterval(() => {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: "heartbeat" }));
-        }
-      }, 20000);
+      refreshSessionUi();
       break;
-    case "room_created":
-      hasJoinedRoom = true;
-      setStatus("Sala criada. Aguardando segundo usuario.");
-      log("Sala criada.");
-      cancelButton.disabled = false;
-      break;
-    case "room_waiting":
-      if (hasJoinedRoom) setStatus(message.message || "Aguardando outro usuario.");
-      log("Aguardando segundo usuario.");
-      break;
-    case "room_joined":
-      hasJoinedRoom = true;
-      setStatus("Entrou na sala. Enviando oferta.");
-      log("Entrou na sala.");
-      cancelButton.disabled = false;
-      sendOffer();
-      break;
-    case "room_ready":
-      log("Sala pronta com dois usuarios.");
-      if (currentAction === "create") {
-        setStatus("Segundo usuario entrou. Enviando oferta.");
-        sendOffer();
-      }
-      break;
-    case "offer_received":
-      log("Servidor recebeu sua oferta.");
-      break;
-    case "peer_offer_received":
-      peerPayload = message.offer;
-      peerOfferEl.innerHTML = renderPokemonSummaryHtml(
-        peerPayload,
-        peerPayload.display_summary || (peerPayload.summary && peerPayload.summary.display_summary) || "-"
-      );
-      setStatus("Oferta do outro usuario recebida. Validando compatibilidade.");
-      confirmButton.disabled = true;
-      log(`Outro usuario oferece: ${peerPayload.display_summary || (peerPayload.summary && peerPayload.summary.display_summary) || "-"}`);
-      break;
-    case "offers_ready":
-      log("As duas ofertas estao prontas.");
-      break;
-    case "preflight_required":
-      handlePreflightRequired(message);
-      break;
-    case "preflight_received":
-      log("Preflight enviado ao servidor.");
-      break;
-    case "preflight_ready":
-      setStatus("Compatibilidade validada nos dois lados. Confirme para concluir.");
-      confirmButton.disabled = false;
-      log("Preflight aprovado pelos dois usuarios.");
-      break;
-    case "trade_blocked":
-      setStatus(message.message || "Troca bloqueada no preflight.");
-      confirmButton.disabled = true;
-      log(`Troca bloqueada: ${message.message || "preflight"}`);
-      break;
-    case "trade_confirmed":
-      setStatus("Sua confirmacao foi enviada. Aguardando o outro usuario.");
-      log("Confirmacao enviada.");
-      break;
-    case "prepare_write":
-      void handlePrepareWrite(message);
-      break;
-    case "write_ready_received":
-      log("Servidor recebeu sua preparação de escrita.");
-      break;
-    case "trade_commit_write":
-      void handleTradeCommitWrite(message);
-      break;
-    case "write_done_received":
-      log("Servidor recebeu a confirmação de gravação local.");
-      break;
-    case "peer_confirmed":
-      log("O outro usuario confirmou.");
-      break;
-    case "trade_completed":
-      setStatus(`Troca concluida. Recebido: ${pendingTradePayload?.display_summary || peerPayload?.display_summary || "-"}`);
-      confirmButton.disabled = true;
-      cancelButton.disabled = true;
-      if (preparedTradeBackup && loadedSave) {
-        downloadArea.textContent = "";
-        downloadBlob(`${loadedSave.name}.bak`, preparedTradeBackup, "Baixar backup original");
-        downloadBlob(loadedSave.name, loadedSave.bytes, "Baixar save modificado");
-        setStatus("Troca aplicada localmente. Baixe o save modificado antes de abrir o jogo.");
-      }
-      preparedTradeBackup = null;
-      pendingTradePayload = null;
-      if (loadedSave) {
-        void sha256Hex(loadedSave.bytes).then((hash) => {
-          loadedSave.signature = { size: loadedSave.bytes.length, sha256: hash };
-        });
-      }
-      log("Troca concluida.");
-      break;
-    case "trade_write_failed":
-      setStatus(message.message || "Falha durante a preparação/gravação da troca.");
-      confirmButton.disabled = true;
-      cancelButton.disabled = true;
-      preparedTradeBackup = null;
-      pendingTradePayload = null;
-      log(`Falha de escrita da troca: ${message.message || message.stage}`);
+    case "player_context_updated":
+      sessionState.joined = true;
+      sessionState.tradeJoined = Boolean(message.trade_room);
+      sessionState.battleJoined = Boolean(message.battle_room);
+      setSessionStatus("Save sincronizado com a mesma sala.", `${loadedSave?.label || "Save local"}. Troca e batalha continuam disponíveis.`);
+      log("Contexto do jogador atualizado na sessão.");
+      refreshSessionUi();
       break;
     case "generation_mismatch":
     case "game_mismatch":
     case "error":
       setStatus(message.message || "Erro no servidor.");
-      if (currentAction && currentAction.startsWith("battle")) {
-        setBattleStatus(message.message || "Erro no servidor.");
-        currentBattleRequest = null;
-        renderBattleActions(null);
-        setBattleActionsEnabled(false);
-      }
+      battleFlowController?.handleBattleServerError(message);
+      setSessionStatus(message.message || "Erro na sessão.");
       log(`Erro: ${message.message || message.code}`);
-      break;
-    case "battle_error":
-      setBattleStatus(message.message || "Erro na batalha.");
-      currentBattleRequest = null;
-      renderBattleActions(null);
-      setBattleActionsEnabled(false);
-      log(`Erro de batalha: ${message.message || message.code}`);
-      break;
-    case "trade_cancelled":
-      if (message.reason === "peer_disconnected") {
-        setStatus("Outro usuario desconectou. A sala continua aberta aguardando novo usuario.");
-        peerOfferEl.innerHTML = "-";
-        peerPayload = null;
-        currentAction = "create";
-      } else {
-        setStatus(`Troca cancelada: ${message.reason}`);
-      }
-      confirmButton.disabled = true;
-      cancelButton.disabled = !hasJoinedRoom;
-      log(`Troca cancelada: ${message.reason}`);
-      break;
-    case "battle_room_created":
-      hasJoinedBattleRoom = true;
-      updateBattleRoomDisplay(message.room);
-      setBattleStatus("Sala de batalha criada. Aguardando segundo usuário.");
-      setStatus("Sala de batalha criada. Aguardando segundo usuario.");
-      log("Sala de batalha criada.");
-      forfeitBattleButton.disabled = false;
-      break;
-    case "battle_room_joined":
-      hasJoinedBattleRoom = true;
-      updateBattleRoomDisplay(message.room);
-      setBattleStatus("Entrou na sala de batalha. Enviando time.");
-      setStatus("Entrou na sala de batalha. Enviando time.");
-      log("Entrou na sala de batalha.");
-      forfeitBattleButton.disabled = false;
-      sendBattleTeam();
-      break;
-    case "battle_room_ready":
-      updateBattleRoomDisplay(message.room);
-      log("Sala de batalha pronta.");
-      if (currentAction === "battle_create") {
-        setBattleStatus("Segundo usuário entrou. Enviando time.");
-        setStatus("Segundo usuario entrou. Enviando time.");
-        sendBattleTeam();
-      }
-      break;
-    case "battle_team_received":
-      updateBattleRoomDisplay(message.room);
-      setBattleStatus(`Servidor recebeu seu time (${message.team_size || 0} Pokémon).`);
-      log("Servidor recebeu seu time de batalha.");
-      break;
-    case "battle_ready":
-      updateBattleRoomDisplay(message.room);
-      setBattleStatus("Times prontos. Confirme para iniciar.");
-      setStatus("Times prontos. Confirme para iniciar batalha.");
-      confirmBattleButton.disabled = false;
-      log("Batalha pronta.");
-      break;
-    case "battle_confirmed":
-      setBattleStatus("Confirmação enviada. Aguardando o outro jogador.");
-      setStatus("Confirmacao de batalha enviada.");
-      log("Confirmacao de batalha enviada.");
-      break;
-    case "battle_started":
-      currentBattleId = message.battle_id;
-      currentBattleRequest = null;
-      updateBattleRoomDisplay(message.room);
-      setBattleStatus("Batalha iniciada. Aguarde sua ação.");
-      setStatus("Batalha iniciada.");
-      confirmBattleButton.disabled = true;
-      forfeitBattleButton.disabled = false;
-      renderBattleActions(null);
-      setBattleActionsEnabled(false);
-      for (const line of message.logs || []) battleLog(line);
-      log("Batalha iniciada.");
-      break;
-    case "battle_log":
-      for (const line of message.logs || []) battleLog(line);
-      break;
-    case "battle_request_action":
-      currentBattleId = message.battle_id || currentBattleId;
-      currentBattleRequest = message.request || null;
-      setBattleStatus("Escolha uma ação de batalha.");
-      renderBattleActions(currentBattleRequest);
-      setBattleActionsEnabled(true);
-      battleLog(currentBattleRequest ? "|request|ação disponível para este jogador" : "|request|escolha um golpe ou passe o turno");
-      break;
-    case "battle_finished":
-      currentBattleId = null;
-      currentBattleRequest = null;
-      hasJoinedBattleRoom = false;
-      setBattleStatus("Batalha finalizada.");
-      setStatus("Batalha finalizada.");
-      for (const line of message.logs || []) battleLog(line);
-      confirmBattleButton.disabled = true;
-      forfeitBattleButton.disabled = true;
-      renderBattleActions(null);
-      setBattleActionsEnabled(false);
-      log("Batalha finalizada.");
       break;
     case "heartbeat":
       break;
@@ -1505,292 +1477,52 @@ function handleMessage(message) {
   }
 }
 
-function sendOffer() {
-  localPayload = selectedPayload();
-  localOfferEl.innerHTML = renderPokemonSummaryHtml(localPayload, localPayload.display_summary);
-  send({ type: "offer_pokemon", payload: localPayload });
-}
-
-async function handlePrepareWrite(message) {
-  try {
-    if (!loadedSave) throw new Error("Nenhum save carregado no navegador.");
-    const currentHash = await sha256Hex(loadedSave.bytes);
-    const expected = loadedSave.signature || { size: loadedSave.bytes.length, sha256: currentHash };
-    if (expected.size !== loadedSave.bytes.length || expected.sha256 !== currentHash) {
-      send({ type: "write_ready", ready: false, error: "O save local carregado no navegador mudou antes da escrita." });
-      setStatus("O save local mudou antes da escrita. Recarregue o arquivo e tente novamente.");
-      return;
-    }
-    preparedTradeBackup = new Uint8Array(loadedSave.bytes);
-    pendingTradePayload = message.received_payload;
-    send({
-      type: "write_ready",
-      ready: true,
-      metadata: {
-        save_name: loadedSave.name,
-        size: loadedSave.bytes.length,
-        sha256: currentHash
-      }
-    });
-    setStatus("Backup local preparado. Aguardando o outro usuário.");
-    log("Preparação local concluída. Backup em memória pronto.");
-  } catch (error) {
-    send({ type: "write_ready", ready: false, error: error.message || String(error) });
-    setStatus(error.message || String(error));
-    log(`Falha na preparação de escrita: ${error.message || error}`);
-  }
-}
-
-async function handleTradeCommitWrite(message) {
-  try {
-    if (!loadedSave) throw new Error("Nenhum save carregado no navegador.");
-    pendingTradePayload = message.received_payload;
-    peerOfferEl.innerHTML = renderPokemonSummaryHtml(
-      pendingTradePayload,
-      pendingTradePayload.display_summary || (pendingTradePayload.summary && pendingTradePayload.summary.display_summary) || "-"
-    );
-    loadedSave.applyPayload(selectedLocation, pendingTradePayload);
-    send({ type: "write_done", success: true });
-    setStatus("Gravação local concluída. Aguardando confirmação final.");
-    log("Save aplicado localmente no navegador.");
-  } catch (error) {
-    send({ type: "write_failed", stage: "commit_write", error: error.message || String(error) });
-    setStatus(error.message || String(error));
-    log(`Erro ao aplicar save local: ${error.message || error}`);
-  }
-}
-
-function battleTeam() {
-  if (!loadedSave) throw new Error("Escolha um save local.");
-  const team = loadedSave.party
-    .filter((pokemon) => !pokemon.is_egg)
-    .slice(0, 6)
-    .map((pokemon) => {
-      const payload = loadedSave.exportPayload(pokemon.location);
-      const canonical = payload.canonical;
-      if (canonical && canonical.original_data) {
-        canonical.original_data = { ...canonical.original_data, raw_data_base64: null };
-      }
-      return canonical;
-    });
-  if (!team.length) throw new Error("A party nao possui Pokemon validos para batalha.");
-  return team;
-}
-
-function sendBattleTeam() {
-  const team = battleTeam();
-  battleTeamCountEl.textContent = `${team.length} Pokémon enviados`;
-  send({ type: "offer_battle_team", team });
-}
-
-function handlePreflightRequired(message) {
-  const payload = message.received_payload;
-  peerPayload = payload;
-  peerOfferEl.innerHTML = renderPokemonSummaryHtml(
-    payload,
-    payload.display_summary || (payload.summary && payload.summary.display_summary) || "-"
-  );
-  const report = buildWebCompatibilityReport(payload, message);
-  if (!loadedSave) {
-    report.compatible = false;
-    report.blocking_reasons.push("Nenhum save carregado.");
-  } else if (!(payload.raw_data_base64 || (payload.raw && payload.raw.data_base64))) {
-    if (payload.generation === loadedSave.generation) {
-      report.compatible = false;
-      report.blocking_reasons.push("Payload same-generation sem raw data.");
-    }
-  }
-  send({
-    type: "preflight_result",
-    compatible: report.compatible,
-    requires_user_confirmation: false,
-    report,
-    error: report.blocking_reasons.join("; ")
-  });
-  if (report.compatible) {
-    setStatus("Preflight local aprovado. Aguardando o outro usuario.");
-    log("Preflight local aprovado.");
-  } else {
-    setStatus(report.blocking_reasons.join(" "));
-    confirmButton.disabled = true;
-    log(`Preflight local bloqueado: ${report.blocking_reasons.join("; ")}`);
-  }
-}
-
-function buildWebCompatibilityReport(payload, message) {
-  const targetGeneration = loadedSave ? loadedSave.generation : message.target_generation;
-  const report = {
-    compatible: true,
-    mode: message.derived_mode || "same_generation",
-    source_generation: message.source_generation,
-    target_generation: targetGeneration,
-    blocking_reasons: [],
-    warnings: [],
-    data_loss: [],
-    suggested_actions: [],
-    transformations: [],
-    removed_moves: [],
-    removed_items: [],
-    removed_fields: [],
-    normalized_species: {},
-    requires_user_confirmation: false
-  };
-  if (!loadedSave || payload.generation === targetGeneration) return report;
-  const canonical = canonicalFromPayload(payload);
-  if (!canonical) {
-    report.compatible = false;
-    report.blocking_reasons.push("Payload cross-generation sem canonical.");
-    return report;
-  }
-  const nationalId = Number(canonical.species.national_dex_id);
-  const targetSpeciesId = nationalToNative(targetGeneration, nationalId);
-  report.normalized_species = {
-    national_dex_id: nationalId,
-    source_species_id: canonical.species.source_species_id,
-    source_species_id_space: canonical.species.source_species_id_space,
-    target_species_id: targetSpeciesId,
-    target_species_id_space: targetGeneration === 1 ? "gen1_internal" : targetGeneration === 2 ? "national_dex" : "gen3_internal"
-  };
-  if (!speciesExistsInGeneration(nationalId, targetGeneration)) {
-    report.compatible = false;
-    report.blocking_reasons.push(`${canonical.species.name} National Dex #${nationalId} nao existe na Gen ${targetGeneration}.`);
-    return report;
-  }
-  report.transformations.push(`Species National Dex #${nationalId} convertido para ID ${targetSpeciesId} na Gen ${targetGeneration}.`);
-  const maxMove = targetGeneration === 1 ? 165 : targetGeneration === 2 ? 251 : 354;
-  for (const move of canonical.moves || []) {
-    const moveId = Number(move.move_id || move);
-    if (moveId > maxMove) {
-      report.removed_moves.push({ move_id: moveId, name: `Move #${moveId}` });
-      if (!report.data_loss.includes("moves")) report.data_loss.push("moves");
-    }
-  }
-  if (canonical.held_item && canonical.held_item.item_id && targetGeneration === 1) {
-    report.removed_items.push({ item_id: canonical.held_item.item_id, name: `Item #${canonical.held_item.item_id}` });
-    report.data_loss.push("held_item");
-  }
-  if (targetGeneration < 3) {
-    if (canonical.ability) {
-      report.removed_fields.push("ability");
-      report.data_loss.push("ability");
-    }
-    if (canonical.nature) {
-      report.removed_fields.push("nature");
-      report.data_loss.push("nature");
-    }
-  }
-  return report;
-}
-
-function supportedTradeModes(generation) {
-  void generation;
-  return ["same_generation", "time_capsule_gen1_gen2", "forward_transfer_to_gen3", "legacy_downconvert_experimental"];
-}
-
-function supportedProtocols() {
-  return ["raw_same_generation", "canonical_cross_generation"];
-}
-
-async function startRoom(action) {
-  const roomName = document.querySelector("#roomName").value.trim();
-  const password = document.querySelector("#roomPassword").value;
-  const payload = selectedPayload();
-  if (!roomName || !password) {
-    setStatus("Informe nome da sala e senha.");
-    return;
-  }
-  currentAction = action;
-  peerPayload = null;
-  pendingTradePayload = null;
-  preparedTradeBackup = null;
-  hasJoinedRoom = false;
-  downloadArea.textContent = "";
-  peerOfferEl.innerHTML = "-";
-  localOfferEl.innerHTML = renderPokemonSummaryHtml(payload, payload.display_summary);
-  confirmButton.disabled = true;
-  cancelButton.disabled = true;
-  setStatus("Conectando...");
-  await connect();
-  send({
-    type: action === "create" ? "create_room" : "join_room",
-    room_name: roomName,
-    password,
-    generation: loadedSave.generation,
-    game: loadedSave.game,
-    supported_trade_modes: supportedTradeModes(loadedSave.generation),
-    supported_protocols: supportedProtocols()
-  });
-}
-
-async function startBattleRoom(action) {
-  const roomName = document.querySelector("#roomName").value.trim();
-  const password = document.querySelector("#roomPassword").value;
-  if (!roomName || !password) {
-    setStatus("Informe nome da sala e senha.");
-    return;
-  }
-  if (!loadedSave || !loadedSave.party.length) {
-    setStatus("Carregue um save com party antes da batalha.");
-    return;
-  }
-  currentAction = action === "create" ? "battle_create" : "battle_join";
-  hasJoinedBattleRoom = false;
-  currentBattleId = null;
-  currentBattleRequest = null;
-  battleLogEl.textContent = "";
-  renderBattleActions(null);
-  setBattleActionsEnabled(false);
-  confirmBattleButton.disabled = true;
-  forfeitBattleButton.disabled = true;
-  setStatus("Conectando para batalha...");
-  setBattleStatus("Conectando para batalha...");
-  await connect();
-  send({
-    type: action === "create" ? "create_battle_room" : "join_battle_room",
-    room_name: roomName,
-    password,
-    generation: loadedSave.generation,
-    game: loadedSave.game
-  });
-}
-
-createButton.addEventListener("click", () => startRoom("create").catch((error) => setStatus(error.message)));
-joinButton.addEventListener("click", () => startRoom("join").catch((error) => setStatus(error.message)));
-createBattleButton.addEventListener("click", () => startBattleRoom("create").catch((error) => setStatus(error.message)));
-joinBattleButton.addEventListener("click", () => startBattleRoom("join").catch((error) => setStatus(error.message)));
+createSessionButton.addEventListener("click", () => {
+  void startSession("create").catch((error) => setSessionStatus(error.message || String(error)));
+});
+joinSessionButton.addEventListener("click", () => {
+  void startSession("join").catch((error) => setSessionStatus(error.message || String(error)));
+});
+leaveSessionButton.addEventListener("click", () => {
+  leaveSession();
+});
 tabButtons.forEach((button) => {
   button.addEventListener("click", () => activateTab(button.dataset.tab));
 });
 openTradeTabButton.addEventListener("click", () => activateTab("trade"));
 openBattleTabButton.addEventListener("click", () => activateTab("battle"));
+sendTradeOfferButton.addEventListener("click", () => {
+  try {
+    tradeFlowController?.sendOffer();
+  } catch (error) {
+    setStatus(error.message || String(error));
+  }
+});
 confirmButton.addEventListener("click", () => {
   confirmButton.disabled = true;
   send({ type: "confirm_trade" });
 });
+sendBattleTeamButton.addEventListener("click", () => {
+  try {
+    battleFlowController?.sendBattleTeam();
+  } catch (error) {
+    setBattleStatus(error.message || String(error));
+  }
+});
 confirmBattleButton.addEventListener("click", () => {
-  confirmBattleButton.disabled = true;
-  setBattleStatus("Confirmação enviada. Aguardando início da batalha.");
-  send({ type: "confirm_battle" });
+  battleFlowController?.handleBattleConfirm();
 });
 forfeitBattleButton.addEventListener("click", () => {
-  setBattleActionsEnabled(false);
-  setBattleStatus("Desistência enviada.");
-  send({ type: "battle_forfeit" });
+  battleFlowController?.handleBattleForfeit();
 });
 battleActionsEl.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-battle-action]");
-  if (!button) return;
-  const action = button.dataset.battleAction || "pass";
-  setBattleActionsEnabled(false);
-  setBattleStatus(`Ação enviada: ${action}.`);
-  send({ type: "battle_action", battle_id: currentBattleId, action });
+  battleFlowController?.handleBattleActionClick(event);
 });
 cancelButton.addEventListener("click", () => {
-  send({ type: "cancel_trade" });
-  socket.close();
+  send({ type: "cancel_trade_round", reason: "user_cancelled" });
 });
 window.addEventListener("beforeunload", (event) => {
-  if (!hasJoinedRoom) return;
+  if (!sessionState.joined) return;
   event.preventDefault();
   event.returnValue = "";
 });
@@ -1800,7 +1532,7 @@ document.querySelector("#clearLog").addEventListener("click", () => {
 pokemonChoiceEl.addEventListener("change", () => {
   if (!loadedSave) return;
   const selected = loadedSave.party.find((pokemon) => pokemon.location === pokemonChoiceEl.value);
-  localOfferEl.innerHTML = selected ? renderPokemonSummaryHtml(selected) : "-";
+  renderOfferCard(localOfferEl, localOfferDetailsEl, selected || null, "", { emptyMessage: "Escolha um Pokémon da party." });
   updateSetupPartyPreview();
 });
 saveFileEl.addEventListener("change", async () => {
@@ -1822,9 +1554,13 @@ saveFileEl.addEventListener("change", async () => {
     log(`Erro ao carregar save: ${error.message}`);
   }
   updatePokemonOptions();
+  if (loadedSave) {
+    await syncSessionWithLoadedSave();
+  }
 });
 
 updatePokemonOptions();
-renderBattleActions(null);
+battleFlowController?.renderBattleActions(null);
 activateTab("setup");
+refreshSessionUi();
 log(`Frontend pronto em ${wsUrl()}`);

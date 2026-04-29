@@ -89,11 +89,16 @@ class BattleManager:
     async def offer_team(self, *, client_id: str, team: list[dict[str, Any]]) -> tuple[BattleRoom, PlayerSlot, bool]:
         async with self._lock:
             room, slot = self._room_for_client_locked(client_id)
+            if room.status == "started":
+                raise RoomError("battle_in_progress", "Finalize a batalha atual antes de enviar um novo time.")
+            if room.status == "finished":
+                self._reset_room_for_new_match_locked(room)
             player = room.players[slot]
+            for member in room.players.values():
+                member.confirmed = False
             player.team = _sanitize_team(team)
             player.ready = True
-            player.confirmed = False
-            room.status = "teams_ready" if room.has_both_teams() else "waiting_for_teams"
+            room.status = "teams_ready" if room.has_both_teams() else ("waiting_for_teams" if room.is_ready() else "waiting")
             return room, slot, room.has_both_teams()
 
     async def confirm_battle(self, *, client_id: str) -> tuple[BattleRoom, PlayerSlot, bool, ShowdownBattleResult]:
@@ -157,6 +162,34 @@ class BattleManager:
                 self._remove_room_locked(room_name)
             return expired
 
+    async def update_player_context(
+        self,
+        *,
+        client_id: str,
+        generation: int,
+        game: str,
+    ) -> tuple[BattleRoom, PlayerSlot] | None:
+        async with self._lock:
+            known = self.client_rooms.get(parse_client_id(client_id))
+            if not known:
+                return None
+            room, slot = self._room_for_client_locked(client_id)
+            if room.status == "started":
+                raise RoomError("battle_in_progress", "Finalize ou desista da batalha antes de trocar o save.")
+            generation = parse_generation(generation)
+            game = parse_game_id(game, generation)
+            player = room.players[slot]
+            player.generation = generation
+            player.game = game
+            player.team = []
+            player.ready = False
+            player.confirmed = False
+            room.generation = max(member.generation for member in room.players.values())
+            room.format_id = BATTLE_FORMATS_BY_GENERATION[room.generation]
+            room.battle_id = None
+            room.status = "ready" if room.is_ready() else "waiting"
+            return room, slot
+
     def _room_for_client_locked(self, client_id: str) -> tuple[BattleRoom, PlayerSlot]:
         client_id = parse_client_id(client_id)
         known = self.client_rooms.get(client_id)
@@ -174,6 +207,14 @@ class BattleManager:
             return
         for player in room.players.values():
             self.client_rooms.pop(player.client_id, None)
+
+    def _reset_room_for_new_match_locked(self, room: BattleRoom) -> None:
+        room.battle_id = None
+        room.status = "ready" if room.is_ready() else "waiting"
+        for player in room.players.values():
+            player.team = []
+            player.ready = False
+            player.confirmed = False
 
 
 def _sanitize_team(team: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -31,6 +31,31 @@ def copy_real_save(relative_path: str, tempdir: str, name: str) -> Path:
 
 
 class RealSaveIntegrationTests(unittest.TestCase):
+    def test_real_simple_trade_evolutions_mark_pokedex_on_copies(self) -> None:
+        cases = [
+            ("gen 1/Pokémon - Red Version.sav", "red.sav", Gen1Parser, 38, 149, 65),
+            ("gen 2/Pokémon - Crystal Version.sav", "crystal.sav", Gen2Parser, 64, 65, 65),
+            ("gen 3/Pokémon - Ruby Version.sav", "ruby.sav", Gen3Parser, 64, 65, 65),
+        ]
+        for relative_path, filename, parser_cls, source_species, target_species, target_national in cases:
+            with self.subTest(save=relative_path, species=source_species):
+                with tempfile.TemporaryDirectory() as tempdir:
+                    save_path = copy_real_save(relative_path, tempdir, filename)
+                    parser = parser_cls()
+                    parser.load(save_path)
+                    parser.set_species_id("party:0", source_species)
+
+                    result = apply_trade_evolution_to_parser(parser, "party:0")
+                    parser.save(save_path)
+
+                    reloaded = parser_cls()
+                    reloaded.load(save_path)
+                    self.assertTrue(result.evolved)
+                    self.assertEqual(reloaded.get_species_id("party:0"), target_species)
+                    self.assertTrue(reloaded.is_pokedex_seen(target_national))
+                    self.assertTrue(reloaded.is_pokedex_caught(target_national))
+                    self.assertTrue(reloaded.validate())
+
     def test_real_gen1_pikachu_gen3_mew_marks_party_and_pokedex_on_copies(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             gen1_path = copy_real_save("gen 1/Pokémon - Yellow Version.sav", tempdir, "yellow.sav")
@@ -65,46 +90,68 @@ class RealSaveIntegrationTests(unittest.TestCase):
             self.assertTrue(reloaded_gen3.is_pokedex_caught(25))
 
     def test_real_gen2_item_trade_evolution_consumes_item_and_marks_pokedex_on_copy(self) -> None:
-        with tempfile.TemporaryDirectory() as tempdir:
-            save_path = copy_real_save("gen 2/Pokémon - Crystal Version.sav", tempdir, "crystal.sav")
-            parser = Gen2Parser()
-            parser.load(save_path)
-            parser.set_species_id("party:0", 123)  # Scyther.
-            parser.set_held_item_id("party:0", 0x8F)  # Metal Coat.
+        cases = [
+            (123, 0x8F, 212, "Metal Coat"),
+            (95, 0x8F, 208, "Metal Coat"),
+            (117, 0x97, 230, "Dragon Scale"),
+            (137, 0xAC, 233, "Up-Grade"),
+            (61, 0x52, 186, "King's Rock"),
+            (79, 0x52, 199, "King's Rock"),
+        ]
+        for source_species, item_id, target_species, item_name in cases:
+            with self.subTest(species=source_species, item=item_name):
+                with tempfile.TemporaryDirectory() as tempdir:
+                    save_path = copy_real_save("gen 2/Pokémon - Crystal Version.sav", tempdir, "crystal.sav")
+                    parser = Gen2Parser()
+                    parser.load(save_path)
+                    parser.set_species_id("party:0", source_species)
+                    parser.set_held_item_id("party:0", item_id)
 
-            result = apply_trade_evolution_to_parser(parser, "party:0", item_based_evolutions_enabled=True)
-            parser.save(save_path)
+                    result = apply_trade_evolution_to_parser(parser, "party:0", item_based_evolutions_enabled=True)
+                    parser.save(save_path)
 
-            reloaded = Gen2Parser()
-            reloaded.load(save_path)
-            self.assertTrue(result.evolved)
-            self.assertEqual(result.consumed_item_name, "Metal Coat")
-            self.assertEqual(reloaded.get_species_id("party:0"), 212)
-            self.assertIsNone(reloaded.get_held_item_id("party:0"))
-            self.assertTrue(reloaded.is_pokedex_seen(212))
-            self.assertTrue(reloaded.is_pokedex_caught(212))
-            self.assertTrue(reloaded.validate())
+                    reloaded = Gen2Parser()
+                    reloaded.load(save_path)
+                    self.assertTrue(result.evolved)
+                    self.assertEqual(result.consumed_item_name, item_name)
+                    self.assertEqual(reloaded.get_species_id("party:0"), target_species)
+                    self.assertIsNone(reloaded.get_held_item_id("party:0"))
+                    self.assertTrue(reloaded.is_pokedex_seen(target_species))
+                    self.assertTrue(reloaded.is_pokedex_caught(target_species))
+                    self.assertTrue(reloaded.validate())
 
     def test_real_gen3_item_trade_evolution_consumes_item_and_marks_pokedex_on_copy(self) -> None:
-        with tempfile.TemporaryDirectory() as tempdir:
-            save_path = copy_real_save("gen 3/Pokémon - Ruby Version.sav", tempdir, "ruby.sav")
-            parser = Gen3Parser()
-            parser.load(save_path)
-            parser.set_species_id("party:0", 373)  # Clamperl native Gen 3 -> National Dex #366.
-            parser.set_held_item_id("party:0", 192)  # Deep Sea Tooth.
+        cases = [
+            (373, 192, 374, 367, "Deep Sea Tooth"),
+            (373, 193, 375, 368, "Deep Sea Scale"),
+            (123, 199, 212, 212, "Metal Coat"),
+            (95, 199, 208, 208, "Metal Coat"),
+            (117, 201, 230, 230, "Dragon Scale"),
+            (137, 218, 233, 233, "Up-Grade"),
+            (61, 187, 186, 186, "King's Rock"),
+            (79, 187, 199, 199, "King's Rock"),
+        ]
+        for source_species, item_id, target_species, target_national, item_name in cases:
+            with self.subTest(species=source_species, item=item_name):
+                with tempfile.TemporaryDirectory() as tempdir:
+                    save_path = copy_real_save("gen 3/Pokémon - Ruby Version.sav", tempdir, "ruby.sav")
+                    parser = Gen3Parser()
+                    parser.load(save_path)
+                    parser.set_species_id("party:0", source_species)
+                    parser.set_held_item_id("party:0", item_id)
 
-            result = apply_trade_evolution_to_parser(parser, "party:0", item_based_evolutions_enabled=True)
-            parser.save(save_path)
+                    result = apply_trade_evolution_to_parser(parser, "party:0", item_based_evolutions_enabled=True)
+                    parser.save(save_path)
 
-            reloaded = Gen3Parser()
-            reloaded.load(save_path)
-            self.assertTrue(result.evolved)
-            self.assertEqual(result.consumed_item_name, "Deep Sea Tooth")
-            self.assertEqual(reloaded.get_species_id("party:0"), 374)
-            self.assertIsNone(reloaded.get_held_item_id("party:0"))
-            self.assertTrue(reloaded.is_pokedex_seen(367))
-            self.assertTrue(reloaded.is_pokedex_caught(367))
-            self.assertTrue(reloaded.validate())
+                    reloaded = Gen3Parser()
+                    reloaded.load(save_path)
+                    self.assertTrue(result.evolved)
+                    self.assertEqual(result.consumed_item_name, item_name)
+                    self.assertEqual(reloaded.get_species_id("party:0"), target_species)
+                    self.assertIsNone(reloaded.get_held_item_id("party:0"))
+                    self.assertTrue(reloaded.is_pokedex_seen(target_national))
+                    self.assertTrue(reloaded.is_pokedex_caught(target_national))
+                    self.assertTrue(reloaded.validate())
 
     def test_real_gen3_pokedex_offsets_for_rse_and_frlg_copies(self) -> None:
         cases = [

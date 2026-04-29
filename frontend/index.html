@@ -33,42 +33,68 @@
           <form class="panel" id="roomForm">
             <div class="panel-head">
               <div>
-                <h2>Sala privada</h2>
-                <p>Configure nome, senha e save antes de entrar em troca ou batalha.</p>
+                <h2>Sala e save</h2>
+                <p>Abra uma única sessão, carregue ou troque o save local e use a mesma sala para troca e batalha.</p>
               </div>
             </div>
 
-            <label>
-              Nome da sala
-              <input id="roomName" maxlength="64" required value="poke-room" autocomplete="off" />
-            </label>
+            <div class="flow-stack">
+              <section class="flow-block">
+                <div class="flow-heading">
+                  <span>Etapa 1</span>
+                  <strong>Configurar a sala</strong>
+                </div>
+                <label>
+                  Nome da sala
+                  <input id="roomName" maxlength="64" required value="poke-room" autocomplete="off" />
+                </label>
 
-            <label>
-              Senha
-              <input id="roomPassword" type="password" required autocomplete="off" />
-            </label>
+                <label>
+                  Senha
+                  <input id="roomPassword" type="password" required autocomplete="off" />
+                </label>
 
-            <label>
-              Save local .sav/.srm
-              <input id="saveFile" type="file" accept=".sav,.srm" />
-            </label>
+                <div class="actions">
+                  <button type="button" id="createSession">Criar sala</button>
+                  <button type="button" id="joinSession" class="secondary">Entrar na sala</button>
+                  <button type="button" id="leaveSession" class="ghost" disabled>Sair da sala</button>
+                </div>
 
-            <div class="save-summary" id="saveSummary">
-              <span>Nenhum save carregado</span>
-              <strong>Gen 1, Gen 2 e Gen 3 são detectadas pelo arquivo.</strong>
+                <div class="status-box">
+                  <span>Status da sessão</span>
+                  <strong id="sessionStatus">Defina sala e senha. Depois carregue um save para entrar.</strong>
+                  <small id="sessionDetail">A mesma sessão web mantém troca e batalha sob o mesmo nome de sala.</small>
+                </div>
+              </section>
+
+              <section class="flow-block">
+                <div class="flow-heading">
+                  <span>Etapa 2</span>
+                  <strong>Carregar ou trocar o save</strong>
+                </div>
+                <label>
+                  Save local .sav/.srm
+                  <input id="saveFile" type="file" accept=".sav,.srm" />
+                </label>
+
+                <div class="save-summary" id="saveSummary">
+                  <span>Nenhum save carregado</span>
+                  <strong>Gen 1, Gen 2 e Gen 3 são detectadas pelo arquivo.</strong>
+                </div>
+
+                <label>
+                  Pokémon selecionado para troca
+                  <select id="pokemonChoice"></select>
+                </label>
+              </section>
             </div>
-
-            <label>
-              Pokémon selecionado
-              <select id="pokemonChoice"></select>
-            </label>
           </form>
 
           <section class="panel">
             <div class="panel-head">
               <div>
                 <h2>Escolha o fluxo</h2>
-                <p>A mesma sala pode ser usada para trocar ou batalhar. O save precisa estar carregado primeiro.</p>
+                <p>Com a sessão e o save prontos, você alterna entre troca e batalha sem abrir outra sala.</p>
               </div>
             </div>
 
@@ -98,8 +124,8 @@
           <section class="panel">
             <div class="panel-head">
               <div>
-                <h2>Sala de troca</h2>
-                <p>Usa o nome e a senha configurados na aba Sala e save.</p>
+                <h2>Rodada de troca</h2>
+                <p>A sessão já está aberta. Aqui você só envia a oferta, valida e confirma.</p>
               </div>
             </div>
 
@@ -109,8 +135,9 @@
             </div>
 
             <div class="actions">
-              <button type="button" id="createRoom">Criar sala</button>
-              <button type="button" id="joinRoom" class="secondary">Entrar</button>
+              <button type="button" id="sendTradeOffer" disabled>Enviar oferta</button>
+              <button type="button" id="confirmTrade" disabled>Confirmar troca</button>
+              <button type="button" id="cancelTrade" class="secondary" disabled>Cancelar rodada</button>
             </div>
           </section>
 
@@ -131,17 +158,34 @@
               <div class="pokemon-card">
                 <span>Você oferece</span>
                 <strong id="localOffer">-</strong>
+                <div id="localOfferDetails" class="pokemon-card-details pokemon-card-details-empty">
+                  Item, golpes e características aparecem aqui.
+                </div>
               </div>
               <div class="pokemon-card">
                 <span>Você recebe</span>
                 <strong id="peerOffer">-</strong>
+                <div id="peerOfferDetails" class="pokemon-card-details pokemon-card-details-empty">
+                  Aguardando o Pokémon do outro jogador.
+                </div>
               </div>
             </div>
 
-            <div class="actions">
-              <button type="button" id="confirmTrade" disabled>Confirmar troca</button>
-              <button type="button" id="cancelTrade" class="secondary" disabled>Cancelar</button>
+            <div class="trade-preview-grid">
+              <div class="trade-preview-card">
+                <span>Compatibilidade e perdas</span>
+                <div id="tradeCompatibilityPreview" class="trade-preview-body trade-preview-empty">
+                  Aguardando o Pokémon do outro jogador.
+                </div>
+              </div>
+              <div class="trade-preview-card">
+                <span>Evolução prevista</span>
+                <div id="tradeEvolutionPreview" class="trade-preview-body trade-preview-empty">
+                  Sem evolução prevista.
+                </div>
+              </div>
             </div>
+
             <div id="downloadArea" class="download-area"></div>
           </section>
         </div>
@@ -152,8 +196,8 @@
           <section class="panel">
             <div class="panel-head">
               <div>
-                <h2>Sala de batalha</h2>
-                <p>Usa a party do save carregado como time canônico.</p>
+                <h2>Batalha na mesma sala</h2>
+                <p>Usa a party do save carregado como time canônico sem sair da sessão atual.</p>
               </div>
             </div>
 
@@ -176,10 +220,7 @@
             <div class="team-preview" id="battleTeamPreview"></div>
 
             <div class="actions">
-              <button type="button" id="createBattleRoom">Criar sala de batalha</button>
-              <button type="button" id="joinBattleRoom" class="secondary">Entrar em batalha</button>
-            </div>
-            <div class="actions">
+              <button type="button" id="sendBattleTeam" disabled>Enviar time</button>
               <button type="button" id="confirmBattle" disabled>Confirmar batalha</button>
               <button type="button" id="forfeitBattle" class="secondary" disabled>Desistir</button>
             </div>
@@ -215,6 +256,17 @@
       </section>
     </main>
 
+    <script src="/move-names.js"></script>
+    <script src="/ability-names.js"></script>
+    <script src="/item-names.js"></script>
+    <script src="/species-data.js"></script>
+    <script src="/trade-rules.js"></script>
+    <script src="/pokemon-ui.js"></script>
+    <script src="/trade-preview.js"></script>
+    <script src="/web-compatibility.js"></script>
+    <script src="/trade-flow.js"></script>
+    <script src="/battle-flow.js"></script>
+    <script src="/websocket-client.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>
