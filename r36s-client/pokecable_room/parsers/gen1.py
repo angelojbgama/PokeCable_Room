@@ -22,6 +22,9 @@ CHECKSUM_START = 0x2598
 CHECKSUM_END = 0x3522
 CHECKSUM_OFFSET = 0x3523
 RAW_PAYLOAD_SIZE = PARTY_MON_SIZE + NAME_SIZE + NAME_SIZE
+POKEDEX_OWNED_OFFSET = 0x25A3
+POKEDEX_SEEN_OFFSET = 0x25B6
+POKEDEX_SIZE = 0x13
 
 
 GEN1_INTERNAL_NAMES = {
@@ -360,7 +363,7 @@ class Gen1Parser:
         self._set_mon_bytes(index, mon)
         self._set_ot_bytes(index, built_mon[PARTY_MON_SIZE : PARTY_MON_SIZE + NAME_SIZE])
         self._set_nickname_bytes(index, built_mon[PARTY_MON_SIZE + NAME_SIZE :])
-        self.recalculate_checksums()
+        self.mark_pokedex_caught(gen1_internal_to_national(mon[0]))
 
     def validate_can_write(self, location: str, canonical_pokemon: CanonicalPokemon) -> None:
         self._party_index(location)
@@ -405,6 +408,21 @@ class Gen1Parser:
     def clear_held_item(self, location: str) -> None:
         self._party_index(location)
 
+    def mark_pokedex_seen(self, national_dex_id: int) -> None:
+        self._set_pokedex_bit(POKEDEX_SEEN_OFFSET, national_dex_id)
+        self.recalculate_checksums()
+
+    def mark_pokedex_caught(self, national_dex_id: int) -> None:
+        self._set_pokedex_bit(POKEDEX_OWNED_OFFSET, national_dex_id)
+        self._set_pokedex_bit(POKEDEX_SEEN_OFFSET, national_dex_id)
+        self.recalculate_checksums()
+
+    def is_pokedex_seen(self, national_dex_id: int) -> bool:
+        return self._get_pokedex_bit(POKEDEX_SEEN_OFFSET, national_dex_id)
+
+    def is_pokedex_caught(self, national_dex_id: int) -> bool:
+        return self._get_pokedex_bit(POKEDEX_OWNED_OFFSET, national_dex_id)
+
     def remove_or_replace_sent_pokemon(self, location: str, received_payload: PokemonPayload) -> None:
         if received_payload.generation != 1:
             raise ValueError(
@@ -426,7 +444,7 @@ class Gen1Parser:
         self._set_mon_bytes(index, mon)
         self._set_ot_bytes(index, raw[PARTY_MON_SIZE : PARTY_MON_SIZE + NAME_SIZE])
         self._set_nickname_bytes(index, raw[PARTY_MON_SIZE + NAME_SIZE :])
-        self.recalculate_checksums()
+        self.mark_pokedex_caught(gen1_internal_to_national(species_id))
 
     def validate(self) -> bool:
         data = self._require_data()
@@ -456,6 +474,22 @@ class Gen1Parser:
         for byte in data[CHECKSUM_START : CHECKSUM_END + 1]:
             value = (value - byte) & 0xFF
         return value
+
+    def _get_pokedex_bit(self, offset: int, national_dex_id: int) -> bool:
+        byte_offset, mask = self._pokedex_byte_and_mask(national_dex_id)
+        return bool(self._require_data()[offset + byte_offset] & mask)
+
+    def _set_pokedex_bit(self, offset: int, national_dex_id: int) -> None:
+        byte_offset, mask = self._pokedex_byte_and_mask(national_dex_id)
+        self._require_data()[offset + byte_offset] |= mask
+
+    def _pokedex_byte_and_mask(self, national_dex_id: int) -> tuple[int, int]:
+        national_to_gen1_internal(national_dex_id)
+        dex_index = int(national_dex_id) - 1
+        byte_offset = dex_index >> 3
+        if byte_offset < 0 or byte_offset >= POKEDEX_SIZE:
+            raise ValueError("National Dex fora do intervalo da Pokédex Gen 1.")
+        return byte_offset, 1 << (dex_index & 7)
 
     def _mon_bytes(self, index: int) -> bytes:
         start = PARTY_MON_OFFSET + index * PARTY_MON_SIZE

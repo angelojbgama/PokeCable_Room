@@ -7,6 +7,7 @@ from .rules import (
     simple_trade_rules_for_generation,
     species_exists_in_native_generation,
 )
+from pokecable_room.data.species import native_to_national
 
 
 def preview_trade_evolution_for_parser(
@@ -55,6 +56,8 @@ def apply_trade_evolution_to_parser(
     parser.set_species_id(location, result.target_species_id)
     if item_based_evolutions_enabled and result.consumed_item_id is not None:
         parser.clear_held_item(location)
+    if hasattr(parser, "mark_pokedex_caught"):
+        parser.mark_pokedex_caught(native_to_national(int(parser.get_generation()), result.target_species_id))
     return result
 
 

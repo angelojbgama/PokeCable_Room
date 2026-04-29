@@ -8,7 +8,7 @@ from pokecable_room.canonical import CanonicalItem, CanonicalMove, CanonicalOrig
 from pokecable_room.compatibility import CompatibilityReport, build_compatibility_report
 from pokecable_room.data.items import equivalent_item_id, item_exists
 from pokecable_room.data.moves import move_exists
-from pokecable_room.data.species import native_to_national, national_to_native
+from pokecable_room.data.species import native_to_national, national_to_native, species_exists_in_generation
 
 from .base import PokemonPayload, PokemonSummary, SaveData
 from .gen2 import GEN2_SPECIES
@@ -26,6 +26,13 @@ NICKNAME_SIZE = 10
 OT_NAME_SIZE = 7
 SECURE_OFFSET = 32
 SECURE_SIZE = 48
+POKEDEX_SIZE = 49
+POKEDEX_OWNED_SECTION = 0
+POKEDEX_OWNED_OFFSET = 0x0028
+POKEDEX_SEEN_A_SECTION = 0
+POKEDEX_SEEN_A_OFFSET = 0x005C
+POKEDEX_SEEN_B_SECTION = 1
+POKEDEX_SEEN_C_SECTION = 4
 
 SUBSTRUCT_ORDERS = (
     (0, 1, 2, 3),
@@ -448,7 +455,8 @@ class Gen3Parser:
         self._parse_pokemon(built_mon)
         offset = self._party_mon_offset(index)
         self._require_data()[offset : offset + PARTY_MON_SIZE] = built_mon
-        self.recalculate_checksums()
+        species_id = int(self._parse_pokemon(built_mon)["species_id"])
+        self.mark_pokedex_caught(native_to_national(3, species_id))
 
     def validate_can_write(self, location: str, canonical_pokemon: CanonicalPokemon) -> None:
         self._party_index(location)
@@ -497,6 +505,35 @@ class Gen3Parser:
     def clear_held_item(self, location: str) -> None:
         self.set_held_item_id(location, 0)
 
+    def mark_pokedex_seen(self, national_dex_id: int) -> None:
+        self._validate_pokedex_national_id(national_dex_id)
+        self._set_pokedex_bit(POKEDEX_SEEN_A_SECTION, POKEDEX_SEEN_A_OFFSET, national_dex_id)
+        self._set_pokedex_bit(POKEDEX_SEEN_B_SECTION, self._pokedex_seen_b_offset(), national_dex_id)
+        self._set_pokedex_bit(POKEDEX_SEEN_C_SECTION, self._pokedex_seen_c_offset(), national_dex_id)
+        self._recalculate_sections({POKEDEX_SEEN_A_SECTION, POKEDEX_SEEN_B_SECTION, POKEDEX_SEEN_C_SECTION})
+
+    def mark_pokedex_caught(self, national_dex_id: int) -> None:
+        self._validate_pokedex_national_id(national_dex_id)
+        self._set_pokedex_bit(POKEDEX_OWNED_SECTION, POKEDEX_OWNED_OFFSET, national_dex_id)
+        self._set_pokedex_bit(POKEDEX_SEEN_A_SECTION, POKEDEX_SEEN_A_OFFSET, national_dex_id)
+        self._set_pokedex_bit(POKEDEX_SEEN_B_SECTION, self._pokedex_seen_b_offset(), national_dex_id)
+        self._set_pokedex_bit(POKEDEX_SEEN_C_SECTION, self._pokedex_seen_c_offset(), national_dex_id)
+        self._recalculate_sections({POKEDEX_OWNED_SECTION, POKEDEX_SEEN_B_SECTION, POKEDEX_SEEN_C_SECTION})
+
+    def is_pokedex_seen(self, national_dex_id: int) -> bool:
+        self._validate_pokedex_national_id(national_dex_id)
+        return all(
+            (
+                self._get_pokedex_bit(POKEDEX_SEEN_A_SECTION, POKEDEX_SEEN_A_OFFSET, national_dex_id),
+                self._get_pokedex_bit(POKEDEX_SEEN_B_SECTION, self._pokedex_seen_b_offset(), national_dex_id),
+                self._get_pokedex_bit(POKEDEX_SEEN_C_SECTION, self._pokedex_seen_c_offset(), national_dex_id),
+            )
+        )
+
+    def is_pokedex_caught(self, national_dex_id: int) -> bool:
+        self._validate_pokedex_national_id(national_dex_id)
+        return self._get_pokedex_bit(POKEDEX_OWNED_SECTION, POKEDEX_OWNED_OFFSET, national_dex_id)
+
     def remove_or_replace_sent_pokemon(self, location: str, received_payload: PokemonPayload) -> None:
         if received_payload.generation != 3:
             raise ValueError(
@@ -514,17 +551,13 @@ class Gen3Parser:
             raise ValueError("Payload Gen 3 invalido: species_id fora do intervalo suportado.")
         offset = self._party_mon_offset(index)
         self._require_data()[offset : offset + PARTY_MON_SIZE] = raw
-        self.recalculate_checksums()
+        self.mark_pokedex_caught(native_to_national(3, int(details["species_id"])))
 
     def validate(self) -> bool:
         return self._detect_slot_and_layout(bytes(self._require_data())) is not None
 
     def recalculate_checksums(self) -> None:
-        data = self._require_data()
-        section_offset = self._section1_offset()
-        section_data = bytes(data[section_offset : section_offset + SECTOR_DATA_SIZE])
-        checksum = self._sector_checksum(section_data, SECTOR_DATA_SIZE)
-        data[section_offset + 0xFF6 : section_offset + 0xFF8] = checksum.to_bytes(2, "little")
+        self._recalculate_section_checksum(SECTOR_ID_SAVEBLOCK1_START)
 
     def save(self, save_path: str | Path) -> None:
         if not self.validate():
@@ -613,6 +646,57 @@ class Gen3Parser:
         for offset in range(0, size, 4):
             checksum = (checksum + int.from_bytes(data[offset : offset + 4].ljust(4, b"\x00"), "little")) & 0xFFFFFFFF
         return ((checksum >> 16) + checksum) & 0xFFFF
+
+    def _recalculate_sections(self, section_ids: set[int]) -> None:
+        for section_id in sorted(section_ids):
+            self._recalculate_section_checksum(section_id)
+
+    def _recalculate_section_checksum(self, section_id: int) -> None:
+        data = self._require_data()
+        section_offset = self._section_offset(section_id)
+        section_data = bytes(data[section_offset : section_offset + SECTOR_DATA_SIZE])
+        checksum = self._sector_checksum(section_data, SECTOR_DATA_SIZE)
+        data[section_offset + 0xFF6 : section_offset + 0xFF8] = checksum.to_bytes(2, "little")
+
+    def _section_offset(self, section_id: int) -> int:
+        slot = self._require_slot()
+        if section_id not in slot.section_offsets:
+            raise ValueError(f"Secao Gen 3 ausente no save: {section_id}.")
+        return slot.section_offsets[section_id]
+
+    def _get_pokedex_bit(self, section_id: int, offset: int, national_dex_id: int) -> bool:
+        byte_offset, mask = self._pokedex_byte_and_mask(national_dex_id)
+        return bool(self._require_data()[self._section_offset(section_id) + offset + byte_offset] & mask)
+
+    def _set_pokedex_bit(self, section_id: int, offset: int, national_dex_id: int) -> None:
+        byte_offset, mask = self._pokedex_byte_and_mask(national_dex_id)
+        self._require_data()[self._section_offset(section_id) + offset + byte_offset] |= mask
+
+    def _pokedex_byte_and_mask(self, national_dex_id: int) -> tuple[int, int]:
+        self._validate_pokedex_national_id(national_dex_id)
+        dex_index = int(national_dex_id) - 1
+        byte_offset = dex_index >> 3
+        if byte_offset < 0 or byte_offset >= POKEDEX_SIZE:
+            raise ValueError("National Dex fora do intervalo da Pokédex Gen 3.")
+        return byte_offset, 1 << (dex_index & 7)
+
+    def _validate_pokedex_national_id(self, national_dex_id: int) -> None:
+        if not species_exists_in_generation(int(national_dex_id), 3):
+            raise ValueError("National Dex fora do intervalo da Pokédex Gen 3.")
+
+    def _pokedex_seen_b_offset(self) -> int:
+        if self._require_layout().name == "frlg":
+            return 0x05F8
+        if self.game_id == "pokemon_emerald":
+            return 0x0988
+        return 0x0938
+
+    def _pokedex_seen_c_offset(self) -> int:
+        if self._require_layout().name == "frlg":
+            return 0x0B98
+        if self.game_id == "pokemon_emerald":
+            return 0x0CA4
+        return 0x0C0C
 
     def _parse_pokemon(self, raw: bytes) -> dict[str, int | bool]:
         if len(raw) != PARTY_MON_SIZE:

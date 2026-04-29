@@ -28,6 +28,7 @@ PARTY_MON_SIZE = 48
 NAME_SIZE = 11
 PARTY_HEADER_SIZE = 1 + PARTY_CAPACITY + 1
 RAW_PAYLOAD_SIZE = PARTY_MON_SIZE + NAME_SIZE + NAME_SIZE
+POKEDEX_SIZE = 32
 
 
 @dataclass(slots=True)
@@ -38,6 +39,8 @@ class Gen2Layout:
     primary_start: int
     primary_end: int
     primary_checksum: int
+    pokedex_owned_offset: int
+    pokedex_seen_offset: int
     secondary_start: int | None = None
     secondary_end: int | None = None
     secondary_checksum: int | None = None
@@ -62,6 +65,8 @@ CRYSTAL_LAYOUT = Gen2Layout(
     primary_start=CRYSTAL_PRIMARY_START,
     primary_end=CRYSTAL_PRIMARY_END,
     primary_checksum=CRYSTAL_PRIMARY_CHECKSUM,
+    pokedex_owned_offset=0x2A27,
+    pokedex_seen_offset=0x2A47,
     secondary_start=CRYSTAL_SECONDARY_START,
     secondary_end=CRYSTAL_SECONDARY_END,
     secondary_checksum=CRYSTAL_SECONDARY_CHECKSUM,
@@ -73,6 +78,8 @@ GOLD_SILVER_LAYOUT = Gen2Layout(
     primary_start=GOLD_SILVER_PRIMARY_START,
     primary_end=GOLD_SILVER_PRIMARY_END,
     primary_checksum=GOLD_SILVER_PRIMARY_CHECKSUM,
+    pokedex_owned_offset=0x2A4C,
+    pokedex_seen_offset=0x2A6C,
 )
 
 
@@ -518,7 +525,7 @@ class Gen2Parser:
         self._set_mon_bytes(index, mon)
         self._set_ot_bytes(index, built_mon[PARTY_MON_SIZE : PARTY_MON_SIZE + NAME_SIZE])
         self._set_nickname_bytes(index, built_mon[PARTY_MON_SIZE + NAME_SIZE :])
-        self.recalculate_checksums()
+        self.mark_pokedex_caught(mon[0])
 
     def validate_can_write(self, location: str, canonical_pokemon: CanonicalPokemon) -> None:
         self._party_index(location)
@@ -568,6 +575,22 @@ class Gen2Parser:
     def clear_held_item(self, location: str) -> None:
         self.set_held_item_id(location, 0)
 
+    def mark_pokedex_seen(self, national_dex_id: int) -> None:
+        self._set_pokedex_bit(self._require_layout().pokedex_seen_offset, national_dex_id)
+        self.recalculate_checksums()
+
+    def mark_pokedex_caught(self, national_dex_id: int) -> None:
+        layout = self._require_layout()
+        self._set_pokedex_bit(layout.pokedex_owned_offset, national_dex_id)
+        self._set_pokedex_bit(layout.pokedex_seen_offset, national_dex_id)
+        self.recalculate_checksums()
+
+    def is_pokedex_seen(self, national_dex_id: int) -> bool:
+        return self._get_pokedex_bit(self._require_layout().pokedex_seen_offset, national_dex_id)
+
+    def is_pokedex_caught(self, national_dex_id: int) -> bool:
+        return self._get_pokedex_bit(self._require_layout().pokedex_owned_offset, national_dex_id)
+
     def remove_or_replace_sent_pokemon(self, location: str, received_payload: PokemonPayload) -> None:
         if received_payload.generation != 2:
             raise ValueError(
@@ -593,7 +616,7 @@ class Gen2Parser:
         self._set_mon_bytes(index, mon)
         self._set_ot_bytes(index, ot_name)
         self._set_nickname_bytes(index, nickname)
-        self.recalculate_checksums()
+        self.mark_pokedex_caught(species_id)
 
     def validate(self) -> bool:
         data = self._require_data()
@@ -645,6 +668,24 @@ class Gen2Parser:
     def _write_checksum(self, offset: int, value: int) -> None:
         data = self._require_data()
         data[offset : offset + 2] = value.to_bytes(2, "little")
+
+    def _get_pokedex_bit(self, offset: int, national_dex_id: int) -> bool:
+        byte_offset, mask = self._pokedex_byte_and_mask(national_dex_id)
+        return bool(self._require_data()[offset + byte_offset] & mask)
+
+    def _set_pokedex_bit(self, offset: int, national_dex_id: int) -> None:
+        byte_offset, mask = self._pokedex_byte_and_mask(national_dex_id)
+        self._require_data()[offset + byte_offset] |= mask
+
+    def _pokedex_byte_and_mask(self, national_dex_id: int) -> tuple[int, int]:
+        national_dex_id = int(national_dex_id)
+        if national_dex_id < 1 or national_dex_id > 251:
+            raise ValueError("National Dex fora do intervalo da Pokédex Gen 2.")
+        dex_index = national_dex_id - 1
+        byte_offset = dex_index >> 3
+        if byte_offset >= POKEDEX_SIZE:
+            raise ValueError("National Dex fora do intervalo da Pokédex Gen 2.")
+        return byte_offset, 1 << (dex_index & 7)
 
     def _mon_bytes(self, index: int) -> bytes:
         data = self._require_data()

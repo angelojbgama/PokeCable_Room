@@ -175,6 +175,18 @@ class SaveParser(Protocol):
     def clear_held_item(self, location: str) -> None:
         ...
 
+    def mark_pokedex_seen(self, national_dex_id: int) -> None:
+        ...
+
+    def mark_pokedex_caught(self, national_dex_id: int) -> None:
+        ...
+
+    def is_pokedex_seen(self, national_dex_id: int) -> bool:
+        ...
+
+    def is_pokedex_caught(self, national_dex_id: int) -> bool:
+        ...
+
     def remove_or_replace_sent_pokemon(self, location: str, received_payload: PokemonPayload) -> None:
         ...
 
@@ -251,6 +263,18 @@ class ParserNotImplemented:
 
     def clear_held_item(self, location: str) -> None:
         raise NotImplementedError("Held item nao existe ou ainda nao foi implementado neste parser.")
+
+    def mark_pokedex_seen(self, national_dex_id: int) -> None:
+        raise NotImplementedError("Pokédex ainda nao foi implementado neste parser.")
+
+    def mark_pokedex_caught(self, national_dex_id: int) -> None:
+        raise NotImplementedError("Pokédex ainda nao foi implementado neste parser.")
+
+    def is_pokedex_seen(self, national_dex_id: int) -> bool:
+        raise NotImplementedError("Pokédex ainda nao foi implementado neste parser.")
+
+    def is_pokedex_caught(self, national_dex_id: int) -> bool:
+        raise NotImplementedError("Pokédex ainda nao foi implementado neste parser.")
 
     def remove_or_replace_sent_pokemon(self, location: str, received_payload: PokemonPayload) -> None:
         raise NotImplementedError("Edicao real de save sera implementada na fase da geracao correspondente.")

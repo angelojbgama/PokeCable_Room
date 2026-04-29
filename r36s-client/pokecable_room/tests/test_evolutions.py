@@ -72,6 +72,7 @@ class TradeEvolutionParserTests(unittest.TestCase):
             result = apply_trade_evolution_to_parser(parser, "party:0")
             self.assertTrue(result.evolved)
             self.assertEqual(parser.get_species_id("party:0"), 65)
+            self.assertTrue(parser.is_pokedex_caught(65))
             self.assertTrue(parser.validate())
 
     def test_gen3_kadabra_evolves_to_alakazam(self) -> None:
@@ -90,6 +91,7 @@ class TradeEvolutionParserTests(unittest.TestCase):
             result = apply_trade_evolution_to_parser(parser, "party:0")
             self.assertTrue(result.evolved)
             self.assertEqual(parser.get_species_id("party:0"), 65)
+            self.assertTrue(parser.is_pokedex_caught(65))
             self.assertTrue(parser.validate())
 
     def test_preview_when_auto_trade_evolution_is_false_does_not_mutate_parser(self) -> None:
@@ -215,6 +217,7 @@ class TradeEvolutionParserTests(unittest.TestCase):
                     self.assertEqual(result.consumed_item_name, item_name)
                     self.assertEqual(parser.get_species_id("party:0"), target)
                     self.assertIsNone(parser.get_held_item_id("party:0"))
+                    self.assertTrue(parser.is_pokedex_caught(target))
                     self.assertTrue(parser.validate())
 
     def test_gen3_clamperl_item_evolutions_use_validated_ids_and_consume_item(self) -> None:
@@ -266,6 +269,20 @@ class TradeEvolutionParserTests(unittest.TestCase):
                     self.assertEqual(result.consumed_item_name, item_name)
                     self.assertEqual(parser.get_species_id("party:0"), target)
                     self.assertIsNone(parser.get_held_item_id("party:0"))
+                    self.assertTrue(
+                        parser.is_pokedex_caught(
+                            {
+                                186: 186,
+                                199: 199,
+                                208: 208,
+                                212: 212,
+                                230: 230,
+                                233: 233,
+                                374: 367,
+                                375: 368,
+                            }[target]
+                        )
+                    )
                     parser.export_pokemon("party:0")
                     self.assertTrue(parser.validate())
 
@@ -299,6 +316,7 @@ class TradeEvolutionParserTests(unittest.TestCase):
             result = apply_trade_evolution_to_parser(parser, "party:0")
             self.assertTrue(result.evolved)
             self.assertEqual(parser.get_species_id("party:0"), target_species_id)
+            self.assertTrue(parser.is_pokedex_caught({149: 65, 126: 68, 49: 76, 14: 94}[target_species_id]))
             self.assertTrue(parser.validate())
 
 
