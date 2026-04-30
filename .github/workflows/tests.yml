@@ -15,10 +15,10 @@ jobs:
           python-version: "3.12"
 
       - name: Compile Python
-        run: python -m compileall server r36s-client
+        run: python -m compileall PokeCable/api PokeCable/backend
 
       - name: Run server tests
-        run: PYTHONPATH=server python -m unittest discover -s server/tests -v
+        run: PYTHONPATH=PokeCable/api python -m unittest discover -s PokeCable/api/tests -v
 
       - name: Run R36S client tests
-        run: PYTHONPATH=r36s-client python -m unittest discover -s r36s-client/pokecable_room/tests -v
+        run: PYTHONPATH=PokeCable/backend python -m unittest discover -s PokeCable/backend/pokecable_room/tests -v

@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PokeCable Room</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar" aria-label="Status do servidor">
+        <div>
+          <p class="eyebrow">Troca por save local</p>
+          <h1>PokeCable Room</h1>
+        </div>
+        <div class="server-pill" id="connectionStatus">Desconectado</div>
+      </section>
+
+      <section class="notice">
+        <strong>Feche o emulador antes de editar o save.</strong>
+        <span>O navegador não envia save completo ao servidor. Depois da troca, ele gera um backup e um novo arquivo para baixar.</span>
+      </section>
+
+      <nav class="tabs" aria-label="Áreas do PokeCable Room">
+        <button type="button" class="tab-button active" data-tab="setup">Sala e save</button>
+        <button type="button" class="tab-button" data-tab="trade">Troca</button>
+        <button type="button" class="tab-button" data-tab="battle">Batalha</button>
+        <button type="button" class="tab-button" data-tab="logs">Logs</button>
+      </nav>
+
+      <section class="tab-panel active" id="tab-setup" data-tab-panel="setup">
+        <div class="grid">
+          <form class="panel" id="roomForm">
+            <div class="panel-head">
+              <div>
+                <h2>Sala e save</h2>
+                <p>Abra uma única sessão, carregue ou troque o save local e use a mesma sala para troca e batalha.</p>
+              </div>
+            </div>
+
+            <div class="flow-stack">
+              <section class="flow-block">
+                <div class="flow-heading">
+                  <span>Etapa 1</span>
+                  <strong>Configurar a sala</strong>
+                </div>
+                <label>
+                  Nome da sala
+                  <input id="roomName" maxlength="64" required value="poke-room" autocomplete="off" />
+                </label>
+
+                <label>
+                  Senha
+                  <input id="roomPassword" type="password" required autocomplete="off" />
+                </label>
+
+                <div class="actions">
+                  <button type="button" id="createSession">Criar sala</button>
+                  <button type="button" id="joinSession" class="secondary">Entrar na sala</button>
+                  <button type="button" id="leaveSession" class="ghost" disabled>Sair da sala</button>
+                </div>
+
+                <div class="status-box">
+                  <span>Status da sessão</span>
+                  <strong id="sessionStatus">Defina sala e senha. Depois carregue um save para entrar.</strong>
+                  <small id="sessionDetail">A mesma sessão web mantém troca e batalha sob o mesmo nome de sala.</small>
+                </div>
+              </section>
+
+              <section class="flow-block">
+                <div class="flow-heading">
+                  <span>Etapa 2</span>
+                  <strong>Carregar o save local</strong>
+                </div>
+                <label>
+                  Save local .sav/.srm
+                  <input id="saveFile" type="file" accept=".sav,.srm" />
+                </label>
+
+                <div class="save-summary" id="saveSummary">
+                  <span>Nenhum save carregado</span>
+                  <strong>Gen 1, Gen 2 e Gen 3 são detectadas pelo arquivo. O primeiro save fica travado por segurança.</strong>
+                </div>
+              </section>
+            </div>
+          </form>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Escolha o fluxo</h2>
+                <p>Com a sessão e o save prontos, você alterna entre troca e batalha sem abrir outra sala.</p>
+              </div>
+            </div>
+
+            <div class="mode-grid">
+              <button type="button" class="mode-card" id="openTradeTab" disabled>
+                <span>Troca por save</span>
+                <strong>Enviar e receber Pokémon</strong>
+              </button>
+              <button type="button" class="mode-card" id="openBattleTab" disabled>
+                <span>Batalha</span>
+                <strong>Usar party como time</strong>
+              </button>
+            </div>
+
+            <div class="status-box">
+              <span>Resumo</span>
+              <strong id="setupStatus">Carregue um save para liberar troca e batalha.</strong>
+            </div>
+
+            <div class="status-box">
+              <span>Pokémon selecionado</span>
+              <strong id="setupSelectedSummary">Nenhum Pokémon selecionado.</strong>
+              <small id="setupSelectionDetail">Selecione um Pokémon da party ou do PC para trocar, mover ou editar item.</small>
+            </div>
+
+            <div class="actions actions-wrap">
+              <button type="button" id="startMovePokemon" class="secondary" disabled>Iniciar movimentação</button>
+              <button type="button" id="cancelMovePokemon" class="ghost" disabled>Cancelar movimentação</button>
+              <button type="button" id="removeHeldItem" class="secondary" disabled>Remover item</button>
+              <button type="button" id="applyHeldItem" disabled>Fazer segurar item selecionado</button>
+            </div>
+
+            <div class="status-box">
+              <span>Organização do save</span>
+              <strong id="saveManagementStatus">Selecione um Pokémon para começar.</strong>
+              <small id="selectedInventoryItemStatus">Nenhum item selecionado na mochila/PC.</small>
+            </div>
+
+            <div class="team-preview" id="setupPartyPreview"></div>
+
+            <div class="inventory-grid">
+              <div class="inventory-card">
+                <span>Mochila</span>
+                <div id="setupBagPreview" class="inventory-preview-body inventory-preview-empty">
+                  Carregue um save para visualizar os pockets da mochila.
+                </div>
+              </div>
+              <div class="inventory-card">
+                <span>PC de itens</span>
+                <div id="setupPcPreview" class="inventory-preview-body inventory-preview-empty">
+                  Carregue um save para visualizar os itens guardados no PC.
+                </div>
+              </div>
+            </div>
+
+            <div class="inventory-card inventory-card-wide">
+              <div class="inventory-card-head">
+                <span>PC Pokémon</span>
+                <button type="button" id="setupTogglePokemonPc" class="ghost">Computador do Player</button>
+              </div>
+              <div id="setupPokemonPcPreview" class="inventory-preview-body inventory-preview-empty">
+                Clique em "Computador do Player" para abrir as boxes deste save.
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="tab-trade" data-tab-panel="trade">
+        <div class="grid">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Rodada de troca</h2>
+                <p>A sessão já está aberta. Aqui você só envia a oferta, valida e confirma.</p>
+              </div>
+            </div>
+
+            <div class="status-box">
+              <span>Save atual</span>
+              <strong id="tradeSaveStatus">Nenhum save carregado.</strong>
+            </div>
+
+            <div class="status-box">
+              <span>Pokémon selecionado para troca</span>
+              <strong id="tradeSelectedSummary">Nenhum Pokémon selecionado.</strong>
+              <small>Clique em um Pokémon da sua party ou PC abaixo para definir a oferta da rodada.</small>
+            </div>
+
+            <select id="pokemonChoice" hidden aria-hidden="true"></select>
+
+            <div class="team-preview team-preview-selectable" id="tradePartyPreview"></div>
+            <div class="inventory-card inventory-card-wide inventory-card-compact">
+              <div class="inventory-card-head">
+                <span>PC Pokémon</span>
+                <button type="button" id="tradeTogglePokemonPc" class="ghost">Computador do Player</button>
+              </div>
+              <div id="tradeBoxPreview" class="inventory-preview-body inventory-preview-empty">
+                Clique em "Computador do Player" para abrir as boxes deste save.
+              </div>
+            </div>
+
+            <div class="actions">
+              <button type="button" id="sendTradeOffer" disabled>Enviar oferta</button>
+              <button type="button" id="confirmTrade" disabled>Confirmar troca</button>
+              <button type="button" id="cancelTrade" class="secondary" disabled>Cancelar rodada</button>
+            </div>
+          </section>
+
+          <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Troca</h2>
+              <p>O servidor recebe somente o payload do Pokémon selecionado.</p>
+            </div>
+          </div>
+
+            <div class="status-box">
+              <span>Status</span>
+              <strong id="tradeStatus">Carregue um save para começar.</strong>
+            </div>
+
+            <div class="pokemon-row">
+              <div class="pokemon-card">
+                <span>Você oferece</span>
+                <strong id="localOffer">-</strong>
+                <div id="localOfferDetails" class="pokemon-card-details pokemon-card-details-empty">
+                  Item, golpes e características aparecem aqui.
+                </div>
+              </div>
+              <div class="pokemon-card">
+                <span>Você recebe</span>
+                <strong id="peerOffer">-</strong>
+                <div id="peerOfferDetails" class="pokemon-card-details pokemon-card-details-empty">
+                  Aguardando o Pokémon do outro jogador.
+                </div>
+              </div>
+            </div>
+
+            <div class="trade-preview-grid">
+              <div class="trade-preview-card">
+                <span>Compatibilidade e perdas</span>
+                <div id="tradeCompatibilityPreview" class="trade-preview-body trade-preview-empty">
+                  Aguardando o Pokémon do outro jogador.
+                </div>
+              </div>
+              <div class="trade-preview-card">
+                <span>Evolução prevista</span>
+                <div id="tradeEvolutionPreview" class="trade-preview-body trade-preview-empty">
+                  Sem evolução prevista.
+                </div>
+              </div>
+            </div>
+
+            <div id="downloadArea" class="download-area"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="tab-battle" data-tab-panel="battle">
+        <div class="grid">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Batalha na mesma sala</h2>
+                <p>Usa a party do save carregado como time canônico sem sair da sessão atual.</p>
+              </div>
+            </div>
+
+            <div class="status-box">
+              <span>Status da batalha</span>
+              <strong id="battleStatus">Carregue um save para montar o time.</strong>
+            </div>
+
+            <div class="battle-meta">
+              <div>
+                <span>Formato</span>
+                <strong id="battleFormat">Automático</strong>
+              </div>
+              <div>
+                <span>Time</span>
+                <strong id="battleTeamCount">0 Pokémon</strong>
+              </div>
+            </div>
+
+            <div class="team-preview" id="battleTeamPreview"></div>
+
+            <div class="actions">
+              <button type="button" id="sendBattleTeam" disabled>Enviar time</button>
+              <button type="button" id="confirmBattle" disabled>Confirmar batalha</button>
+              <button type="button" id="forfeitBattle" class="secondary" disabled>Desistir</button>
+            </div>
+            <div class="battle-actions" id="battleActions" aria-label="Ações de batalha">
+              <button type="button" data-battle-action="move 1" disabled>Golpe 1</button>
+              <button type="button" data-battle-action="move 2" disabled>Golpe 2</button>
+              <button type="button" data-battle-action="move 3" disabled>Golpe 3</button>
+              <button type="button" data-battle-action="move 4" disabled>Golpe 4</button>
+              <button type="button" data-battle-action="pass" class="secondary" disabled>Passar</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Log de batalha</h2>
+                <p>Logs da engine de batalha atual.</p>
+              </div>
+            </div>
+            <pre id="battleLog"></pre>
+          </section>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="tab-logs" data-tab-panel="logs">
+        <section class="log-panel" aria-label="Eventos">
+          <div class="panel-head compact">
+            <h2>Eventos</h2>
+            <button type="button" class="ghost" id="clearLog">Limpar</button>
+          </div>
+          <pre id="eventLog"></pre>
+        </section>
+      </section>
+    </main>
+
+    <div class="drawer-backdrop" id="pokemonDetailDrawerBackdrop" hidden></div>
+    <aside class="detail-drawer" id="pokemonDetailDrawer" aria-hidden="true">
+      <div class="detail-drawer-head">
+        <div>
+          <span>Detalhes do Pokémon</span>
+          <strong id="pokemonDetailDrawerTitle">Nenhum Pokémon selecionado</strong>
+        </div>
+        <button type="button" class="ghost" id="closePokemonDetailDrawer">Fechar</button>
+      </div>
+      <div class="detail-drawer-body" id="pokemonDetailDrawerBody">
+        Selecione um Pokémon do PC para abrir os detalhes.
+      </div>
+    </aside>
+
+    <script src="/move-names.js"></script>
+    <script src="/ability-names.js"></script>
+    <script src="/item-names.js"></script>
+    <script src="/item-categories.js"></script>
+    <script src="/species-data.js"></script>
+    <script src="/gender-rates.js"></script>
+    <script src="/growth-rates.js"></script>
+    <script src="/trade-rules.js"></script>
+    <script src="/save-movement.js"></script>
+    <script src="/pokemon-ui.js"></script>
+    <script src="/inventory-ui.js"></script>
+    <script src="/save-management.js"></script>
+    <script src="/trade-preview.js"></script>
+    <script src="/web-compatibility.js"></script>
+    <script src="/trade-flow.js"></script>
+    <script src="/battle-flow.js"></script>
+    <script src="/websocket-client.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>
