@@ -177,7 +177,7 @@ window.POKECABLE_INVENTORY_UI = {
       }
     }
 
-    function syncActiveBoxWithSelection(view) {
+    function syncActiveBoxWithSelection(view, force = false) {
       const loadedSave = getLoadedSave();
       const selectedLocation = getSelectedLocation();
       if (!loadedSave?.boxes) return;
@@ -187,8 +187,10 @@ window.POKECABLE_INVENTORY_UI = {
         }
         return;
       }
-      const parts = String(selectedLocation).split(":");
-      activeBoxByView[view] = Number(parts[1] || loadedSave.boxes.current_box || 0);
+      if (force || !Number.isFinite(activeBoxByView[view])) {
+        const parts = String(selectedLocation).split(":");
+        activeBoxByView[view] = Number(parts[1] || loadedSave.boxes.current_box || 0);
+      }
     }
 
     function renderBoxPreviewHtml({ target, selectable, view }) {
@@ -312,6 +314,7 @@ window.POKECABLE_INVENTORY_UI = {
       if (newListContainer && typeof Sortable !== "undefined" && !pendingMoveSourceLocation) {
         let originalLocations = [];
         newListContainer._sortable = new Sortable(newListContainer, {
+          group: "pokemon-pc",
           animation: 150,
           ghostClass: "sortable-ghost",
           dragClass: "sortable-drag",
@@ -332,7 +335,9 @@ window.POKECABLE_INVENTORY_UI = {
             if (tradeState?.roundActive) return false;
           },
           onEnd: (evt) => {
-            const { oldIndex, newIndex } = evt;
+            const { oldIndex, newIndex, to } = evt;
+            // Se o destino não for o mesmo container, o onAdd do destino cuidará disso
+            if (to !== newListContainer) return;
             if (oldIndex === newIndex) return;
 
             const sourceLocation = originalLocations[oldIndex];
@@ -359,7 +364,6 @@ window.POKECABLE_INVENTORY_UI = {
                 if (window.POKECABLE_APP_CONTROLLER_BRIDGE?.setSelectedTradePokemon) {
                   window.POKECABLE_APP_CONTROLLER_BRIDGE.setSelectedTradePokemon(newSelectedLocation);
                 } else {
-                  // Fallback if bridge is not available
                   syncAfterSaveMutation?.();
                 }
               } else {
@@ -370,6 +374,74 @@ window.POKECABLE_INVENTORY_UI = {
               updatePokemonPcPreview();
             }
           }
+        });
+      }
+
+      // Initialize SortableJS for Tabs (to allow dropping pokemon on them)
+      const tabsContainer = target.querySelector(".pc-box-tabs");
+      if (tabsContainer && typeof Sortable !== "undefined" && !pendingMoveSourceLocation) {
+        Array.from(tabsContainer.querySelectorAll(".pc-box-tab")).forEach((tabEl) => {
+          if (tabEl._sortable) tabEl._sortable.destroy();
+          tabEl._sortable = new Sortable(tabEl, {
+            group: {
+              name: "pokemon-pc",
+              pull: false,
+              put: true
+            },
+            onAdd: (evt) => {
+              const targetBoxIndex = Number(tabEl.getAttribute("data-box-tab"));
+              const sourceLocation = evt.item.getAttribute("data-pokemon-location");
+              
+              // Reverter a inserção DOM feita pelo SortableJS
+              if (evt.item.parentNode) evt.item.parentNode.removeChild(evt.item);
+              
+              if (!sourceLocation || Number.isNaN(targetBoxIndex)) {
+                updatePokemonPcPreview();
+                return;
+              }
+
+              try {
+                // Encontrar o primeiro slot vazio na box destino
+                const capacity = Number(getBoxCapacity?.() || 20);
+                const boxPokemon = (loadedSave.boxes?.pokemon || []).filter(p => Number(p.box_index || 0) === targetBoxIndex);
+                const occupiedSlots = new Set(boxPokemon.map(p => Number(p.slot_index || 0)));
+                
+                let targetSlotIndex = -1;
+                for (let i = 0; i < capacity; i++) {
+                  if (!occupiedSlots.has(i)) {
+                    targetSlotIndex = i;
+                    break;
+                  }
+                }
+
+                if (targetSlotIndex === -1) {
+                  throw new Error(`A Box ${targetBoxIndex + 1} está cheia.`);
+                }
+
+                const targetLocation = `box:${targetBoxIndex}:${targetSlotIndex}`;
+                relocatePokemonWithinSave(loadedSave, sourceLocation, targetLocation);
+                
+                if (window.POKECABLE_SAVE_MANAGEMENT_STATUS_EL) {
+                  window.POKECABLE_SAVE_MANAGEMENT_STATUS_EL.textContent = `Pokémon transferido para a Box ${targetBoxIndex + 1}.`;
+                }
+
+                // Se moveu o selecionado, atualizar a visualização para a nova box
+                if (getSelectedLocation() === sourceLocation) {
+                  if (window.POKECABLE_APP_CONTROLLER_BRIDGE?.setSelectedTradePokemon) {
+                    window.POKECABLE_APP_CONTROLLER_BRIDGE.setSelectedTradePokemon(targetLocation);
+                  }
+                  activeBoxByView[view] = targetBoxIndex;
+                }
+                
+                syncAfterSaveMutation?.();
+              } catch (error) {
+                if (window.POKECABLE_SAVE_MANAGEMENT_STATUS_EL) {
+                  window.POKECABLE_SAVE_MANAGEMENT_STATUS_EL.textContent = error.message;
+                }
+                updatePokemonPcPreview();
+              }
+            }
+          });
         });
       }
     }
@@ -388,14 +460,14 @@ window.POKECABLE_INVENTORY_UI = {
         setupPokemonPcPreviewEl.className = "inventory-preview-body inventory-preview-empty";
         setupPokemonPcPreviewEl.textContent = `Clique em "${setupTogglePokemonPcButton?.textContent || "Computador do Player"}" para abrir as boxes.`;
       } else {
-        syncActiveBoxWithSelection("setup");
+        syncActiveBoxWithSelection("setup", false);
         renderBoxPreviewHtml({ target: setupPokemonPcPreviewEl, selectable: true, view: "setup" });
       }
       if (!pcVisibleByView.trade) {
         tradeBoxPreviewEl.className = "inventory-preview-body inventory-preview-empty";
         tradeBoxPreviewEl.textContent = `Clique em "${tradeTogglePokemonPcButton?.textContent || "Computador do Player"}" para abrir as boxes.`;
       } else {
-        syncActiveBoxWithSelection("trade");
+        syncActiveBoxWithSelection("trade", false);
         renderBoxPreviewHtml({ target: tradeBoxPreviewEl, selectable: true, view: "trade" });
       }
     }
