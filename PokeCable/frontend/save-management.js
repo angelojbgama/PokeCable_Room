@@ -31,8 +31,6 @@ window.POKECABLE_SAVE_MANAGEMENT = {
     activateTab,
     elements
   }) {
-    let dragSourceLocation = null;
-
     const {
       tradeSelectedSummaryEl,
       setupSelectedSummaryEl,
@@ -90,20 +88,27 @@ window.POKECABLE_SAVE_MANAGEMENT = {
       const pendingMoveSourceLocation = getPendingMoveSourceLocation();
       target.textContent = "";
       if (!loadedSave) return;
+
       const count = partyCapacity(loadedSave);
-      const occupiedCount = Number((loadedSave.party || []).length);
       const byIndex = new Map((loadedSave.party || []).filter((item) => !item.is_egg).map((pokemon) => [parseLocation(pokemon.location).index, pokemon]));
-      const showEmpty = mode === "setup" && Boolean(pendingMoveSourceLocation);
+
+      // Limpar instâncias antigas se houver
+      if (target._sortable) {
+        target._sortable.destroy();
+        delete target._sortable;
+      }
+
       for (let index = 0; index < count; index += 1) {
         const location = `party:${index}`;
         const pokemon = byIndex.get(index) || null;
-        if (!pokemon && (!showEmpty || index !== occupiedCount)) continue;
+
         const item = document.createElement("button");
         item.type = "button";
-        item.className = `team-preview-item team-preview-item-selectable${location === selectedLocation ? " is-selected" : ""}${pendingMoveSourceLocation === location ? " is-source" : ""}`;
+        item.className = `team-preview-item team-preview-item-selectable${location === selectedLocation ? " is-selected" : ""}${pendingMoveSourceLocation === location ? " is-source" : ""}${!pokemon ? " is-empty" : ""}`;
         item.setAttribute("aria-pressed", location === selectedLocation ? "true" : "false");
         item.dataset.pokemonLocation = location;
-        item.draggable = Boolean(pokemon);
+        item.dataset.index = index;
+
         item.addEventListener("click", () => handlePokemonSelectionClick(location, mode));
         const name = document.createElement("div");
         name.className = "team-preview-name";
@@ -117,13 +122,81 @@ window.POKECABLE_SAVE_MANAGEMENT = {
           meta.textContent = "Origem da movimentação";
         } else if (location === selectedLocation && pokemon) {
           meta.textContent = mode === "trade" ? "Selecionado para a rodada" : "Selecionado";
-        } else if (!pokemon) {
+        } else if (pendingMoveSourceLocation) {
           meta.textContent = "Clique para mover aqui";
+        } else if (pokemon) {
+          meta.textContent = "Arraste para organizar ou clique para selecionar";
         } else {
-          meta.textContent = mode === "trade" ? "Clique para selecionar" : "Clique para selecionar";
+          meta.textContent = "Slot vazio";
         }
         item.append(name, meta);
         target.append(item);
+      }
+
+      // Initialize SortableJS
+      if (typeof Sortable !== "undefined" && !pendingMoveSourceLocation) {
+        let originalLocations = [];
+        target._sortable = new Sortable(target, {
+          animation: 150,
+          ghostClass: "sortable-ghost",
+          dragClass: "sortable-drag",
+          filter: ".is-source", // Don't allow dragging the source of a manual move
+          onStart: () => {
+            const tradeState = getTradeState();
+            if (tradeState?.roundActive) {
+              saveManagementStatusEl.textContent = "Não é possível organizar a party enquanto uma oferta de troca está ativa.";
+              return false;
+            }
+            // Capture locations before DOM reordering
+            originalLocations = Array.from(target.children).map(el => el.dataset.pokemonLocation);
+          },
+          onMove: () => {
+            const tradeState = getTradeState();
+            if (tradeState?.roundActive) return false;
+          },
+          onEnd: (evt) => {
+            const { oldIndex, newIndex } = evt;
+            if (oldIndex === newIndex) return;
+
+            const sourceLocation = originalLocations[oldIndex];
+            const targetLocation = originalLocations[newIndex];
+
+            if (!sourceLocation || !targetLocation || sourceLocation === targetLocation) {
+              updateSetupPartyPreview();
+              updateTradePartyPreview();
+              return;
+            }
+
+            try {
+              const currentSelected = getSelectedLocation();
+              let newSelectedLocation = currentSelected;
+
+              // Logic to track the selected pokemon
+              if (currentSelected === sourceLocation) {
+                newSelectedLocation = targetLocation;
+              } else if (currentSelected === targetLocation) {
+                newSelectedLocation = sourceLocation;
+              }
+
+              relocatePokemonWithinSave(loadedSave, sourceLocation, targetLocation);
+              saveManagementStatusEl.textContent = `Party organizada: ${locationLabel(sourceLocation, loadedSave?.boxes)} ↔ ${locationLabel(targetLocation, loadedSave?.boxes)}.`;
+
+              syncAfterSaveMutation?.();
+
+              if (newSelectedLocation && (newSelectedLocation === sourceLocation || newSelectedLocation === targetLocation)) {
+                setSelectedTradePokemon(newSelectedLocation);
+              } else {
+                updateSelectionUi();
+                updateSetupPartyPreview();
+                updateTradePartyPreview();
+              }
+            } catch (error) {
+              saveManagementStatusEl.textContent = error.message || String(error);
+              updateSetupPartyPreview();
+              updateTradePartyPreview();
+            }
+          }
+        });
       }
     }
 
@@ -143,8 +216,8 @@ window.POKECABLE_SAVE_MANAGEMENT = {
       if (!selected || selected.is_egg) return;
       setSelectedLocation(location);
       updateSelectionUi();
+      clearTradePreviews(); // Limpar ANTES de renderizar o novo card
       renderOfferCard(localOfferEl, localOfferDetailsEl, selected, "", { emptyMessage: "Escolha um Pokémon da party ou do PC." });
-      clearTradePreviews();
       updateSetupPartyPreview();
       updateTradePartyPreview();
       syncTransientUi?.();
@@ -153,13 +226,46 @@ window.POKECABLE_SAVE_MANAGEMENT = {
     function handlePokemonSelectionClick(location, tab = null) {
       const loadedSave = getLoadedSave();
       const pendingMoveSourceLocation = getPendingMoveSourceLocation();
+      const tradeState = getTradeState();
       if (pendingMoveSourceLocation && pendingMoveSourceLocation !== location) {
+        if (tradeState?.roundActive) {
+          saveManagementStatusEl.textContent = "Não é possível mover Pokémon enquanto uma oferta de troca está ativa.";
+          setPendingMoveSourceLocation(null);
+          updateSelectionUi();
+          updateSetupPartyPreview();
+          updateTradePartyPreview();
+          syncTransientUi?.();
+          return;
+        }
         try {
+          const currentSelected = getSelectedLocation();
+          let newSelectedLocation = location;
+          if (currentSelected === pendingMoveSourceLocation) {
+            newSelectedLocation = location;
+          } else if (currentSelected === location) {
+            const targetPokemon = pokemonByLocation(loadedSave, location);
+            if (targetPokemon) {
+              newSelectedLocation = pendingMoveSourceLocation;
+            }
+          } else {
+            newSelectedLocation = currentSelected;
+          }
+
           relocatePokemonWithinSave(loadedSave, pendingMoveSourceLocation, location);
           saveManagementStatusEl.textContent = `Pokémon movido: ${locationLabel(pendingMoveSourceLocation, loadedSave?.boxes)} → ${locationLabel(location, loadedSave?.boxes)}.`;
           setPendingMoveSourceLocation(null);
-          setSelectedLocation(location);
+
           syncAfterSaveMutation?.();
+
+          if (newSelectedLocation) {
+            setSelectedTradePokemon(newSelectedLocation);
+          } else {
+            setSelectedLocation(location);
+            updateSelectionUi();
+            updateSetupPartyPreview();
+            updateTradePartyPreview();
+          }
+
           if (tab) activateTab(tab);
           return;
         } catch (error) {
@@ -174,46 +280,6 @@ window.POKECABLE_SAVE_MANAGEMENT = {
       }
       setSelectedTradePokemon(location);
       if (tab) activateTab(tab);
-    }
-
-    function handlePokemonDragStart(location) {
-      const loadedSave = getLoadedSave();
-      const selected = pokemonByLocation(loadedSave, location);
-      if (!selected || selected.is_egg) return;
-      dragSourceLocation = location;
-      setPendingMoveSourceLocation(location);
-      saveManagementStatusEl.textContent = `Arrastando ${locationLabel(location, loadedSave?.boxes)}. Solte no destino para mover ou trocar.`;
-      updateSelectionUi();
-      updateSetupPartyPreview();
-      updateTradePartyPreview();
-      syncTransientUi?.();
-    }
-
-    function handlePokemonDrop(location, tab = null) {
-      if (!dragSourceLocation) {
-        handlePokemonSelectionClick(location, tab);
-        return;
-      }
-      const sourceLocation = dragSourceLocation;
-      dragSourceLocation = null;
-      handlePokemonSelectionClick(location, tab);
-      if (getPendingMoveSourceLocation() === sourceLocation) {
-        setPendingMoveSourceLocation(null);
-        syncTransientUi?.();
-      }
-    }
-
-    function handlePokemonDragEnd() {
-      if (!dragSourceLocation) return;
-      dragSourceLocation = null;
-      if (getPendingMoveSourceLocation()) {
-        setPendingMoveSourceLocation(null);
-        saveManagementStatusEl.textContent = "Movimentação por arrastar foi cancelada.";
-        updateSelectionUi();
-        updateSetupPartyPreview();
-        updateTradePartyPreview();
-        syncTransientUi?.();
-      }
     }
 
     function startMovePokemon() {
@@ -309,10 +375,7 @@ window.POKECABLE_SAVE_MANAGEMENT = {
       applySelectedItemToPokemon,
       updateSetupPartyPreview,
       updateTradePartyPreview,
-      setSelectedTradePokemon,
-      handlePokemonDragStart,
-      handlePokemonDrop,
-      handlePokemonDragEnd
+      setSelectedTradePokemon
     };
   }
 };

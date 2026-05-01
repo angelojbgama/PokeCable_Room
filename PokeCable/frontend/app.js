@@ -13,6 +13,9 @@ const saveSummaryEl = document.querySelector("#saveSummary");
 const setupSaveStageEl = document.querySelector("#setupSaveStage");
 const setupRoomStageEl = document.querySelector("#setupRoomStage");
 const setupChoiceStageEl = document.querySelector("#setupChoiceStage");
+const setupHeaderEl = document.querySelector("#setupHeader");
+const setupFooterEl = document.querySelector("#setupFooter");
+const noticeEl = document.querySelector(".notice");
 const createSessionButton = document.querySelector("#createSession");
 const joinSessionButton = document.querySelector("#joinSession");
 const leaveSessionButton = document.querySelector("#leaveSession");
@@ -42,6 +45,7 @@ const setupStatusEl = document.querySelector("#setupStatus");
 const setupSelectedSummaryEl = document.querySelector("#setupSelectedSummary");
 const setupSelectionDetailEl = document.querySelector("#setupSelectionDetail");
 const saveManagementStatusEl = document.querySelector("#saveManagementStatus");
+window.POKECABLE_SAVE_MANAGEMENT_STATUS_EL = saveManagementStatusEl;
 const selectedInventoryItemStatusEl = document.querySelector("#selectedInventoryItemStatus");
 const setupPartyPreviewEl = document.querySelector("#setupPartyPreview");
 const setupBagPreviewEl = document.querySelector("#setupBagPreview");
@@ -57,8 +61,8 @@ const startMovePokemonButton = document.querySelector("#startMovePokemon");
 const cancelMovePokemonButton = document.querySelector("#cancelMovePokemon");
 const removeHeldItemButton = document.querySelector("#removeHeldItem");
 const applyHeldItemButton = document.querySelector("#applyHeldItem");
-const tradeSaveStatusEl = document.querySelector("#tradeSaveStatus");
 const tradeSelectedSummaryEl = document.querySelector("#tradeSelectedSummary");
+const tradePartyLabelEl = document.querySelector("#tradePartyLabel");
 const tradePartyPreviewEl = document.querySelector("#tradePartyPreview");
 const tradeBoxPreviewEl = document.querySelector("#tradeBoxPreview");
 const tradeTogglePokemonPcButton = document.querySelector("#tradeTogglePokemonPc");
@@ -181,6 +185,11 @@ function genderFromGen2AttackDv(nationalDexId, attackDv) {
   return Number(attackDv || 0) <= (rate * 2 - 1) ? "♀" : "♂";
 }
 
+function isShinyGen2(attackDv, defenseDv, speedDv, specialDv) {
+  if (defenseDv !== 10 || speedDv !== 10 || specialDv !== 10) return false;
+  return [2, 3, 6, 7, 10, 11, 14, 15].includes(attackDv);
+}
+
 function genderFromGen3Personality(nationalDexId, personality) {
   const rate = genderRateForSpecies(nationalDexId);
   if (rate === null || rate < 0) return null;
@@ -189,7 +198,22 @@ function genderFromGen3Personality(nationalDexId, personality) {
   return (Number(personality || 0) & 0xff) < rate * 32 ? "♀" : "♂";
 }
 
+function isShinyGen3(personality, trainerId) {
+  const tid = Number(trainerId || 0) & 0xffff;
+  const sid = (Number(trainerId || 0) >>> 16) & 0xffff;
+  const pidLow = Number(personality || 0) & 0xffff;
+  const pidHigh = (Number(personality || 0) >>> 16) & 0xffff;
+  return (tid ^ sid ^ pidLow ^ pidHigh) < 8;
+}
+
 const unownFormNames = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!?".split("");
+const natureNames = [
+  "Hardy", "Lonely", "Brave", "Adamant", "Naughty",
+  "Bold", "Docile", "Relaxed", "Impish", "Lax",
+  "Timid", "Hasty", "Serious", "Jolly", "Naive",
+  "Modest", "Mild", "Quiet", "Bashful", "Rash",
+  "Calm", "Gentle", "Sassy", "Careful", "Quirky"
+];
 
 function unownFormFromGen2Dvs(attackDv, defenseDv, speedDv, specialDv) {
   const value = (
@@ -288,14 +312,22 @@ function speciesNameFor(generation, speciesId, fallback = "") {
   return speciesNames[nationalId] || fallbackName || (nationalId ? `Species #${nationalId}` : "Pokemon");
 }
 
-function pokemonSpriteUrl(nationalDexId) {
+function pokemonSpriteUrl(nationalDexId, form = "", isShiny = false) {
   const dex = Number(nationalDexId || 0);
   if (!dex) return "";
-  return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${dex}.png`;
+  const shinyPath = isShiny ? "shiny/" : "";
+  let url = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${shinyPath}${dex}`;
+  if (dex === 201 && form) {
+    const f = String(form).toLowerCase().trim();
+    if (f === "!") url += "-exclamation";
+    else if (f === "?") url += "-question";
+    else if (f !== "a") url += `-${f}`;
+  }
+  return url + ".png";
 }
 
-function pokemonSpriteImgHtml(nationalDexId, altText, className = "pokemon-sprite") {
-  const remoteSprite = pokemonSpriteUrl(nationalDexId);
+function pokemonSpriteImgHtml(nationalDexId, altText, className = "pokemon-sprite", form = "", isShiny = false) {
+  const remoteSprite = pokemonSpriteUrl(nationalDexId, form, isShiny);
   const sprite = remoteSprite || LOCAL_FALLBACK_SPRITE;
   const escapedAlt = escapeAttribute(altText || "Pokemon");
   const escapedSrc = escapeAttribute(sprite);
@@ -307,16 +339,19 @@ function sameName(left, right) {
   return cleanName(left).toLowerCase().replace(/[^a-z0-9]/g, "") === cleanName(right).toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function normalizePokemonDisplay({ national_dex_id, species_name, level, nickname, gender, held_item_name, unown_form }) {
+function normalizePokemonDisplay(pokemonLike) {
+  const { national_dex_id, species_name, level, nickname, gender, held_item_name, unown_form, metadata, is_shiny, canonical } = pokemonLike;
   let speciesName = cleanName(species_name);
   if ((!speciesName || isSpeciesPlaceholder(speciesName)) && national_dex_id && speciesNames[national_dex_id]) {
     speciesName = speciesNames[national_dex_id];
   }
   if (!speciesName) speciesName = national_dex_id ? `Species #${national_dex_id}` : "Pokemon";
-  if (Number(national_dex_id || 0) === 201 && cleanName(unown_form)) {
-    speciesName = `${speciesName} (${cleanName(unown_form)})`;
+  const form = cleanName(unown_form || metadata?.unown_form);
+  if (Number(national_dex_id || 0) === 201 && form) {
+    speciesName = `${speciesName} (${form})`;
   }
-  let text = `${national_dex_id ? `#${national_dex_id} ` : ""}${speciesName}${gender ? ` ${gender}` : ""} Lv. ${Number(level || 1)}`;
+  const shiny = Boolean(is_shiny || metadata?.is_shiny || canonical?.is_shiny);
+  let text = `${national_dex_id ? `#${national_dex_id} ` : ""}${speciesName}${shiny ? ' ★' : ''}${gender ? ` ${gender}` : ""} Lv. ${Number(level || 1)}`;
   text += held_item_name ? ` — Item: ${held_item_name}` : " — Sem item";
   const nick = cleanName(nickname);
   if (nick && !sameName(nick, speciesName)) text += ` "${nick}"`;
@@ -376,13 +411,16 @@ function renderPokemonSummaryHtml(pokemonLike, textOverride = "", options = {}) 
   const payloadDexId = payloadNationalDexId(pokemonLike);
   const explicitDexId = Number(pokemonLike.national_dex_id || 0) || null;
   const nationalDexId = payloadDexId ?? explicitDexId;
+  const unownForm = cleanName(pokemonLike.unown_form || pokemonLike.metadata?.unown_form);
+  const isShiny = Boolean(pokemonLike.is_shiny || pokemonLike.canonical?.is_shiny || pokemonLike.metadata?.is_shiny);
+  
   const text = textOverride || pokemonLike.display_summary || normalizePokemonDisplay(pokemonLike);
   const escapedText = escapeHtml(text);
   const summaryClass = variant === "trade" ? "pokemon-summary pokemon-summary-trade" : "pokemon-summary";
   const spriteClass = variant === "trade" ? "pokemon-sprite pokemon-sprite-trade" : "pokemon-sprite";
   return `
-    <span class="${summaryClass}">
-      ${pokemonSpriteImgHtml(nationalDexId, text, spriteClass)}
+    <span class="${summaryClass}${isShiny ? ' is-shiny' : ''}">
+      ${pokemonSpriteImgHtml(nationalDexId, text, spriteClass, unownForm, isShiny)}
       <span class="pokemon-summary-text">${escapedText}</span>
     </span>
   `;
@@ -509,17 +547,26 @@ const buildWebCompatibilityReport = webCompatibilityModule?.createCompatibilityB
   resolveItemTransferDecisionForSave
 });
 
+// Bridge para controladores acessarem funções do app.js
+window.POKECABLE_APP_CONTROLLER_BRIDGE = {
+  setSelectedTradePokemon: (loc) => setSelectedTradePokemon(loc)
+};
+
 const inventoryUiController = inventoryUiModule?.createInventoryUiController({
   getLoadedSave: () => loadedSave,
   getSelectedLocation: () => selectedLocation,
   getSelectedInventoryItem: () => selectedInventoryItem,
   getPendingMoveSourceLocation: () => pendingMoveSourceLocation,
+  getTradeState: () => tradeState,
   getPartyCapacity: () => loadedSave?.generation === 3 ? gen3.partyCapacity : Number(loadedSave?.layout?.partyCapacity || gen1.partyCapacity),
   getBoxCapacity: () => loadedSave?.generation === 3 ? gen3.boxCapacity : Number(loadedSave?.layout?.boxCapacity || gen1.boxCapacity),
   cleanName,
+  abilityName,
   escapeHtml,
   escapeAttribute,
   renderPokemonSummaryHtml,
+  relocatePokemonWithinSave,
+  syncAfterSaveMutation: () => updatePokemonOptions(),
   elements: {
     setupBagPreviewEl,
     setupPcPreviewEl,
@@ -925,7 +972,7 @@ function clearLoadedSave() {
   setupSaveStageEl?.classList.remove("setup-stage-hidden");
   setupRoomStageEl?.classList.add("setup-stage-hidden");
   setupChoiceStageEl?.classList.add("setup-stage-hidden");
-  if (tradeSaveStatusEl) tradeSaveStatusEl.textContent = "Nenhum save carregado.";
+  if (tradePartyLabelEl) tradePartyLabelEl.textContent = "Sua Party";
   if (battleSaveStatusEl) battleSaveStatusEl.textContent = "Nenhum save carregado.";
 }
 
@@ -935,11 +982,23 @@ function loadedSaveHeadline(save) {
   return playerName ? `${save.label} · ${playerName}` : save.label;
 }
 
+function getActiveTab() {
+  const activeTabButton = tabButtons.find((button) => button.classList.contains("active"));
+  return activeTabButton ? activeTabButton.dataset.tab : "setup";
+}
+
 function refreshSessionUi() {
   const hasLoadedSave = Boolean(loadedSave);
   const credentialsReady = roomCredentialsReady();
   const canPrepareSession = hasLoadedSave && credentialsReady && !sessionState.joined && !sessionState.pending;
   const roomChoiceReady = hasLoadedSave && sessionState.joined;
+  const isSetupTab = getActiveTab() === "setup";
+
+  if (hasLoadedSave && tradePartyLabelEl) {
+    const playerName = cleanName(loadedSave.player_name || "");
+    tradePartyLabelEl.textContent = playerName ? `Party de ${playerName}` : "Sua Party";
+  }
+
   createSessionButton.disabled = !canPrepareSession;
   joinSessionButton.disabled = !canPrepareSession;
   leaveSessionButton.disabled = !(sessionState.joined || sessionState.pending || sessionState.saveLocked);
@@ -953,6 +1012,9 @@ function refreshSessionUi() {
   if (setupSaveStageEl) setupSaveStageEl.classList.toggle("setup-stage-hidden", hasLoadedSave);
   if (setupRoomStageEl) setupRoomStageEl.classList.toggle("setup-stage-hidden", !hasLoadedSave || sessionState.joined);
   if (setupChoiceStageEl) setupChoiceStageEl.classList.toggle("setup-stage-hidden", !roomChoiceReady);
+  if (setupHeaderEl) setupHeaderEl.classList.toggle("setup-stage-hidden", roomChoiceReady);
+  if (setupFooterEl) setupFooterEl.classList.toggle("setup-stage-hidden", roomChoiceReady);
+  if (noticeEl) noticeEl.classList.toggle("setup-stage-hidden", roomChoiceReady && isSetupTab);
   tradeFlowController?.syncButtons();
   battleFlowController?.syncButtons();
   if (!loadedSave) {
@@ -996,6 +1058,7 @@ function activateTab(tabName) {
   tabPanels.forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.tabPanel === tabName);
   });
+  refreshSessionUi();
 }
 
 function wsUrl() {
@@ -1223,6 +1286,7 @@ function parseGen2Party(save) {
       species_id: speciesId,
       species_name: speciesEntry === 0xfd ? "Egg" : speciesNameFor(2, speciesId),
       national_dex_id: speciesEntry === 0xfd ? null : speciesId,
+      is_shiny: speciesEntry === 0xfd ? false : isShinyGen2(attackDv, defenseDv, speedDv, specialDv),
       gender: speciesEntry === 0xfd ? null : genderFromGen2AttackDv(speciesId, attackDv),
       unown_form: speciesEntry === 0xfd || speciesId !== 201 ? null : unownFormFromGen2Dvs(attackDv, defenseDv, speedDv, specialDv),
       level: save.bytes[monStart + 0x1f],
@@ -1324,6 +1388,7 @@ function parseGen2BoxSummary(save, raw, boxIndex, slotIndex, nicknameBytes, otBy
     species_id: speciesId,
     species_name: speciesName,
     national_dex_id: isEgg ? null : speciesId,
+    is_shiny: isEgg ? false : isShinyGen2(attackDv, defenseDv, speedDv, specialDv),
     gender: isEgg ? null : genderFromGen2AttackDv(speciesId, attackDv),
     unown_form: isEgg || speciesId !== 201 ? null : unownFormFromGen2Dvs(attackDv, defenseDv, speedDv, specialDv),
     level: raw[0x1f],
@@ -2024,7 +2089,10 @@ function exportGbcPayload(save, constants, location, generation, game, format) {
     level: pokemon.level,
     nickname: pokemon.nickname || pokemon.species_name,
     display_summary: displaySummary,
-    unown_form: pokemon.unown_form || null
+    unown_form: pokemon.unown_form || null,
+    is_shiny: Boolean(pokemon.is_shiny),
+    nature: null,
+    ability: null
   };
   const canonical = gbcCanonicalPayload(save, generation, game, pokemon, location, data.mon, formatName);
   canonical.experience = generation === 1
@@ -2195,6 +2263,7 @@ function parseGen3Pokemon(raw) {
     const moveId = readLe16(secure, attacks + offset * 2);
     if (moveId) moves.push(moveId);
   }
+  const isEgg = speciesId === 412 || Boolean(raw[0x13] & 0x04);
   return {
     species_id: speciesId,
     species_name: speciesNameFor(3, speciesId),
@@ -2202,9 +2271,12 @@ function parseGen3Pokemon(raw) {
     nickname: decodeGen3Text(raw.slice(0x08, 0x12)),
     ot_name: decodeGen3Text(raw.slice(0x14, 0x1b)),
     trainer_id: trainerId,
+    is_shiny: isEgg ? false : isShinyGen3(personality, trainerId),
+    nature: isEgg ? null : natureNames[personality % 25],
+    ability_index: isEgg ? null : (personality & 1),
     held_item_id: readLe16(secure, growth + 2) || null,
     moves,
-    is_egg: speciesId === 412 || Boolean(raw[0x13] & 0x04)
+    is_egg: isEgg
   };
 }
 
@@ -2269,6 +2341,9 @@ function parseGen3BoxPokemon(raw, location) {
     nickname: decodeGen3Text(raw.slice(0x08, 0x12)) || speciesName,
     ot_name: decodeGen3Text(raw.slice(0x14, 0x1b)),
     trainer_id: trainerId,
+    is_shiny: isEgg ? false : isShinyGen3(personality, trainerId),
+    nature: isEgg ? null : natureNames[personality % 25],
+    ability_index: isEgg ? null : (personality & 1),
     held_item_id: readLe16(secure, growth + 2) || null,
     held_item_name: itemName(readLe16(secure, growth + 2) || null, 3),
     moves: Array.from({ length: 4 }, (_, index) => readLe16(secure, attacks + index * 2)).filter(Boolean),
@@ -2700,9 +2775,12 @@ function exportGen3Payload(save, location) {
     species_name: pokemon.species_name,
     level: pokemon.level,
     nickname: pokemon.nickname || pokemon.species_name,
-      display_summary: displaySummary
-      ,unown_form: pokemon.unown_form || null
-    };
+    display_summary: displaySummary,
+    unown_form: pokemon.unown_form || null,
+    is_shiny: Boolean(pokemon.is_shiny),
+    nature: pokemon.nature || null,
+    ability: pokemon.ability || (Number.isFinite(pokemon.ability_index) ? `Index ${pokemon.ability_index}` : null)
+  };
   const canonicalSpecies = canonicalSpeciesFor(3, pokemon.species_id, pokemon.species_name);
   const rawFormat = data.kind === "party" ? "gen3-party-v1" : "gen3-box-v1";
   const rawForExperience = data.kind === "party" ? data.raw : (() => {
@@ -2741,7 +2819,9 @@ function exportGen3Payload(save, location) {
       trainer_id: pokemon.trainer_id,
       moves: (pokemon.moves || []).map((moveId) => ({ move_id: moveId, source_generation: 3 })),
       held_item: pokemon.held_item_id ? { item_id: pokemon.held_item_id, name: pokemon.held_item_name || itemName(pokemon.held_item_id, 3), source_generation: 3 } : null,
-      metadata: { gender: pokemon.gender || null, unown_form: pokemon.unown_form || null }
+      nature: pokemon.nature || null,
+      ability: pokemon.ability || (Number.isFinite(pokemon.ability_index) ? `Index ${pokemon.ability_index}` : null),
+      metadata: { gender: pokemon.gender || null, unown_form: pokemon.unown_form || null, is_shiny: Boolean(pokemon.is_shiny) }
     },
     raw: { format: rawFormat, data_base64: rawBase64 },
     compatibility_report: {
@@ -2898,8 +2978,7 @@ function updatePokemonOptions() {
     setupPcPreviewEl.textContent = "Carregue um save para visualizar os itens guardados no PC.";
     setupPokemonPcPreviewEl.className = "inventory-preview-body inventory-preview-empty";
     setupPokemonPcPreviewEl.textContent = "Boxes/PC Pokémon ainda não foram carregados para este save.";
-  tradeSaveStatusEl.textContent = "Nenhum save carregado.";
-  if (battleSaveStatusEl) battleSaveStatusEl.textContent = "Nenhum save carregado.";
+    if (battleSaveStatusEl) battleSaveStatusEl.textContent = "Nenhum save carregado.";
     tradeSelectedSummaryEl.textContent = "Nenhum Pokémon selecionado.";
     if (setupSelectedSummaryEl) setupSelectedSummaryEl.textContent = "Nenhum Pokémon selecionado.";
     setupStatusEl.textContent = "Carregue um save para liberar troca e batalha.";
@@ -2932,7 +3011,6 @@ function updatePokemonOptions() {
       (entry) => Number(entry.item_id) === Number(selectedInventoryItem.item_id) && entry.pocket_name === selectedInventoryItem.pocket_name && entry.storage === selectedInventoryItem.storage
     ) || null;
   }
-  tradeSaveStatusEl.textContent = `${loadedSave.label}: ${loadedSave.party.length} Pokémon na party e ${(loadedSave.boxes?.pokemon || []).length} no PC.`;
   if (battleSaveStatusEl) battleSaveStatusEl.textContent = `${loadedSave.label}: ${(loadedSave.party || []).length} Pokémon na party.`;
   setupStatusEl.textContent = enabled
     ? `${loadedSave.label} carregado. Abra ou sincronize a sessão e depois escolha troca ou batalha.`
@@ -3040,9 +3118,9 @@ function relocatePokemonWithinSave(save, sourceLocation, targetLocation) {
   if (!sourceLocation || !targetLocation || sourceLocation === targetLocation) return;
   if (pokemonByLocation(save, targetLocation)) {
     swapPokemonLocations(save, sourceLocation, targetLocation);
-    return;
+  } else {
+    movePokemonToEmptyLocation(save, sourceLocation, targetLocation);
   }
-  movePokemonToEmptyLocation(save, sourceLocation, targetLocation);
   refreshLoadedSaveCollections(save);
 }
 
@@ -3316,31 +3394,6 @@ window.addEventListener("keydown", (event) => {
     inventoryUiController?.closePokemonDetailDrawer();
   }
 });
-function enablePokemonDropTarget(container, tab) {
-  container.addEventListener("dragover", (event) => {
-    const button = event.target.closest("[data-pokemon-location]");
-    if (!button) return;
-    event.preventDefault();
-  });
-  container.addEventListener("drop", (event) => {
-    const button = event.target.closest("[data-pokemon-location]");
-    if (!button) return;
-    event.preventDefault();
-    saveManagementController?.handlePokemonDrop(button.getAttribute("data-pokemon-location"), tab);
-  });
-  container.addEventListener("dragstart", (event) => {
-    const button = event.target.closest("[data-pokemon-location]");
-    if (!button) return;
-    saveManagementController?.handlePokemonDragStart(button.getAttribute("data-pokemon-location"));
-  });
-  container.addEventListener("dragend", () => {
-    saveManagementController?.handlePokemonDragEnd();
-  });
-}
-enablePokemonDropTarget(setupPartyPreviewEl, "setup");
-enablePokemonDropTarget(tradePartyPreviewEl, "trade");
-enablePokemonDropTarget(setupPokemonPcPreviewEl, "setup");
-enablePokemonDropTarget(tradeBoxPreviewEl, "trade");
 setupBagPreviewEl.addEventListener("click", (event) => {
   const button = event.target.closest("[data-item-id]");
   if (!button) return;

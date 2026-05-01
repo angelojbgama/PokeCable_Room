@@ -26,10 +26,26 @@ window.POKECABLE_TRADE_PREVIEW = {
       tradeCompatibilityPreviewEl.className = "trade-preview-body trade-preview-empty";
       tradeEvolutionPreviewEl.textContent = "Sem evolução prevista.";
       tradeEvolutionPreviewEl.className = "trade-preview-body trade-preview-empty";
+
+      const emptyLayout = (msg) => `
+        <div class="pokemon-detail-block">
+          <strong>Item</strong>
+          <span>-</span>
+        </div>
+        <div class="pokemon-detail-block">
+          <strong>Golpes</strong>
+          <span>-</span>
+        </div>
+        <div class="pokemon-detail-block">
+          <strong>Características</strong>
+          <span>${escapeHtml(msg)}</span>
+        </div>
+      `;
+
       localOfferDetailsEl.className = "pokemon-card-details pokemon-card-details-empty";
-      localOfferDetailsEl.textContent = "Item, golpes e características aparecem aqui.";
+      localOfferDetailsEl.innerHTML = emptyLayout("Item, golpes e características aparecem aqui.");
       peerOfferDetailsEl.className = "pokemon-card-details pokemon-card-details-empty";
-      peerOfferDetailsEl.textContent = "Aguardando o Pokémon do outro jogador.";
+      peerOfferDetailsEl.innerHTML = emptyLayout("Aguardando o Pokémon do outro jogador.");
     }
 
     function listSectionHtml(title, items) {

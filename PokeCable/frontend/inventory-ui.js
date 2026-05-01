@@ -4,11 +4,15 @@ window.POKECABLE_INVENTORY_UI = {
     getSelectedLocation,
     getSelectedInventoryItem,
     getPendingMoveSourceLocation,
+    getTradeState,
     getBoxCapacity,
     cleanName,
+    abilityName,
     escapeHtml,
     escapeAttribute,
     renderPokemonSummaryHtml,
+    relocatePokemonWithinSave,
+    syncAfterSaveMutation,
     elements
   }) {
     const genderRates = window.POKECABLE_GENDER_RATES || [];
@@ -116,29 +120,35 @@ window.POKECABLE_INVENTORY_UI = {
         return cleanName(pokemon.location || "Local desconhecido");
       })();
       const moves = (pokemon.moves || [])
-        .map((move) => cleanName(move.name || move.move_name || `Move #${move.move_id || "?"}`))
+        .map((move) => {
+          if (!move) return null;
+          if (typeof move === "object") return cleanName(move.name || move.move_name || `Move #${move.move_id || "?"}`);
+          return cleanName(window.POKECABLE_MOVE_NAMES?.[move] || `Move #${move}`);
+        })
         .filter(Boolean)
         .join(" · ");
+
+      const dexId = Number(pokemon.national_dex_id || 0);
+      const genderRaw = cleanName(pokemon.gender || pokemon.metadata?.gender || "");
+      const gender = genderRaw || (
+        Number(pokemon.generation || 0) === 1
+          ? "Não disponível na Gen 1"
+          : (dexId > 0 && Number(genderRates[dexId] ?? 0) < 0)
+            ? "Sem sexo"
+            : "Não lido neste save"
+      );
+
       const facts = [
         pokemon.display_summary ? `Resumo: ${escapeHtml(pokemon.display_summary)}` : "",
         `Localização: ${escapeHtml(locationText)}`,
         `Nível: ${Number(pokemon.level || 1)}`,
         Number.isFinite(Number(pokemon.experience)) ? `Experiência: ${Number(pokemon.experience)}` : "",
         pokemon.nickname ? `Apelido: ${escapeHtml(pokemon.nickname)}` : "",
-        `Sexo: ${escapeHtml(
-          cleanName(pokemon.gender || pokemon.metadata?.gender || "")
-          || (
-            Number(pokemon.generation || 0) === 1
-              ? "Não disponível na Gen 1"
-              : (Number(pokemon.national_dex_id || 0) > 0 && Number(genderRates[Number(pokemon.national_dex_id || 0)] ?? 0) < 0)
-                ? "Sem sexo"
-                : "Não lido neste save"
-          )
-        )}`,
+        `Sexo: ${escapeHtml(gender)}`,
         cleanName(pokemon.unown_form || pokemon.metadata?.unown_form || "") ? `Forma: ${escapeHtml(cleanName(pokemon.unown_form || pokemon.metadata?.unown_form || ""))}` : "",
         pokemon.held_item_name ? `Item: ${escapeHtml(pokemon.held_item_name)}` : "Item: Sem item",
-        pokemon.ability ? `Habilidade: ${escapeHtml(cleanName(pokemon.ability.name || pokemon.ability.ability_name || pokemon.ability) || "Desconhecida")}` : "",
-        pokemon.nature ? `Nature: ${escapeHtml(cleanName(pokemon.nature.name || pokemon.nature) || "Desconhecida")}` : "",
+        `Habilidade: ${escapeHtml(abilityName(pokemon.ability || pokemon.ability_id) || (Number.isFinite(pokemon.ability_index) ? `Index ${pokemon.ability_index}` : "Desconhecida"))}`,
+        `Nature: ${escapeHtml(cleanName(pokemon.nature?.name || pokemon.nature) || "Desconhecida")}`,
         pokemon.ot_name ? `OT: ${escapeHtml(pokemon.ot_name)}` : "",
         Number.isFinite(Number(pokemon.trainer_id)) ? `Trainer ID: ${Number(pokemon.trainer_id)}` : "",
         pokemon.source_generation ? `Geração de origem: Gen ${Number(pokemon.source_generation)}` : "",
@@ -191,6 +201,13 @@ window.POKECABLE_INVENTORY_UI = {
         target.textContent = "Nenhum Pokémon armazenado nas boxes deste save.";
         return;
       }
+
+      // Cleanup old Sortable instance
+      const listContainer = target.querySelector(".inventory-list-pokemon-grid");
+      if (listContainer && listContainer._sortable) {
+        listContainer._sortable.destroy();
+      }
+
       const grouped = new Map();
       const totalBoxes = Math.max(boxState.box_names?.length || 0, ...(boxState.pokemon || []).map((pokemon) => Number(pokemon.box_index || 0) + 1), 0);
       for (let boxIndex = 0; boxIndex < totalBoxes; boxIndex += 1) grouped.set(boxIndex, []);
@@ -208,83 +225,153 @@ window.POKECABLE_INVENTORY_UI = {
 
       const tabs = totalBoxesOrdered
         .map((boxIndex) => {
-          const boxName = boxState.box_names?.[boxIndex] || `Box ${boxIndex + 1}`;
-          const entries = grouped.get(boxIndex) || [];
+          // Simplificar o nome da aba para apenas "Box #"
+          const shortName = `Box ${boxIndex + 1}`;
+          
           return `
             <button type="button" class="pc-box-tab${boxIndex === activeBoxIndex ? " is-active" : ""}" data-box-tab="${boxIndex}" data-box-view="${escapeAttribute(view)}">
-              <span>${escapeHtml(boxName)}</span>
-              <strong>${entries.length}</strong>
+              <span>${escapeHtml(shortName)}</span>
             </button>
           `;
         })
         .join("");
 
-      const activeEntries = (grouped.get(activeBoxIndex) || []).sort((left, right) => Number(left.slot_index || 0) - Number(right.slot_index || 0));
+      const activeEntries = grouped.get(activeBoxIndex) || [];
+      const entriesBySlot = new Map(activeEntries.map(p => [Number(p.slot_index || 0), p]));
       const activeBoxName = boxState.box_names?.[activeBoxIndex] || `Box ${activeBoxIndex + 1}`;
-      const rows = activeEntries
-        .map((pokemon) => {
+      const capacity = Number(getBoxCapacity?.() || 20);
+      
+      const headerTitle = `${activeBoxName} - ${activeEntries.length}/${capacity} Pokémon`;
+
+      let rows = "";
+      for (let slotIndex = 0; slotIndex < capacity; slotIndex++) {
+        const pokemon = entriesBySlot.get(slotIndex);
+        const location = `box:${activeBoxIndex}:${slotIndex}`;
+        
+        if (pokemon) {
           const selectedClass = pokemon.location === selectedLocation ? " is-selected" : "";
           const moveClass = pendingMoveSourceLocation === pokemon.location ? " is-source" : "";
+          
+          const speciesName = cleanName(pokemon.species_name || (pokemon.national_dex_id ? window.POKECABLE_SPECIES_DATA?.speciesNames[pokemon.national_dex_id] : "Pokemon"));
+          const nick = cleanName(pokemon.nickname);
+          const hasNickname = nick && !((left, right) => {
+            return String(left || "").replace(/\0/g, "").trim().replace(/\s+/g, " ").toLowerCase().replace(/[^a-z0-9]/g, "") === 
+                   String(right || "").replace(/\0/g, "").trim().replace(/\s+/g, " ").toLowerCase().replace(/[^a-z0-9]/g, "");
+          })(nick, speciesName);
+          
+          const gender = cleanName(pokemon.gender || "");
+          const dexId = pokemon.national_dex_id ? `#${pokemon.national_dex_id}` : "";
+          const isShiny = Boolean(pokemon.is_shiny || pokemon.metadata?.is_shiny);
+          const boxDisplay = `${dexId} ${speciesName}${isShiny ? " ★" : ""}${gender ? " " + gender : ""}${hasNickname ? ` "${nick}"` : ""}`.trim();
+
           const metaText = pendingMoveSourceLocation === pokemon.location
             ? "Origem da movimentação"
             : pokemon.location === selectedLocation
               ? "Selecionado"
-              : `Slot ${Number(pokemon.slot_index || 0) + 1}${pokemon.held_item_name ? ` · Item: ${escapeHtml(pokemon.held_item_name)}` : ""}`;
-          if (!selectable) {
-            return `<div class="inventory-item inventory-item-box"><span class="inventory-item-label">${renderPokemonSummaryHtml(pokemon)}</span><span class="inventory-item-meta">${metaText}</span></div>`;
-          }
-          return `
-            <div class="inventory-item-shell${selectedClass}${moveClass}">
-              <button type="button" draggable="true" class="inventory-item inventory-item-box inventory-item-selectable${selectedClass}${moveClass}" data-pokemon-location="${escapeAttribute(pokemon.location)}">
-                <span class="inventory-item-label">${renderPokemonSummaryHtml(pokemon)}</span>
+              : "Arraste para organizar ou clique para selecionar";
+
+          rows += `
+            <div class="inventory-item-shell${selectedClass}${moveClass}" data-pokemon-location="${escapeAttribute(location)}">
+              <button type="button" class="inventory-item inventory-item-box inventory-item-selectable${selectedClass}${moveClass}" data-pokemon-location="${escapeAttribute(location)}">
+                <span class="inventory-item-label">${renderPokemonSummaryHtml(pokemon, boxDisplay)}</span>
                 <span class="inventory-item-meta">${metaText}</span>
               </button>
               <button type="button" class="inventory-item-info-button${detailDrawerPokemon?.location === pokemon.location ? " is-open" : ""}" data-pokemon-info="${escapeAttribute(pokemon.location)}" data-box-view="${escapeAttribute(view)}" aria-label="Mostrar detalhes do Pokémon">i</button>
             </div>
           `;
-        })
-        .join("") + (() => {
-          if (!selectable || !pendingMoveSourceLocation) return "";
-          const capacity = Number(getBoxCapacity?.() || activeEntries.length);
-          if (loadedSave?.generation === 3) {
-            const occupiedSlots = new Set(activeEntries.map((pokemon) => Number(pokemon.slot_index || 0)));
-            const emptySlots = Array.from({ length: capacity }, (_, slotIndex) => slotIndex)
-              .filter((slotIndex) => !occupiedSlots.has(slotIndex));
-            if (!emptySlots.length) return "";
-            const firstEmptySlot = emptySlots[0];
-            const extraEmptyCount = emptySlots.length - 1;
-            return `
-              <button type="button" class="inventory-item inventory-item-box inventory-item-selectable inventory-item-empty" data-pokemon-location="box:${activeBoxIndex}:${firstEmptySlot}">
-                <span class="inventory-item-label">Próximo slot vazio</span>
-                <span class="inventory-item-meta">Slot ${firstEmptySlot + 1}${extraEmptyCount > 0 ? ` · +${extraEmptyCount} vazios neste box` : ""}</span>
+        } else {
+          // Render empty slot
+          const isTarget = pendingMoveSourceLocation && pendingMoveSourceLocation !== location;
+          rows += `
+            <div class="inventory-item-shell inventory-item-empty${isTarget ? " is-target" : ""}" data-pokemon-location="${escapeAttribute(location)}">
+              <button type="button" class="inventory-item inventory-item-box inventory-item-selectable inventory-item-empty" data-pokemon-location="${escapeAttribute(location)}">
+                <span class="inventory-item-label">Slot vazio</span>
+                <span class="inventory-item-meta">${isTarget ? "Clique para mover aqui" : "Vazio"}</span>
               </button>
-            `;
-          }
-          if (activeEntries.length >= capacity) return "";
-          const nextSlotIndex = activeEntries.length;
-          return `
-            <button type="button" class="inventory-item inventory-item-box inventory-item-selectable inventory-item-empty" data-pokemon-location="box:${activeBoxIndex}:${nextSlotIndex}">
-              <span class="inventory-item-label">Slot vazio</span>
-              <span class="inventory-item-meta">Próximo slot disponível · clique para mover aqui</span>
-            </button>
+            </div>
           `;
-        })();
+        }
+      }
 
       const header = `
         <div class="pc-box-header">
-          <button type="button" class="pc-box-nav ghost" data-box-prev="${activeBoxIndex}" data-box-view="${escapeAttribute(view)}" ${activeBoxIndex <= 0 ? "disabled" : ""}>←</button>
           <div class="pc-box-tabs" role="tablist" aria-label="Boxes do PC Pokémon">${tabs}</div>
-          <button type="button" class="pc-box-nav ghost" data-box-next="${activeBoxIndex}" data-box-view="${escapeAttribute(view)}" ${activeBoxIndex >= maxBoxIndex ? "disabled" : ""}>→</button>
         </div>
       `;
       target.className = "inventory-preview-body";
       target.innerHTML = `
         ${header}
         <div class="inventory-pocket inventory-pocket-box">
-          <strong>${escapeHtml(activeBoxName)}${activeBoxIndex === boxState.current_box ? " · atual" : ""}</strong>
+          <strong>${escapeHtml(headerTitle)}</strong>
           <div class="inventory-list inventory-list-pokemon-grid">${rows}</div>
         </div>
       `;
+
+      // Initialize SortableJS for PC Boxes
+      const newListContainer = target.querySelector(".inventory-list-pokemon-grid");
+      if (newListContainer && typeof Sortable !== "undefined" && !pendingMoveSourceLocation) {
+        let originalLocations = [];
+        newListContainer._sortable = new Sortable(newListContainer, {
+          animation: 150,
+          ghostClass: "sortable-ghost",
+          dragClass: "sortable-drag",
+          filter: ".is-source, .inventory-item-empty",
+          onStart: () => {
+            const tradeState = getTradeState?.();
+            if (tradeState?.roundActive) {
+              if (window.POKECABLE_SAVE_MANAGEMENT_STATUS_EL) {
+                window.POKECABLE_SAVE_MANAGEMENT_STATUS_EL.textContent = "Não é possível organizar o PC enquanto uma oferta de troca está ativa.";
+              }
+              return false;
+            }
+            // Capture locations before DOM reordering
+            originalLocations = Array.from(newListContainer.children).map(el => el.getAttribute("data-pokemon-location"));
+          },
+          onMove: () => {
+            const tradeState = getTradeState?.();
+            if (tradeState?.roundActive) return false;
+          },
+          onEnd: (evt) => {
+            const { oldIndex, newIndex } = evt;
+            if (oldIndex === newIndex) return;
+
+            const sourceLocation = originalLocations[oldIndex];
+            const targetLocation = originalLocations[newIndex];
+
+            if (!sourceLocation || !targetLocation || sourceLocation === targetLocation) {
+              updatePokemonPcPreview();
+              return;
+            }
+
+            try {
+              const currentSelected = getSelectedLocation?.();
+              let newSelectedLocation = currentSelected;
+
+              if (currentSelected === sourceLocation) {
+                newSelectedLocation = targetLocation;
+              } else if (currentSelected === targetLocation) {
+                newSelectedLocation = sourceLocation;
+              }
+
+              relocatePokemonWithinSave(loadedSave, sourceLocation, targetLocation);
+              
+              if (newSelectedLocation && (newSelectedLocation === sourceLocation || newSelectedLocation === targetLocation)) {
+                if (window.POKECABLE_APP_CONTROLLER_BRIDGE?.setSelectedTradePokemon) {
+                  window.POKECABLE_APP_CONTROLLER_BRIDGE.setSelectedTradePokemon(newSelectedLocation);
+                } else {
+                  // Fallback if bridge is not available
+                  syncAfterSaveMutation?.();
+                }
+              } else {
+                syncAfterSaveMutation?.();
+              }
+            } catch (error) {
+              console.error("PC Sort Error:", error);
+              updatePokemonPcPreview();
+            }
+          }
+        });
+      }
     }
 
     function updatePokemonPcPreview() {
@@ -316,6 +403,11 @@ window.POKECABLE_INVENTORY_UI = {
     function handlePokemonPcAction(event, view) {
       const targetEl = event.target.closest("[data-box-tab],[data-box-prev],[data-box-next],[data-pokemon-info]");
       if (!targetEl) return false;
+
+      // Importante: evitar conflitos com drag and drop ou seleções de clique
+      event.preventDefault();
+      event.stopPropagation();
+
       if (targetEl.hasAttribute("data-box-tab")) {
         activeBoxByView[view] = Number(targetEl.getAttribute("data-box-tab") || 0);
         updatePokemonPcPreview();
@@ -336,18 +428,23 @@ window.POKECABLE_INVENTORY_UI = {
         const loadedSave = getLoadedSave();
         detailDrawerPokemon = location ? (loadedSave?.boxes?.pokemon || []).find((pokemon) => pokemon.location === location) || null : null;
         if (!detailDrawerPokemon) return true;
-        if (pokemonDetailDrawerTitleEl) {
-          pokemonDetailDrawerTitleEl.textContent = detailDrawerPokemon.display_summary || cleanName(detailDrawerPokemon.species_name || "Pokémon");
+        
+        try {
+          if (pokemonDetailDrawerTitleEl) {
+            pokemonDetailDrawerTitleEl.textContent = detailDrawerPokemon.display_summary || cleanName(detailDrawerPokemon.species_name || "Pokémon");
+          }
+          if (pokemonDetailDrawerBodyEl) {
+            pokemonDetailDrawerBodyEl.innerHTML = pokemonInfoHtml(detailDrawerPokemon);
+          }
+          if (pokemonDetailDrawerBackdropEl) pokemonDetailDrawerBackdropEl.hidden = false;
+          if (pokemonDetailDrawerEl) {
+            pokemonDetailDrawerEl.classList.add("is-open");
+            pokemonDetailDrawerEl.setAttribute("aria-hidden", "false");
+          }
+          updatePokemonPcPreview();
+        } catch (error) {
+          console.error("Erro ao abrir detalhes do Pokemon:", error);
         }
-        if (pokemonDetailDrawerBodyEl) {
-          pokemonDetailDrawerBodyEl.innerHTML = pokemonInfoHtml(detailDrawerPokemon);
-        }
-        if (pokemonDetailDrawerBackdropEl) pokemonDetailDrawerBackdropEl.hidden = false;
-        if (pokemonDetailDrawerEl) {
-          pokemonDetailDrawerEl.classList.add("is-open");
-          pokemonDetailDrawerEl.setAttribute("aria-hidden", "false");
-        }
-        updatePokemonPcPreview();
         return true;
       }
       return false;

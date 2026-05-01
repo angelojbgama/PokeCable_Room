@@ -21,26 +21,21 @@
         <span>O navegador não envia save completo ao servidor. Depois da troca, ele gera um backup e um novo arquivo para baixar.</span>
       </section>
 
-      <nav class="tabs" aria-label="Áreas do PokeCable Room">
-        <button type="button" class="tab-button active" data-tab="setup">Sala e save</button>
-        <button type="button" class="tab-button" data-tab="trade" disabled>Troca</button>
-        <button type="button" class="tab-button" data-tab="battle" disabled>Batalha</button>
-        <button type="button" class="tab-button" data-tab="logs">Logs</button>
-      </nav>
-
       <section class="tab-panel active" id="tab-setup" data-tab-panel="setup">
         <div class="grid grid-single">
           <form class="panel" id="roomForm">
-            <div class="panel-head">
-              <div>
-                <h2>Entrada</h2>
-                <p>Primeiro carregue o save. Depois o mesmo bloco vira a configuração da sala.</p>
+            <div id="setupHeader">
+              <div class="panel-head">
+                <div>
+                  <h2>Entrada</h2>
+                  <p>Primeiro carregue o save. Depois o mesmo bloco vira a configuração da sala.</p>
+                </div>
               </div>
-            </div>
 
-            <div class="status-box">
-              <span>Resumo</span>
-              <strong id="setupStatus">Carregue um save para começar.</strong>
+              <div class="status-box">
+                <span>Resumo</span>
+                <strong id="setupStatus">Carregue um save para começar.</strong>
+              </div>
             </div>
 
             <div id="setupSaveStage">
@@ -86,10 +81,12 @@
               </div>
             </div>
 
-            <div class="status-box">
-              <span>Status da sessão</span>
-              <strong id="sessionStatus">Carregue um save local.</strong>
-              <small id="sessionDetail">A mesma sessão web mantém troca e batalha sob o mesmo nome de sala.</small>
+            <div id="setupFooter">
+              <div class="status-box">
+                <span>Status da sessão</span>
+                <strong id="sessionStatus">Carregue um save local.</strong>
+                <small id="sessionDetail">A mesma sessão web mantém troca e batalha sob o mesmo nome de sala.</small>
+              </div>
             </div>
 
             <div class="frontend-infra-hidden" aria-hidden="true">
@@ -120,42 +117,30 @@
       </section>
 
       <section class="tab-panel" id="tab-trade" data-tab-panel="trade">
-        <div class="grid">
+        <div class="grid grid-single">
           <section class="panel">
             <div class="panel-head">
               <div>
                 <h2>Rodada de troca</h2>
-                <p>A sessão já está aberta. Aqui você só envia a oferta, valida e confirma.</p>
+                <p>A sessão já está aberta. Selecione um Pokémon, envie a oferta e confirme a troca.</p>
               </div>
-              <button type="button" id="backToModeFromTrade" class="ghost">Voltar</button>
+              <button type="button" id="backToModeFromTrade" class="ghost">Escolher modo</button>
             </div>
+          </section>
+        </div>
 
+        <div class="grid">
+          <section class="panel">
             <div class="status-box">
-              <span>Save atual</span>
-              <strong id="tradeSaveStatus">Nenhum save carregado.</strong>
-              <small>O save é carregado primeiro na aba inicial, depois a troca usa a mesma sessão.</small>
-            </div>
-
-            <div class="status-box">
-              <span>Pokémon selecionado para troca</span>
+              <span id="tradePartyLabel">Sua Party</span>
               <strong id="tradeSelectedSummary">Nenhum Pokémon selecionado.</strong>
-              <small>Clique em um Pokémon da sua party ou PC abaixo para definir a oferta da rodada.</small>
             </div>
 
             <select id="pokemonChoice" hidden aria-hidden="true"></select>
 
             <div class="team-preview team-preview-selectable" id="tradePartyPreview"></div>
-            <div class="inventory-card inventory-card-wide inventory-card-compact">
-              <div class="inventory-card-head">
-                <span>PC Pokémon</span>
-                <button type="button" id="tradeTogglePokemonPc" class="ghost">Computador do Player</button>
-              </div>
-              <div id="tradeBoxPreview" class="inventory-preview-body inventory-preview-empty">
-                Clique em "Computador do Player" para abrir as boxes deste save.
-              </div>
-            </div>
 
-            <div class="actions">
+            <div class="actions" style="margin-top: 20px;">
               <button type="button" id="sendTradeOffer" disabled>Enviar oferta</button>
               <button type="button" id="confirmTrade" disabled>Confirmar troca</button>
               <button type="button" id="cancelTrade" class="secondary" disabled>Cancelar rodada</button>
@@ -163,15 +148,8 @@
           </section>
 
           <section class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>Troca</h2>
-              <p>O servidor recebe somente o payload do Pokémon selecionado.</p>
-            </div>
-          </div>
-
             <div class="status-box">
-              <span>Status</span>
+              <span>Status da Troca</span>
               <strong id="tradeStatus">Carregue um save para começar.</strong>
             </div>
 
@@ -210,6 +188,20 @@
             <div id="downloadArea" class="download-area"></div>
           </section>
         </div>
+
+        <div class="grid grid-single" style="margin-top: 20px;">
+          <section class="panel">
+            <div class="inventory-card inventory-card-wide inventory-card-compact">
+              <div class="inventory-card-head">
+                <span>PC Pokémon</span>
+                <button type="button" id="tradeTogglePokemonPc" class="ghost">Computador do Player</button>
+              </div>
+              <div id="tradeBoxPreview" class="inventory-preview-body inventory-preview-empty">
+                Clique em "Computador do Player" para abrir as boxes deste save.
+              </div>
+            </div>
+          </section>
+        </div>
       </section>
 
       <section class="tab-panel" id="tab-battle" data-tab-panel="battle">
@@ -220,7 +212,7 @@
                 <h2>Batalha na mesma sala</h2>
                 <p>Usa a party do save carregado como time canônico sem sair da sessão atual.</p>
               </div>
-              <button type="button" id="backToModeFromBattle" class="ghost">Voltar</button>
+              <button type="button" id="backToModeFromBattle" class="ghost">Escolher modo</button>
             </div>
 
             <div class="status-box">
@@ -293,6 +285,7 @@
       </div>
     </aside>
 
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="/move-names.js"></script>
     <script src="/ability-names.js"></script>
     <script src="/item-names.js"></script>

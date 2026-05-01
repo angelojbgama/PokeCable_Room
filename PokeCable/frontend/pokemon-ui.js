@@ -44,7 +44,7 @@ window.POKECABLE_POKEMON_UI = {
         source_game: cleanName(canonical?.source_game || pokemonLike.game || pokemonLike.source_game || getLoadedSaveGame?.() || ""),
         ot_name: cleanName(canonical?.ot_name || pokemonLike.ot_name || ""),
         trainer_id: Number(canonical?.trainer_id || pokemonLike.trainer_id || 0),
-        ability: abilityName(canonical?.ability ?? pokemonLike.ability ?? pokemonLike.ability_id),
+        ability: abilityName(canonical?.ability ?? pokemonLike.ability ?? pokemonLike.ability_id) || (Number.isFinite(pokemonLike.ability_index) ? `Index ${pokemonLike.ability_index}` : null),
         nature: cleanName(canonical?.nature?.name || canonical?.nature || pokemonLike.nature || ""),
         gender,
         unown_form: unownForm
@@ -60,10 +60,14 @@ window.POKECABLE_POKEMON_UI = {
       `;
     }
 
-    function renderPokemonDetailsHtml(pokemonLike) {
+    function renderPokemonDetailsHtml(pokemonLike, emptyMessage = "Item, golpes e características aparecem aqui.") {
       const facts = pokemonFacts(pokemonLike);
       if (!facts) {
-        return "Item, golpes e características aparecem aqui.";
+        return [
+          detailBlockHtml("Item", "<span>-</span>"),
+          detailBlockHtml("Golpes", "<span>-</span>"),
+          detailBlockHtml("Características", `<span>${escapeHtml(emptyMessage)}</span>`)
+        ].join("");
       }
       const itemText = facts.held_item_name ? escapeHtml(facts.held_item_name) : "Sem item";
       const moveItems = facts.moves.length
@@ -94,7 +98,7 @@ window.POKECABLE_POKEMON_UI = {
       if (!pokemonLike) {
         summaryEl.innerHTML = "-";
         detailsEl.className = "pokemon-card-details pokemon-card-details-empty";
-        detailsEl.textContent = options.emptyMessage || "Aguardando o Pokémon do outro jogador.";
+        detailsEl.innerHTML = renderPokemonDetailsHtml(null, options.emptyMessage || "Aguardando o Pokémon do outro jogador.");
         return;
       }
       summaryEl.innerHTML = renderPokemonSummaryHtml(pokemonLike, textOverride, { variant: "trade" });
