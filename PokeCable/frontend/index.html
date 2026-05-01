@@ -23,138 +23,99 @@
 
       <nav class="tabs" aria-label="Áreas do PokeCable Room">
         <button type="button" class="tab-button active" data-tab="setup">Sala e save</button>
-        <button type="button" class="tab-button" data-tab="trade">Troca</button>
-        <button type="button" class="tab-button" data-tab="battle">Batalha</button>
+        <button type="button" class="tab-button" data-tab="trade" disabled>Troca</button>
+        <button type="button" class="tab-button" data-tab="battle" disabled>Batalha</button>
         <button type="button" class="tab-button" data-tab="logs">Logs</button>
       </nav>
 
       <section class="tab-panel active" id="tab-setup" data-tab-panel="setup">
-        <div class="grid">
+        <div class="grid grid-single">
           <form class="panel" id="roomForm">
             <div class="panel-head">
               <div>
-                <h2>Sala e save</h2>
-                <p>Abra uma única sessão, carregue ou troque o save local e use a mesma sala para troca e batalha.</p>
+                <h2>Entrada</h2>
+                <p>Primeiro carregue o save. Depois o mesmo bloco vira a configuração da sala.</p>
               </div>
-            </div>
-
-            <div class="flow-stack">
-              <section class="flow-block">
-                <div class="flow-heading">
-                  <span>Etapa 1</span>
-                  <strong>Configurar a sala</strong>
-                </div>
-                <label>
-                  Nome da sala
-                  <input id="roomName" maxlength="64" required value="poke-room" autocomplete="off" />
-                </label>
-
-                <label>
-                  Senha
-                  <input id="roomPassword" type="password" required autocomplete="off" />
-                </label>
-
-                <div class="actions">
-                  <button type="button" id="createSession">Criar sala</button>
-                  <button type="button" id="joinSession" class="secondary">Entrar na sala</button>
-                  <button type="button" id="leaveSession" class="ghost" disabled>Sair da sala</button>
-                </div>
-
-                <div class="status-box">
-                  <span>Status da sessão</span>
-                  <strong id="sessionStatus">Defina sala e senha. Depois carregue um save para entrar.</strong>
-                  <small id="sessionDetail">A mesma sessão web mantém troca e batalha sob o mesmo nome de sala.</small>
-                </div>
-              </section>
-
-              <section class="flow-block">
-                <div class="flow-heading">
-                  <span>Etapa 2</span>
-                  <strong>Carregar o save local</strong>
-                </div>
-                <label>
-                  Save local .sav/.srm
-                  <input id="saveFile" type="file" accept=".sav,.srm" />
-                </label>
-
-                <div class="save-summary" id="saveSummary">
-                  <span>Nenhum save carregado</span>
-                  <strong>Gen 1, Gen 2 e Gen 3 são detectadas pelo arquivo. O primeiro save fica travado por segurança.</strong>
-                </div>
-              </section>
-            </div>
-          </form>
-
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <h2>Escolha o fluxo</h2>
-                <p>Com a sessão e o save prontos, você alterna entre troca e batalha sem abrir outra sala.</p>
-              </div>
-            </div>
-
-            <div class="mode-grid">
-              <button type="button" class="mode-card" id="openTradeTab" disabled>
-                <span>Troca por save</span>
-                <strong>Enviar e receber Pokémon</strong>
-              </button>
-              <button type="button" class="mode-card" id="openBattleTab" disabled>
-                <span>Batalha</span>
-                <strong>Usar party como time</strong>
-              </button>
             </div>
 
             <div class="status-box">
               <span>Resumo</span>
-              <strong id="setupStatus">Carregue um save para liberar troca e batalha.</strong>
+              <strong id="setupStatus">Carregue um save para começar.</strong>
+            </div>
+
+            <div id="setupSaveStage">
+              <label>
+                Save local .sav/.srm
+                <input id="saveFile" type="file" accept=".sav,.srm" />
+              </label>
+
+              <div class="save-summary" id="saveSummary">
+                <span>Nenhum save carregado</span>
+                <strong>Gen 1, Gen 2 e Gen 3 são detectadas pelo arquivo. O primeiro save fica travado por segurança.</strong>
+              </div>
+            </div>
+
+            <div id="setupRoomStage" class="setup-stage-hidden">
+              <label>
+                Nome da sala
+                <input id="roomName" maxlength="64" required value="poke-room" autocomplete="off" />
+              </label>
+
+              <label>
+                Senha
+                <input id="roomPassword" type="password" required autocomplete="off" />
+              </label>
+
+              <div class="actions">
+                <button type="button" id="createSession">Criar sala</button>
+                <button type="button" id="joinSession" class="secondary">Entrar na sala</button>
+                <button type="button" id="leaveSession" class="ghost" disabled>Sair da sala</button>
+              </div>
+            </div>
+
+            <div id="setupChoiceStage" class="setup-stage-hidden">
+              <div class="mode-grid">
+                <button type="button" class="mode-card" id="openTradeTab">
+                  <span>Modo</span>
+                  <strong>Troca</strong>
+                </button>
+                <button type="button" class="mode-card" id="openBattleTab">
+                  <span>Modo</span>
+                  <strong>Batalha</strong>
+                </button>
+              </div>
             </div>
 
             <div class="status-box">
-              <span>Pokémon selecionado</span>
-              <strong id="setupSelectedSummary">Nenhum Pokémon selecionado.</strong>
-              <small id="setupSelectionDetail">Selecione um Pokémon da party ou do PC para trocar, mover ou editar item.</small>
+              <span>Status da sessão</span>
+              <strong id="sessionStatus">Carregue um save local.</strong>
+              <small id="sessionDetail">A mesma sessão web mantém troca e batalha sob o mesmo nome de sala.</small>
             </div>
 
-            <div class="actions actions-wrap">
-              <button type="button" id="startMovePokemon" class="secondary" disabled>Iniciar movimentação</button>
-              <button type="button" id="cancelMovePokemon" class="ghost" disabled>Cancelar movimentação</button>
-              <button type="button" id="removeHeldItem" class="secondary" disabled>Remover item</button>
-              <button type="button" id="applyHeldItem" disabled>Fazer segurar item selecionado</button>
-            </div>
-
-            <div class="status-box">
-              <span>Organização do save</span>
-              <strong id="saveManagementStatus">Selecione um Pokémon para começar.</strong>
-              <small id="selectedInventoryItemStatus">Nenhum item selecionado na mochila/PC.</small>
-            </div>
-
-            <div class="team-preview" id="setupPartyPreview"></div>
-
-            <div class="inventory-grid">
-              <div class="inventory-card">
-                <span>Mochila</span>
-                <div id="setupBagPreview" class="inventory-preview-body inventory-preview-empty">
-                  Carregue um save para visualizar os pockets da mochila.
-                </div>
+            <div class="frontend-infra-hidden" aria-hidden="true">
+              <div class="status-box">
+                <span>Pokémon selecionado</span>
+                <strong id="setupSelectedSummary">Nenhum Pokémon selecionado.</strong>
+                <small id="setupSelectionDetail">Selecione um Pokémon da party ou do PC para trocar, mover ou editar item.</small>
               </div>
-              <div class="inventory-card">
-                <span>PC de itens</span>
-                <div id="setupPcPreview" class="inventory-preview-body inventory-preview-empty">
-                  Carregue um save para visualizar os itens guardados no PC.
-                </div>
+              <div class="actions actions-wrap">
+                <button type="button" id="startMovePokemon" class="secondary" disabled>Iniciar movimentação</button>
+                <button type="button" id="cancelMovePokemon" class="ghost" disabled>Cancelar movimentação</button>
+                <button type="button" id="removeHeldItem" class="secondary" disabled>Remover item</button>
+                <button type="button" id="applyHeldItem" disabled>Fazer segurar item selecionado</button>
               </div>
+              <div class="status-box">
+                <span>Organização do save</span>
+                <strong id="saveManagementStatus">Selecione um Pokémon para começar.</strong>
+                <small id="selectedInventoryItemStatus">Nenhum item selecionado na mochila/PC.</small>
+              </div>
+              <div class="team-preview" id="setupPartyPreview"></div>
+              <div id="setupBagPreview" class="inventory-preview-body inventory-preview-empty"></div>
+              <div id="setupPcPreview" class="inventory-preview-body inventory-preview-empty"></div>
+              <button type="button" id="setupTogglePokemonPc" class="ghost">Computador do Player</button>
+              <div id="setupPokemonPcPreview" class="inventory-preview-body inventory-preview-empty"></div>
             </div>
-
-            <div class="inventory-card inventory-card-wide">
-              <div class="inventory-card-head">
-                <span>PC Pokémon</span>
-                <button type="button" id="setupTogglePokemonPc" class="ghost">Computador do Player</button>
-              </div>
-              <div id="setupPokemonPcPreview" class="inventory-preview-body inventory-preview-empty">
-                Clique em "Computador do Player" para abrir as boxes deste save.
-              </div>
-            </div>
-          </section>
+          </form>
         </div>
       </section>
 
@@ -166,11 +127,13 @@
                 <h2>Rodada de troca</h2>
                 <p>A sessão já está aberta. Aqui você só envia a oferta, valida e confirma.</p>
               </div>
+              <button type="button" id="backToModeFromTrade" class="ghost">Voltar</button>
             </div>
 
             <div class="status-box">
               <span>Save atual</span>
               <strong id="tradeSaveStatus">Nenhum save carregado.</strong>
+              <small>O save é carregado primeiro na aba inicial, depois a troca usa a mesma sessão.</small>
             </div>
 
             <div class="status-box">
@@ -257,11 +220,13 @@
                 <h2>Batalha na mesma sala</h2>
                 <p>Usa a party do save carregado como time canônico sem sair da sessão atual.</p>
               </div>
+              <button type="button" id="backToModeFromBattle" class="ghost">Voltar</button>
             </div>
 
             <div class="status-box">
               <span>Status da batalha</span>
               <strong id="battleStatus">Carregue um save para montar o time.</strong>
+              <small id="battleSaveStatus">O save é carregado primeiro na aba inicial.</small>
             </div>
 
             <div class="battle-meta">

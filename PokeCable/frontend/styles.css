@@ -135,6 +135,18 @@ h2 {
   gap: 16px;
 }
 
+.grid-single {
+  grid-template-columns: minmax(320px, 720px);
+}
+
+.frontend-infra-hidden {
+  display: none !important;
+}
+
+.setup-stage-hidden {
+  display: none !important;
+}
+
 .panel,
 .log-panel {
   border: 1px solid var(--line);

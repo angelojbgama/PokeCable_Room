@@ -10,9 +10,16 @@ const eventLogEl = document.querySelector("#eventLog");
 const pokemonChoiceEl = document.querySelector("#pokemonChoice");
 const saveFileEl = document.querySelector("#saveFile");
 const saveSummaryEl = document.querySelector("#saveSummary");
+const setupSaveStageEl = document.querySelector("#setupSaveStage");
+const setupRoomStageEl = document.querySelector("#setupRoomStage");
+const setupChoiceStageEl = document.querySelector("#setupChoiceStage");
 const createSessionButton = document.querySelector("#createSession");
 const joinSessionButton = document.querySelector("#joinSession");
 const leaveSessionButton = document.querySelector("#leaveSession");
+const openTradeTabButton = document.querySelector("#openTradeTab");
+const openBattleTabButton = document.querySelector("#openBattleTab");
+const backToModeFromTradeButton = document.querySelector("#backToModeFromTrade");
+const backToModeFromBattleButton = document.querySelector("#backToModeFromBattle");
 const sessionStatusEl = document.querySelector("#sessionStatus");
 const sessionDetailEl = document.querySelector("#sessionDetail");
 const sendTradeOfferButton = document.querySelector("#sendTradeOffer");
@@ -24,14 +31,13 @@ const confirmBattleButton = document.querySelector("#confirmBattle");
 const forfeitBattleButton = document.querySelector("#forfeitBattle");
 const battleLogEl = document.querySelector("#battleLog");
 const battleStatusEl = document.querySelector("#battleStatus");
+const battleSaveStatusEl = document.querySelector("#battleSaveStatus");
 const battleFormatEl = document.querySelector("#battleFormat");
 const battleTeamCountEl = document.querySelector("#battleTeamCount");
 const battleTeamPreviewEl = document.querySelector("#battleTeamPreview");
 const battleActionsEl = document.querySelector("#battleActions");
 const tabButtons = Array.from(document.querySelectorAll("[data-tab]"));
 const tabPanels = Array.from(document.querySelectorAll("[data-tab-panel]"));
-const openTradeTabButton = document.querySelector("#openTradeTab");
-const openBattleTabButton = document.querySelector("#openBattleTab");
 const setupStatusEl = document.querySelector("#setupStatus");
 const setupSelectedSummaryEl = document.querySelector("#setupSelectedSummary");
 const setupSelectionDetailEl = document.querySelector("#setupSelectionDetail");
@@ -307,9 +313,6 @@ function normalizePokemonDisplay({ national_dex_id, species_name, level, nicknam
     speciesName = speciesNames[national_dex_id];
   }
   if (!speciesName) speciesName = national_dex_id ? `Species #${national_dex_id}` : "Pokemon";
-  if (Number(national_dex_id || 0) === 201 && cleanName(unown_form)) {
-    speciesName = `${speciesName} (${cleanName(unown_form)})`;
-  }
   if (Number(national_dex_id || 0) === 201 && cleanName(unown_form)) {
     speciesName = `${speciesName} (${cleanName(unown_form)})`;
   }
@@ -919,6 +922,11 @@ function clearLoadedSave() {
   saveFileEl.disabled = false;
   saveFileEl.value = "";
   saveSummaryEl.innerHTML = "<span>Nenhum save carregado</span><strong>Gen 1, Gen 2 e Gen 3 são detectadas pelo arquivo.</strong>";
+  setupSaveStageEl?.classList.remove("setup-stage-hidden");
+  setupRoomStageEl?.classList.add("setup-stage-hidden");
+  setupChoiceStageEl?.classList.add("setup-stage-hidden");
+  if (tradeSaveStatusEl) tradeSaveStatusEl.textContent = "Nenhum save carregado.";
+  if (battleSaveStatusEl) battleSaveStatusEl.textContent = "Nenhum save carregado.";
 }
 
 function loadedSaveHeadline(save) {
@@ -928,14 +936,23 @@ function loadedSaveHeadline(save) {
 }
 
 function refreshSessionUi() {
-  const hasTradeSave = Boolean(loadedSave && ([...(loadedSave.party || []), ...((loadedSave.boxes?.pokemon) || [])].some((pokemon) => !pokemon.is_egg)));
-  const hasBattleSave = Boolean(loadedSave && (loadedSave.party || []).some((pokemon) => !pokemon.is_egg));
-  const canPrepareSession = roomCredentialsReady() && !sessionState.joined && !sessionState.pending;
+  const hasLoadedSave = Boolean(loadedSave);
+  const credentialsReady = roomCredentialsReady();
+  const canPrepareSession = hasLoadedSave && credentialsReady && !sessionState.joined && !sessionState.pending;
+  const roomChoiceReady = hasLoadedSave && sessionState.joined;
   createSessionButton.disabled = !canPrepareSession;
   joinSessionButton.disabled = !canPrepareSession;
   leaveSessionButton.disabled = !(sessionState.joined || sessionState.pending || sessionState.saveLocked);
-  openTradeTabButton.disabled = !hasTradeSave;
-  openBattleTabButton.disabled = !hasBattleSave;
+  if (openTradeTabButton) openTradeTabButton.disabled = !roomChoiceReady;
+  if (openBattleTabButton) openBattleTabButton.disabled = !roomChoiceReady;
+  tabButtons.forEach((button) => {
+    if (button.dataset.tab === "trade" || button.dataset.tab === "battle") {
+      button.disabled = !roomChoiceReady;
+    }
+  });
+  if (setupSaveStageEl) setupSaveStageEl.classList.toggle("setup-stage-hidden", hasLoadedSave);
+  if (setupRoomStageEl) setupRoomStageEl.classList.toggle("setup-stage-hidden", !hasLoadedSave || sessionState.joined);
+  if (setupChoiceStageEl) setupChoiceStageEl.classList.toggle("setup-stage-hidden", !roomChoiceReady);
   tradeFlowController?.syncButtons();
   battleFlowController?.syncButtons();
   if (!loadedSave) {
@@ -943,7 +960,7 @@ function refreshSessionUi() {
       setSessionStatus("Sessão preparada. Carregue um save para concluir a entrada na sala.");
       return;
     }
-    setSessionStatus("Defina sala e senha. Você já pode criar ou entrar sem carregar save.");
+    setSessionStatus("Carregue um save local.");
     return;
   }
   if (!sessionState.joined) {
@@ -955,7 +972,7 @@ function refreshSessionUi() {
       return;
     }
     setSessionStatus(
-      "Save carregado. Escolha criar ou entrar na sala.",
+      "Save carregado. Agora defina sala e senha.",
       `${loadedSave.label}. O save local fica travado por segurança até você sair da sessão.`
     );
     return;
@@ -963,12 +980,14 @@ function refreshSessionUi() {
   const tradeLabel = sessionState.tradeJoined ? (tradeState.roomReady ? "troca pronta" : "troca aguardando") : "troca desconectada";
   const battleLabel = sessionState.battleJoined ? (battleState.roomReady ? "batalha pronta" : "batalha aguardando") : "batalha desconectada";
   setSessionStatus(
-    "Sessão ativa na mesma sala para troca e batalha.",
+    "Sessão ativa. Escolha troca ou batalha.",
     `${tradeLabel}; ${battleLabel}. O save local fica travado por segurança até você sair da sessão.`
   );
 }
 
 function activateTab(tabName) {
+  const targetButton = tabButtons.find((button) => button.dataset.tab === tabName);
+  if (targetButton?.disabled) return;
   tabButtons.forEach((button) => {
     const active = button.dataset.tab === tabName;
     button.classList.toggle("active", active);
@@ -2879,7 +2898,8 @@ function updatePokemonOptions() {
     setupPcPreviewEl.textContent = "Carregue um save para visualizar os itens guardados no PC.";
     setupPokemonPcPreviewEl.className = "inventory-preview-body inventory-preview-empty";
     setupPokemonPcPreviewEl.textContent = "Boxes/PC Pokémon ainda não foram carregados para este save.";
-    tradeSaveStatusEl.textContent = "Nenhum save carregado.";
+  tradeSaveStatusEl.textContent = "Nenhum save carregado.";
+  if (battleSaveStatusEl) battleSaveStatusEl.textContent = "Nenhum save carregado.";
     tradeSelectedSummaryEl.textContent = "Nenhum Pokémon selecionado.";
     if (setupSelectedSummaryEl) setupSelectedSummaryEl.textContent = "Nenhum Pokémon selecionado.";
     setupStatusEl.textContent = "Carregue um save para liberar troca e batalha.";
@@ -2913,6 +2933,7 @@ function updatePokemonOptions() {
     ) || null;
   }
   tradeSaveStatusEl.textContent = `${loadedSave.label}: ${loadedSave.party.length} Pokémon na party e ${(loadedSave.boxes?.pokemon || []).length} no PC.`;
+  if (battleSaveStatusEl) battleSaveStatusEl.textContent = `${loadedSave.label}: ${(loadedSave.party || []).length} Pokémon na party.`;
   setupStatusEl.textContent = enabled
     ? `${loadedSave.label} carregado. Abra ou sincronize a sessão e depois escolha troca ou batalha.`
     : "Este save não possui Pokémon válidos na party nem no PC para troca.";
@@ -3188,6 +3209,18 @@ createSessionButton.addEventListener("click", () => {
 joinSessionButton.addEventListener("click", () => {
   void startSession("join").catch((error) => setSessionStatus(error.message || String(error)));
 });
+openTradeTabButton?.addEventListener("click", () => {
+  activateTab("trade");
+});
+openBattleTabButton?.addEventListener("click", () => {
+  activateTab("battle");
+});
+backToModeFromTradeButton?.addEventListener("click", () => {
+  activateTab("setup");
+});
+backToModeFromBattleButton?.addEventListener("click", () => {
+  activateTab("setup");
+});
 document.querySelector("#roomName").addEventListener("input", () => {
   refreshSessionUi();
 });
@@ -3200,8 +3233,6 @@ leaveSessionButton.addEventListener("click", () => {
 tabButtons.forEach((button) => {
   button.addEventListener("click", () => activateTab(button.dataset.tab));
 });
-openTradeTabButton.addEventListener("click", () => activateTab("trade"));
-openBattleTabButton.addEventListener("click", () => activateTab("battle"));
 sendTradeOfferButton.addEventListener("click", () => {
   try {
     tradeFlowController?.sendOffer();
