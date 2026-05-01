@@ -22,7 +22,10 @@ window.POKECABLE_TRADE_PREVIEW = {
     } = elements;
 
     function clearTradePreviews() {
-      tradeCompatibilityPreviewEl.textContent = "Aguardando o Pokémon do outro jogador.";
+      const grid = document.querySelector(".trade-preview-grid");
+      if (grid) grid.hidden = true;
+
+      tradeCompatibilityPreviewEl.textContent = "Aguardando oferta...";
       tradeCompatibilityPreviewEl.className = "trade-preview-body trade-preview-empty";
       tradeEvolutionPreviewEl.textContent = "Sem evolução prevista.";
       tradeEvolutionPreviewEl.className = "trade-preview-body trade-preview-empty";
@@ -45,7 +48,7 @@ window.POKECABLE_TRADE_PREVIEW = {
       localOfferDetailsEl.className = "pokemon-card-details pokemon-card-details-empty";
       localOfferDetailsEl.innerHTML = emptyLayout("Item, golpes e características aparecem aqui.");
       peerOfferDetailsEl.className = "pokemon-card-details pokemon-card-details-empty";
-      peerOfferDetailsEl.innerHTML = emptyLayout("Aguardando o Pokémon do outro jogador.");
+      peerOfferDetailsEl.innerHTML = emptyLayout("Aguardando oferta...");
     }
 
     function listSectionHtml(title, items) {
@@ -133,10 +136,12 @@ window.POKECABLE_TRADE_PREVIEW = {
     }
 
     function renderTradeCompatibilityPreview(payload, report, explicitTargetGeneration) {
+      const grid = document.querySelector(".trade-preview-grid");
       if (!payload) {
         clearTradePreviews();
         return;
       }
+      if (grid) grid.hidden = false;
       const targetGeneration = explicitTargetGeneration || report?.target_generation || getLoadedSaveGeneration() || payload.generation;
       const summary = payload.display_summary || (payload.summary && payload.summary.display_summary) || normalizePokemonDisplay(payload);
       const blockedReasons = (report?.blocking_reasons || []).slice();

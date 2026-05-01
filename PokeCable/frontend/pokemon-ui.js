@@ -94,12 +94,12 @@ window.POKECABLE_POKEMON_UI = {
     }
 
     function renderOfferCard(summaryEl, detailsEl, pokemonLike, textOverride = "", options = {}) {
-      if (!summaryEl || !detailsEl) return;
       if (!pokemonLike) {
         summaryEl.innerHTML = "-";
         detailsEl.className = "pokemon-card-details pokemon-card-details-empty";
-        detailsEl.innerHTML = renderPokemonDetailsHtml(null, options.emptyMessage || "Aguardando o Pokémon do outro jogador.");
+        detailsEl.innerHTML = renderPokemonDetailsHtml(null, options.emptyMessage || "Aguardando oferta...");
         return;
+      }
       }
       summaryEl.innerHTML = renderPokemonSummaryHtml(pokemonLike, textOverride, { variant: "trade" });
       detailsEl.className = "pokemon-card-details";

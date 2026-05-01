@@ -42,7 +42,7 @@ window.POKECABLE_TRADE_FLOW = {
       state.roundActive = false;
       peerOfferEl.innerHTML = "-";
       peerOfferDetailsEl.className = "pokemon-card-details pokemon-card-details-empty";
-      peerOfferDetailsEl.textContent = options.peerMessage || "Aguardando o Pokémon do outro jogador.";
+      peerOfferDetailsEl.textContent = options.peerMessage || "Aguardando oferta...";
       clearTradePreviews();
       renderOfferCard(localOfferEl, localOfferDetailsEl, selected || null, "", { emptyMessage: "Escolha um Pokémon da party." });
       confirmButton.disabled = true;
