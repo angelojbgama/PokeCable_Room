@@ -409,9 +409,9 @@ button.ghost:hover:not(:disabled) {
 }
 
 .pokemon-summary-trade {
-  grid-template-columns: 76px 1fr;
-  gap: 12px;
-  min-height: 76px;
+  grid-template-columns: 56px 1fr;
+  gap: 10px;
+  min-height: 56px;
 }
 
 .pokemon-summary-text {
@@ -436,8 +436,8 @@ button.ghost:hover:not(:disabled) {
 }
 
 .pokemon-sprite-trade {
-  width: 76px;
-  height: 76px;
+  width: 56px;
+  height: 56px;
 }
 
 .trade-preview-grid {
@@ -466,7 +466,17 @@ button.ghost:hover:not(:disabled) {
   font-weight: 700;
 }
 
-.trade-report-status {
+.trade-report-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.trade-report-badge {
   display: inline-flex;
   width: fit-content;
   align-items: center;
@@ -478,12 +488,12 @@ button.ghost:hover:not(:disabled) {
   text-transform: uppercase;
 }
 
-.trade-report-status.compatible {
+.trade-report-badge.compatible {
   background: #e7f6ee;
   color: var(--green);
 }
 
-.trade-report-status.blocked {
+.trade-report-badge.blocked {
   background: #fdebec;
   color: var(--accent-dark);
 }
@@ -494,12 +504,18 @@ button.ghost:hover:not(:disabled) {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
-  padding: 12px;
+  padding: 10px;
 }
 
 .trade-report-meta p {
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.trade-report-meta-text {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .trade-report-sections {
@@ -545,6 +561,102 @@ button.ghost:hover:not(:disabled) {
   color: var(--muted);
   font-size: 0.88rem;
   font-weight: 700;
+}
+
+.evolution-interactive-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.evolution-sprite-container {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s;
+}
+
+.evolution-sprite-container:hover {
+  transform: scale(1.1);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.evolution-sprite-base,
+.evolution-sprite-target {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 76px;
+  height: 76px;
+  image-rendering: pixelated;
+  object-fit: contain;
+}
+
+.evolution-sprite-target {
+  z-index: 2;
+  opacity: 1;
+}
+
+.evolution-sprite-base {
+  z-index: 1;
+  opacity: 0;
+}
+
+/* Interrupted state: show base, hide target */
+.evolution-sprite-container.is-interrupted .evolution-sprite-target {
+  opacity: 0;
+}
+.evolution-sprite-container.is-interrupted .evolution-sprite-base {
+  opacity: 1;
+}
+
+/* Evolution Animation */
+.evolution-sprite-container.is-evolving .evolution-sprite-target {
+  animation: evolveBlinkTarget 2s steps(1) forwards;
+}
+
+.evolution-sprite-container.is-evolving .evolution-sprite-base {
+  animation: evolveBlinkBase 2s steps(1) forwards;
+}
+
+@keyframes evolveBlinkTarget {
+  0%, 10%, 25%, 45%, 70%, 100% { opacity: 1; }
+  5%, 15%, 35%, 55%, 85% { opacity: 0; }
+}
+
+@keyframes evolveBlinkBase {
+  0%, 10%, 25%, 45%, 70%, 100% { opacity: 0; }
+  5%, 15%, 35%, 55%, 85% { opacity: 1; }
+}
+
+.evolution-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ink);
+  background: #fff;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.evolution-toggle-wrap input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  cursor: pointer;
 }
 
 .log-panel {

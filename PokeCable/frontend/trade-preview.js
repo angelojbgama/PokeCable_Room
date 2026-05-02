@@ -12,7 +12,8 @@ window.POKECABLE_TRADE_PREVIEW = {
     speciesNames,
     simpleTradeEvolutionByNational,
     itemTradeEvolutionRules,
-    getLoadedSaveGeneration
+    getLoadedSaveGeneration,
+    pokemonSpriteUrl
   }) {
     const {
       tradeCompatibilityPreviewEl,
@@ -157,32 +158,19 @@ window.POKECABLE_TRADE_PREVIEW = {
       const removedItems = (report?.removed_items || []).map((item) => `Item removido: ${item.name || `Item #${item.item_id}`}`);
       const removedFields = (report?.removed_fields || []).map((field) => `${field === "ability" ? "Ability" : field === "nature" ? "Nature" : field} será removido.`);
       const transformations = (report?.transformations || []).slice();
-      const normalized = report?.normalized_species || {};
       const statusClass = report?.compatible ? "compatible" : "blocked";
-      const statusLabel = report?.compatible ? "Compatível" : "Bloqueado";
-      const metaLines = payload.generation === targetGeneration
-        ? [
-            `Origem Gen ${report?.source_generation || payload.generation} -> Destino Gen ${targetGeneration}.`,
-            "Troca same-generation: o save local receberá o payload raw."
-          ]
-        : [
-            `Origem Gen ${report?.source_generation || payload.generation} -> Destino Gen ${targetGeneration}.`,
-            normalized.target_species_id
-              ? `Species destino: ${normalized.target_species_id} (${normalized.target_species_id_space || "nativo"}).`
-              : "Species destino ainda não normalizada."
-          ];
+      const statusLabel = report?.compatible ? "Transferência OK" : "Transferência Bloqueada";
+      const meta = `Origem Gen ${report?.source_generation || payload.generation} ↔ Destino Gen ${targetGeneration}`;
 
       tradeCompatibilityPreviewEl.className = "trade-preview-body";
       tradeCompatibilityPreviewEl.innerHTML = `
-        <div class="trade-report-status ${statusClass}">${statusLabel}</div>
-        <div class="trade-report-meta">
-          ${renderPokemonSummaryHtml(payload, summary, { variant: "trade" })}
-          <p>${escapeHtml(metaLines.join(" "))}</p>
-          <p>${escapeHtml(`Modo derivado: ${report?.mode || "same_generation"}`)}</p>
+        <div class="trade-report-header">
+          <span class="trade-report-badge ${statusClass}">${statusLabel}</span>
+          <span class="trade-report-meta-text">${escapeHtml(meta)}</span>
         </div>
         <div class="trade-report-sections">
           ${listSectionHtml("Bloqueios", blockedReasons)}
-          ${listSectionHtml("Perdas detectadas", dataLoss)}
+          ${listSectionHtml("Perdas de dados", dataLoss)}
           ${listSectionHtml("Golpes removidos", removedMoves)}
           ${listSectionHtml("Itens removidos", removedItems)}
           ${listSectionHtml("Campos removidos", removedFields)}
@@ -214,36 +202,56 @@ window.POKECABLE_TRADE_PREVIEW = {
         `;
         return;
       }
-      const beforePokemon = {
-        national_dex_id: preview.source_national_dex_id,
-        species_name: preview.source_name,
-        level: preview.level,
-        nickname: preview.nickname,
-        held_item_name: preview.held_item_name
-      };
-      const afterPokemon = {
-        national_dex_id: preview.target_national_dex_id,
-        species_name: preview.target_name,
-        level: preview.level,
-        nickname: preview.nickname,
-        held_item_name: preview.reason === "item_trade_evolution" ? null : preview.held_item_name
-      };
+
+      const isShiny = Boolean(payload.is_shiny || payload.canonical?.is_shiny || payload.metadata?.is_shiny);
+      const baseSprite = pokemonSpriteUrl(preview.source_national_dex_id, "", isShiny);
+      const targetSprite = pokemonSpriteUrl(preview.target_national_dex_id, "", isShiny);
+
       const caption = preview.reason === "item_trade_evolution"
         ? `${preview.source_name} deve evoluir ao chegar no save local. ${preview.consumed_item_name} será consumido.`
         : `${preview.source_name} deve evoluir ao chegar no save local.`;
+
+      const isInterrupted = !window.POKECABLE_TRADE_EVOLUTION_ENABLED;
+
       tradeEvolutionPreviewEl.className = "trade-preview-body";
       tradeEvolutionPreviewEl.innerHTML = `
         <div class="trade-evolution-caption">${escapeHtml(caption)}</div>
-        <div class="trade-evolution-flow">
-          <div class="trade-report-meta">
-            ${renderPokemonSummaryHtml(beforePokemon, "", { variant: "trade" })}
+        <div class="evolution-interactive-area">
+          <div class="evolution-sprite-container ${isInterrupted ? "is-interrupted" : ""}" id="evolutionAnimationContainer">
+            <img src="${escapeHtml(baseSprite)}" alt="" class="evolution-sprite-base" />
+            <img src="${escapeHtml(targetSprite)}" alt="" class="evolution-sprite-target" />
           </div>
-          <div class="trade-evolution-arrow">→</div>
-          <div class="trade-report-meta">
-            ${renderPokemonSummaryHtml(afterPokemon, "", { variant: "trade" })}
-          </div>
+          
+          <label class="evolution-toggle-wrap">
+            <input type="checkbox" id="evolutionToggle" ${window.POKECABLE_TRADE_EVOLUTION_ENABLED ? "checked" : ""}>
+            <span>Permitir evolução</span>
+          </label>
         </div>
       `;
+
+      const container = document.getElementById("evolutionAnimationContainer");
+      const toggle = document.getElementById("evolutionToggle");
+
+      if (container) {
+        container.addEventListener("click", () => {
+          if (!window.POKECABLE_TRADE_EVOLUTION_ENABLED) return;
+          container.classList.remove("is-evolving");
+          void container.offsetWidth; // Trigger reflow
+          container.classList.add("is-evolving");
+        });
+      }
+
+      if (toggle) {
+        toggle.addEventListener("change", (e) => {
+          window.POKECABLE_TRADE_EVOLUTION_ENABLED = e.target.checked;
+          if (window.POKECABLE_TRADE_EVOLUTION_ENABLED) {
+            container.classList.remove("is-interrupted");
+          } else {
+            container.classList.add("is-interrupted");
+            container.classList.remove("is-evolving");
+          }
+        });
+      }
     }
 
     return {

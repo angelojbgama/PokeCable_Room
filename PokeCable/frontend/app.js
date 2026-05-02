@@ -1,3 +1,5 @@
+window.POKECABLE_TRADE_EVOLUTION_ENABLED = true;
+
 const statusEl = document.querySelector("#connectionStatus");
 const tradeStatusEl = document.querySelector("#tradeStatus");
 const localOfferEl = document.querySelector("#localOffer");
@@ -329,10 +331,9 @@ function pokemonSpriteUrl(nationalDexId, form = "", isShiny = false) {
 function pokemonSpriteImgHtml(nationalDexId, altText, className = "pokemon-sprite", form = "", isShiny = false) {
   const remoteSprite = pokemonSpriteUrl(nationalDexId, form, isShiny);
   const sprite = remoteSprite || LOCAL_FALLBACK_SPRITE;
-  const escapedAlt = escapeAttribute(altText || "Pokemon");
   const escapedSrc = escapeAttribute(sprite);
   const escapedFallback = escapeAttribute(LOCAL_FALLBACK_SPRITE);
-  return `<img class="${className}" src="${escapedSrc}" alt="${escapedAlt}" loading="lazy" onerror="if(!this.dataset.fallbackApplied){this.dataset.fallbackApplied='1';this.src='${escapedFallback}';return;}this.style.display='none';" />`;
+  return `<img class="${className}" src="${escapedSrc}" alt="" aria-hidden="true" loading="lazy" onerror="if(!this.dataset.fallbackApplied){this.dataset.fallbackApplied='1';this.src='${escapedFallback}';return;}this.style.display='none';" />`;
 }
 
 function sameName(left, right) {
@@ -531,7 +532,8 @@ const tradePreviewRenderer = tradePreviewModule?.createTradePreviewRenderer({
   speciesNames,
   simpleTradeEvolutionByNational,
   itemTradeEvolutionRules,
-  getLoadedSaveGeneration: () => loadedSave?.generation
+  getLoadedSaveGeneration: () => loadedSave?.generation,
+  pokemonSpriteUrl
 });
 
 const buildWebCompatibilityReport = webCompatibilityModule?.createCompatibilityBuilder({
@@ -2131,9 +2133,12 @@ function exportGbcPayload(save, constants, location, generation, game, format) {
 }
 
 function applyGbcPayload(save, constants, location, payload, generation) {
-  if (payload.generation !== generation) {
+  const evolution = getAppliedTradeEvolution(payload, generation);
+  if (payload.generation !== generation || evolution) {
     applyCanonicalToGbc(save, constants, location, payload, generation);
-    applyReceivedItemTransferForSave(save, location, payload);
+    if (!evolution || !evolution.consumedItem) {
+      applyReceivedItemTransferForSave(save, location, payload);
+    }
     refreshLoadedSaveCollections(save);
     return;
   }
@@ -2167,18 +2172,58 @@ function compatibleMovesForGeneration(canonical, generation) {
   return moves.length ? moves : [1];
 }
 
+function getAppliedTradeEvolution(payload, targetGeneration) {
+  if (!window.POKECABLE_TRADE_EVOLUTION_ENABLED) return null;
+  const canonical = canonicalFromPayload(payload);
+  if (!canonical) return null;
+
+  const rules = window.POKECABLE_TRADE_RULES;
+  if (!rules) return null;
+
+  const nationalId = Number(payloadNationalDexId(payload));
+  if (!nationalId) return null;
+
+  // Simple evolution
+  const simpleTarget = rules.simpleTradeEvolutionByNational?.[nationalId];
+  if (simpleTarget) {
+    return { targetNationalId: simpleTarget, consumedItem: null };
+  }
+
+  // Item evolution
+  if (targetGeneration >= 2) {
+    const heldItemName = cleanName(canonical.held_item?.name || itemName(canonical.held_item?.item_id, canonical.source_generation));
+    if (heldItemName) {
+      const itemRule = (rules.itemTradeEvolutionRules || []).find(r => (
+        targetGeneration >= r.minGeneration &&
+        r.national === nationalId &&
+        sameName(heldItemName, r.item)
+      ));
+      if (itemRule) {
+        return { targetNationalId: itemRule.target, consumedItem: itemRule.item };
+      }
+    }
+  }
+
+  return null;
+}
+
 function applyCanonicalToGbc(save, constants, location, payload, generation) {
   const canonical = canonicalFromPayload(payload);
   if (!canonical) throw new Error("Payload cross-generation sem canonical.");
-  const nationalId = Number(canonical.species.national_dex_id);
+
+  const evolution = getAppliedTradeEvolution(payload, generation);
+  const nationalId = evolution ? evolution.targetNationalId : Number(canonical.species.national_dex_id);
+
   const speciesId = nationalToNative(generation, nationalId);
   if (!speciesId) throw new Error(`${canonical.species.name} National Dex #${nationalId} nao existe na Gen ${generation}.`);
+
   const targetKind = parseLocation(location).kind;
   const mon = new Uint8Array(targetKind === "party" ? constants.monSize : constants.boxMonSize);
   const level = Math.max(1, Math.min(100, Number(canonical.level || 1)));
   const moves = compatibleMovesForGeneration(canonical, generation);
 
   mon[0] = speciesId;
+  // ... rest of the function continues correctly as it uses speciesId and nationalId for later logic (like Pokedex)
   if (generation === 1) {
     mon[0x03] = level;
     moves.forEach((moveId, offset) => { mon[0x08 + offset] = moveId; });
@@ -2839,9 +2884,12 @@ function exportGen3Payload(save, location) {
 }
 
 function applyGen3Payload(save, location, payload) {
-  if (payload.generation !== 3) {
+  const evolution = getAppliedTradeEvolution(payload, 3);
+  if (payload.generation !== 3 || evolution) {
     applyCanonicalToGen3(save, location, payload);
-    applyReceivedItemTransferForSave(save, location, payload);
+    if (!evolution || !evolution.consumedItem) {
+      applyReceivedItemTransferForSave(save, location, payload);
+    }
     refreshLoadedSaveCollections(save);
     return;
   }
@@ -2862,7 +2910,10 @@ function applyGen3Payload(save, location, payload) {
 function applyCanonicalToGen3(save, location, payload) {
   const canonical = canonicalFromPayload(payload);
   if (!canonical) throw new Error("Payload cross-generation sem canonical.");
-  const nationalId = Number(canonical.species.national_dex_id);
+
+  const evolution = getAppliedTradeEvolution(payload, 3);
+  const nationalId = evolution ? evolution.targetNationalId : Number(canonical.species.national_dex_id);
+
   const speciesId = nationalToNative(3, nationalId);
   if (!speciesId) throw new Error(`${canonical.species.name} National Dex #${nationalId} nao existe na Gen 3.`);
   const personality = deterministicPersonality(canonical);

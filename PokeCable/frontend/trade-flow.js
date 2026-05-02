@@ -40,11 +40,12 @@ window.POKECABLE_TRADE_FLOW = {
       state.preparedTradeBackup = null;
       state.pendingTradePayload = null;
       state.roundActive = false;
-      peerOfferEl.innerHTML = "-";
-      peerOfferDetailsEl.className = "pokemon-card-details pokemon-card-details-empty";
-      peerOfferDetailsEl.textContent = options.peerMessage || "Aguardando oferta...";
+      
+      const localSelected = getSelectedPokemon();
+      renderOfferCard(localOfferEl, localOfferDetailsEl, localSelected || null, localSelected ? "" : "-", { emptyMessage: "Item, golpes e características aparecem aqui." });
+      renderOfferCard(peerOfferEl, peerOfferDetailsEl, null, "-", { emptyMessage: options.peerMessage || "Aguardando oferta..." });
+      
       clearTradePreviews();
-      renderOfferCard(localOfferEl, localOfferDetailsEl, selected || null, "", { emptyMessage: "Escolha um Pokémon da party." });
       confirmButton.disabled = true;
       cancelButton.disabled = !state.hasJoinedRoom || !state.roomReady;
       sendOfferButton.disabled = !state.hasJoinedRoom || !state.roomReady || !selected;

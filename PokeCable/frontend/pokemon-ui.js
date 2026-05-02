@@ -100,7 +100,6 @@ window.POKECABLE_POKEMON_UI = {
         detailsEl.innerHTML = renderPokemonDetailsHtml(null, options.emptyMessage || "Aguardando oferta...");
         return;
       }
-      }
       summaryEl.innerHTML = renderPokemonSummaryHtml(pokemonLike, textOverride, { variant: "trade" });
       detailsEl.className = "pokemon-card-details";
       detailsEl.innerHTML = renderPokemonDetailsHtml(pokemonLike);
