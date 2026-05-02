@@ -25,16 +25,11 @@
         <div class="grid grid-single">
           <form class="panel" id="roomForm">
             <div id="setupHeader">
-              <div class="panel-head">
-                <div>
-                  <h2>Entrada</h2>
-                  <p>Primeiro carregue o save. Depois o mesmo bloco vira a configuração da sala.</p>
+              <div class="setup-hero">
+                <div class="setup-hero-text">
+                  <h2>Carregar Save</h2>
+                  <p>Suporte exclusivo para saves de <strong>Gen 1, Gen 2 e Gen 3</strong> (.sav / .srm).</p>
                 </div>
-              </div>
-
-              <div class="status-box">
-                <span>Resumo</span>
-                <strong id="setupStatus">Carregue um save para começar.</strong>
               </div>
             </div>
 
@@ -45,8 +40,8 @@
               </label>
 
               <div class="save-summary" id="saveSummary">
-                <span>Nenhum save carregado</span>
-                <strong>Gen 1, Gen 2 e Gen 3 são detectadas pelo arquivo. O primeiro save fica travado por segurança.</strong>
+                <span>Aguardando arquivo</span>
+                <strong>Selecione o arquivo de save do seu emulador ou console.</strong>
               </div>
             </div>
 
@@ -62,8 +57,7 @@
               </label>
 
               <div class="actions">
-                <button type="button" id="createSession">Criar sala</button>
-                <button type="button" id="joinSession" class="secondary">Entrar na sala</button>
+                <button type="button" id="accessSession">Acessar sala</button>
                 <button type="button" id="leaveSession" class="ghost" disabled>Sair da sala</button>
               </div>
             </div>
@@ -81,15 +75,7 @@
               </div>
             </div>
 
-            <div id="setupFooter">
-              <div class="status-box">
-                <span>Status da sessão</span>
-                <strong id="sessionStatus">Carregue um save local.</strong>
-                <small id="sessionDetail">A mesma sessão web mantém troca e batalha sob o mesmo nome de sala.</small>
-              </div>
-            </div>
-
-            <div class="frontend-infra-hidden" aria-hidden="true">
+            <div class="frontend-infra-hidden" aria-hidden="true" style="display: none;">
               <div class="status-box">
                 <span>Pokémon selecionado</span>
                 <strong id="setupSelectedSummary">Nenhum Pokémon selecionado.</strong>
@@ -153,34 +139,35 @@
               <strong id="tradeStatus">Carregue um save para começar.</strong>
             </div>
 
-            <div class="pokemon-row">
-              <div class="pokemon-card">
-                <span>Você oferece</span>
-                <strong id="localOffer">-</strong>
-                <div id="localOfferDetails" class="pokemon-card-details pokemon-card-details-empty">
-                  Item, golpes e características aparecem aqui.
-                </div>
-              </div>
-              <div class="pokemon-card">
-                <span>Você recebe</span>
-                <strong id="peerOffer">-</strong>
-                <div id="peerOfferDetails" class="pokemon-card-details pokemon-card-details-empty">
-                  Aguardando oferta...
-                </div>
-              </div>
-            </div>
-
             <div class="trade-preview-grid" hidden>
-              <div class="trade-preview-card">
+              <div class="trade-preview-card" style="grid-column: 1 / -1;">
                 <span>Análise da Transferência</span>
                 <div id="tradeCompatibilityPreview" class="trade-preview-body trade-preview-empty">
                   Aguardando oferta...
                 </div>
               </div>
-              <div class="trade-preview-card">
-                <span>Evolução prevista</span>
+            </div>
+
+            <div class="pokemon-row">
+              <div class="pokemon-card">
+                <div class="pokemon-card-head">
+                  <span>Você oferece</span>
+                  <strong id="localOffer">-</strong>
+                </div>
+                <div id="localOfferDetails" class="pokemon-card-details pokemon-card-details-empty">
+                  Item, golpes e características aparecem aqui.
+                </div>
+              </div>
+              <div class="pokemon-card">
+                <div class="pokemon-card-head">
+                  <span>Você recebe</span>
+                  <strong id="peerOffer">-</strong>
+                </div>
                 <div id="tradeEvolutionPreview" class="trade-preview-body trade-preview-empty">
-                  Sem evolução prevista.
+                  <!-- Evolução prevista aparece aqui -->
+                </div>
+                <div id="peerOfferDetails" class="pokemon-card-details pokemon-card-details-empty">
+                  Aguardando oferta...
                 </div>
               </div>
             </div>

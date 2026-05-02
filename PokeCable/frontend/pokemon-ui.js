@@ -51,11 +51,17 @@ window.POKECABLE_POKEMON_UI = {
       };
     }
 
-    function detailBlockHtml(title, bodyHtml) {
+    function detailBlockHtml(title, bodyHtml, isOpen = false) {
+      const icon = title === "Item" ? "📦 " : "";
+      const openClass = isOpen ? "is-open" : "";
       return `
-        <div class="pokemon-detail-block">
-          <strong>${escapeHtml(title)}</strong>
-          ${bodyHtml}
+        <div class="pokemon-detail-block ${openClass}" data-detail-type="${escapeHtml(title)}">
+          <button class="pokemon-detail-accordion-trigger" onclick="this.parentElement.classList.toggle('is-open')">
+            ${icon}${escapeHtml(title)}
+          </button>
+          <div class="pokemon-detail-content">
+            ${bodyHtml}
+          </div>
         </div>
       `;
     }
@@ -86,8 +92,10 @@ window.POKECABLE_POKEMON_UI = {
       const characteristicsHtml = characteristics.length
         ? `<ul class="pokemon-detail-list">${characteristics.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
         : "<span>Sem características extras.</span>";
+      
+      // Open "Item" by default, keep others closed
       return [
-        detailBlockHtml("Item", `<span>${itemText}</span>`),
+        detailBlockHtml("Item", `<span>${itemText}</span>`, true),
         detailBlockHtml("Golpes", moveItems),
         detailBlockHtml("Características", characteristicsHtml)
       ].join("");

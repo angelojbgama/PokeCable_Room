@@ -351,26 +351,49 @@ button.ghost:hover:not(:disabled) {
 }
 
 .pokemon-card {
-  min-height: 96px;
-  display: grid;
-  align-content: center;
-  gap: 8px;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 14px;
+  padding: 16px;
   background: #fff;
 }
 
+.pokemon-card-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-bottom: 1px solid var(--soft);
+  padding-bottom: 10px;
+}
+
+.pokemon-card span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
 .pokemon-card strong {
-  font-size: 1.1rem;
-  overflow-wrap: anywhere;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  color: var(--ink);
+  min-height: 2.6em; /* Ensure two lines height for alignment */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .pokemon-card-details {
   display: grid;
-  gap: 8px;
+  gap: 12px;
   border-top: 1px solid var(--line);
-  padding-top: 10px;
+  padding-top: 14px;
+  margin-top: auto; /* Push to bottom */
 }
 
 .pokemon-card-details-empty {
@@ -382,10 +405,58 @@ button.ghost:hover:not(:disabled) {
 .pokemon-detail-block {
   display: grid;
   gap: 4px;
+  border-bottom: 1px solid var(--soft);
+  padding-bottom: 8px;
 }
 
-.pokemon-detail-block strong {
+.pokemon-detail-block:last-child {
+  border-bottom: none;
+}
+
+.pokemon-detail-accordion-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: transparent;
+  border: 0;
+  padding: 8px 0;
+  color: var(--ink);
+  font-weight: 800;
   font-size: 0.82rem;
+  cursor: pointer;
+  min-height: 0;
+}
+
+.pokemon-detail-accordion-trigger:hover {
+  background: transparent;
+  color: var(--blue);
+}
+
+.pokemon-detail-accordion-trigger::after {
+  content: '▼';
+  font-size: 0.6rem;
+  color: var(--muted);
+  transition: transform 0.2s;
+}
+
+.pokemon-detail-block.is-open .pokemon-detail-accordion-trigger::after {
+  transform: rotate(180deg);
+}
+
+.pokemon-detail-content {
+  display: none;
+  padding-bottom: 8px;
+  animation: slideDown 0.2s ease-out;
+}
+
+.pokemon-detail-block.is-open .pokemon-detail-content {
+  display: block;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .pokemon-detail-block span,
@@ -409,9 +480,14 @@ button.ghost:hover:not(:disabled) {
 }
 
 .pokemon-summary-trade {
-  grid-template-columns: 56px 1fr;
-  gap: 10px;
-  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 12px;
+  min-height: 140px;
+  width: 100%;
 }
 
 .pokemon-summary-text {
@@ -436,8 +512,8 @@ button.ghost:hover:not(:disabled) {
 }
 
 .pokemon-sprite-trade {
-  width: 56px;
-  height: 56px;
+  width: 96px;
+  height: 96px;
 }
 
 .trade-preview-grid {
@@ -728,10 +804,6 @@ pre {
   display: grid;
   gap: 8px;
   margin-bottom: 14px;
-}
-
-.team-preview:empty {
-  display: none;
 }
 
 .team-preview-item {

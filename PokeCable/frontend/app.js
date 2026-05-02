@@ -18,8 +18,7 @@ const setupChoiceStageEl = document.querySelector("#setupChoiceStage");
 const setupHeaderEl = document.querySelector("#setupHeader");
 const setupFooterEl = document.querySelector("#setupFooter");
 const noticeEl = document.querySelector(".notice");
-const createSessionButton = document.querySelector("#createSession");
-const joinSessionButton = document.querySelector("#joinSession");
+const accessSessionButton = document.querySelector("#accessSession");
 const leaveSessionButton = document.querySelector("#leaveSession");
 const openTradeTabButton = document.querySelector("#openTradeTab");
 const openBattleTabButton = document.querySelector("#openBattleTab");
@@ -68,6 +67,9 @@ const tradePartyLabelEl = document.querySelector("#tradePartyLabel");
 const tradePartyPreviewEl = document.querySelector("#tradePartyPreview");
 const tradeBoxPreviewEl = document.querySelector("#tradeBoxPreview");
 const tradeTogglePokemonPcButton = document.querySelector("#tradeTogglePokemonPc");
+
+const roomNameEl = document.querySelector("#roomName");
+const roomPasswordEl = document.querySelector("#roomPassword");
 
 const speciesData = window.POKECABLE_SPECIES_DATA;
 if (!speciesData) {
@@ -244,13 +246,6 @@ function unownFormFromGen3Species(speciesId, personality) {
   return null;
 }
 
-function unownFormFromGen3Species(speciesId, personality) {
-  const numericSpeciesId = Number(speciesId || 0);
-  if (numericSpeciesId === 201) return unownFormFromGen3Personality(personality);
-  if (numericSpeciesId >= 252 && numericSpeciesId <= 276) return unownFormNames[numericSpeciesId - 251] || null;
-  return null;
-}
-
 function itemName(itemId, generation) {
   if (!itemId) return null;
   return (itemNames && itemNames[generation]?.[Number(itemId)]) || null;
@@ -414,8 +409,14 @@ function renderPokemonSummaryHtml(pokemonLike, textOverride = "", options = {}) 
   const nationalDexId = payloadDexId ?? explicitDexId;
   const unownForm = cleanName(pokemonLike.unown_form || pokemonLike.metadata?.unown_form);
   const isShiny = Boolean(pokemonLike.is_shiny || pokemonLike.canonical?.is_shiny || pokemonLike.metadata?.is_shiny);
-  
-  const text = textOverride || pokemonLike.display_summary || normalizePokemonDisplay(pokemonLike);
+
+  let text = textOverride || pokemonLike.display_summary || normalizePokemonDisplay(pokemonLike);
+
+  // Remove redundant item info from summary text for the trade variant
+  if (variant === "trade") {
+    text = text.split(" — ")[0]; // Remove everything after the species/nickname part
+  }
+
   const escapedText = escapeHtml(text);
   const summaryClass = variant === "trade" ? "pokemon-summary pokemon-summary-trade" : "pokemon-summary";
   const spriteClass = variant === "trade" ? "pokemon-sprite pokemon-sprite-trade" : "pokemon-sprite";
@@ -426,7 +427,6 @@ function renderPokemonSummaryHtml(pokemonLike, textOverride = "", options = {}) 
     </span>
   `;
 }
-
 function canonicalSpeciesFor(generation, speciesId, speciesName) {
   const nationalId = nativeToNational(generation, speciesId);
   const resolvedName = speciesNameFor(generation, speciesId, speciesName);
@@ -957,8 +957,8 @@ function supportedProtocols() {
 }
 
 function roomCredentialsReady() {
-  const roomName = document.querySelector("#roomName").value.trim();
-  const password = document.querySelector("#roomPassword").value;
+  const roomName = roomNameEl.value.trim();
+  const password = roomPasswordEl.value;
   return Boolean(roomName && password);
 }
 
@@ -1001,52 +1001,45 @@ function refreshSessionUi() {
     tradePartyLabelEl.textContent = playerName ? `Party de ${playerName}` : "Sua Party";
   }
 
-  createSessionButton.disabled = !canPrepareSession;
-  joinSessionButton.disabled = !canPrepareSession;
-  leaveSessionButton.disabled = !(sessionState.joined || sessionState.pending || sessionState.saveLocked);
-  if (openTradeTabButton) openTradeTabButton.disabled = !roomChoiceReady;
-  if (openBattleTabButton) openBattleTabButton.disabled = !roomChoiceReady;
+  accessSessionButton.disabled = !canPrepareSession;
+  leaveSessionButton.disabled = !(sessionState.joined || sessionState.pending);
+  
+  const inputsDisabled = sessionState.joined || sessionState.pending;
+  roomNameEl.disabled = inputsDisabled;
+  roomPasswordEl.disabled = inputsDisabled;
+
   tabButtons.forEach((button) => {
     if (button.dataset.tab === "trade" || button.dataset.tab === "battle") {
       button.disabled = !roomChoiceReady;
     }
   });
+
   if (setupSaveStageEl) setupSaveStageEl.classList.toggle("setup-stage-hidden", hasLoadedSave);
   if (setupRoomStageEl) setupRoomStageEl.classList.toggle("setup-stage-hidden", !hasLoadedSave || sessionState.joined);
   if (setupChoiceStageEl) setupChoiceStageEl.classList.toggle("setup-stage-hidden", !roomChoiceReady);
-  if (setupHeaderEl) setupHeaderEl.classList.toggle("setup-stage-hidden", roomChoiceReady);
-  if (setupFooterEl) setupFooterEl.classList.toggle("setup-stage-hidden", roomChoiceReady);
-  if (noticeEl) noticeEl.classList.toggle("setup-stage-hidden", roomChoiceReady && isSetupTab);
+  
+  // Garantir que os previews sejam atualizados
+  if (hasLoadedSave) {
+    if (isSetupTab) updateSetupPartyPreview();
+    if (getActiveTab() === "trade") updateTradePartyPreview();
+  }
+
   tradeFlowController?.syncButtons();
   battleFlowController?.syncButtons();
+  
   if (!loadedSave) {
-    if (sessionState.pending) {
-      setSessionStatus("Sessão preparada. Carregue um save para concluir a entrada na sala.");
-      return;
-    }
     setSessionStatus("Carregue um save local.");
     return;
   }
   if (!sessionState.joined) {
     if (sessionState.pending) {
-      setSessionStatus(
-        "Save carregado. Conectando a sessão...",
-        `${loadedSave.label}. O save local fica travado por segurança até você sair da sessão.`
-      );
+      setSessionStatus("Conectando ao servidor...", "Aguardando confirmação da sala.");
       return;
     }
-    setSessionStatus(
-      "Save carregado. Agora defina sala e senha.",
-      `${loadedSave.label}. O save local fica travado por segurança até você sair da sessão.`
-    );
+    setSessionStatus("Save carregado.", "Defina a sala e senha para acessar.");
     return;
   }
-  const tradeLabel = sessionState.tradeJoined ? (tradeState.roomReady ? "troca pronta" : "troca aguardando") : "troca desconectada";
-  const battleLabel = sessionState.battleJoined ? (battleState.roomReady ? "batalha pronta" : "batalha aguardando") : "batalha desconectada";
-  setSessionStatus(
-    "Sessão ativa. Escolha troca ou batalha.",
-    `${tradeLabel}; ${battleLabel}. O save local fica travado por segurança até você sair da sessão.`
-  );
+  setSessionStatus("Sessão ativa.", "Escolha troca ou batalha.");
 }
 
 function activateTab(tabName) {
@@ -1065,6 +1058,13 @@ function activateTab(tabName) {
 
 function wsUrl() {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  // Se estiver rodando localmente na porta 8080 (servidor estático), 
+  // tenta conectar no backend na porta 8000 por padrão.
+  if (window.location.port === "8080" || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    if (window.location.port === "8080") {
+      return `${protocol}//${window.location.hostname}:8000/ws`;
+    }
+  }
   return `${protocol}//${window.location.host}/ws`;
 }
 
@@ -1298,7 +1298,7 @@ function parseGen2Party(save) {
       trainer_id: (save.bytes[monStart + 0x06] << 8) | save.bytes[monStart + 0x07],
       held_item_id: heldItemId,
       held_item_name: itemName(heldItemId, 2),
-      moves: Array.from(save.bytes.slice(monStart + 0x02, monStart + 0x06)).filter(Boolean),
+      moves: Array.from(save.bytes.slice(constants.partyOffset + 1 + index === 0xfd ? 0 : monStart + 0x02, constants.partyOffset + 1 + index === 0xfd ? 0 : monStart + 0x06)).filter(Boolean),
       is_egg: speciesEntry === 0xfd
     };
     pokemon.display_summary = normalizePokemonDisplay(pokemon);
@@ -3032,7 +3032,7 @@ function updatePokemonOptions() {
     if (battleSaveStatusEl) battleSaveStatusEl.textContent = "Nenhum save carregado.";
     tradeSelectedSummaryEl.textContent = "Nenhum Pokémon selecionado.";
     if (setupSelectedSummaryEl) setupSelectedSummaryEl.textContent = "Nenhum Pokémon selecionado.";
-    setupStatusEl.textContent = "Carregue um save para liberar troca e batalha.";
+    if (setupStatusEl) setupStatusEl.textContent = "Carregue um save para liberar troca e batalha.";
     saveManagementStatusEl.textContent = "Selecione um Pokémon para começar.";
     selectedInventoryItem = null;
     pendingMoveSourceLocation = null;
@@ -3063,9 +3063,11 @@ function updatePokemonOptions() {
     ) || null;
   }
   if (battleSaveStatusEl) battleSaveStatusEl.textContent = `${loadedSave.label}: ${(loadedSave.party || []).length} Pokémon na party.`;
-  setupStatusEl.textContent = enabled
-    ? `${loadedSave.label} carregado. Abra ou sincronize a sessão e depois escolha troca ou batalha.`
-    : "Este save não possui Pokémon válidos na party nem no PC para troca.";
+  if (setupStatusEl) {
+    setupStatusEl.textContent = enabled
+      ? `${loadedSave.label} carregado. Abra ou sincronize a sessão e depois escolha troca ou batalha.`
+      : "Este save não possui Pokémon válidos na party nem no PC para troca.";
+  }
   const selected = pokemonByLocation(loadedSave, selectedLocation);
   renderOfferCard(localOfferEl, localOfferDetailsEl, selected || null, "", { emptyMessage: "Escolha um Pokémon da party ou do PC." });
   updateBattleTeamPreview();
@@ -3218,13 +3220,19 @@ async function openPendingSession() {
     sessionState.battleJoined = false;
     tradeFlowController?.resetTradeRoundUi();
     battleFlowController?.resetBattleUiForContextChange();
-    setSessionStatus("Conectando a mesma sala para troca e batalha...");
+    
+    setSessionStatus("Conectando ao servidor...");
     await connect();
+    
+    setSessionStatus("Entrando na sala...");
+    log(`Tentando ${sessionState.action === "create" ? "criar" : "entrar na"} sala: ${roomNameEl.value}`);
     tradeFlowController?.joinTradeRoom(sessionState.action);
     battleFlowController?.joinBattleRoom(sessionState.action);
     refreshSessionUi();
   } catch (error) {
     sessionState.pending = false;
+    setSessionStatus("Falha na conexão", error.message);
+    log(`Erro de conexão: ${error.message}`);
     refreshSessionUi();
     throw error;
   }
@@ -3263,79 +3271,108 @@ async function syncSessionWithLoadedSave() {
 }
 
 function leaveSession() {
+  log("Saindo da sessão e encerrando conexão...");
   wsClient?.close();
   resetSessionState();
   clearLoadedSave();
   updatePokemonOptions();
   setStatus("Sessão encerrada.");
   setBattleStatus("Sessão encerrada.");
-  setSessionStatus("Sessão encerrada.", "Você pode carregar outro save ou preparar outra sala.");
+  setSessionStatus("Sessão encerrada.", "Conexão encerrada.");
 }
 
 function handleMessage(message) {
-  if (message.type !== "connected" && tradeFlowController?.handleTradeMessage(message)) {
-    if (message.type === "room_created" || message.type === "room_joined") {
-      sessionState.pending = false;
+  if (message.type === "heartbeat") return;
+
+  // Filtra mensagens para os controladores específicos
+  const handledByTrade = message.type !== "connected" && tradeFlowController?.handleTradeMessage(message);
+  const handledByBattle = message.type !== "connected" && battleFlowController?.handleBattleMessage(message);
+
+  if (handledByTrade) {
+    if (message.type === "room_created" || message.type === "room_joined" || message.type === "room_ready") {
       sessionState.tradeJoined = true;
-    }
-    if (message.type === "room_ready") {
       sessionState.pending = false;
-      sessionState.tradeJoined = true;
+      sessionState.joined = true;
+      refreshSessionUi();
     }
     if (message.type === "trade_cancelled" && message.reason !== "peer_disconnected") {
       sessionState.tradeJoined = false;
+      refreshSessionUi();
     }
-    sessionState.joined = sessionState.tradeJoined || sessionState.battleJoined;
-    refreshSessionUi();
-    return;
   }
-  if (message.type !== "connected" && battleFlowController?.handleBattleMessage(message)) {
-    if (message.type === "battle_room_created" || message.type === "battle_room_joined") {
-      sessionState.pending = false;
+
+  if (handledByBattle) {
+    if (message.type === "battle_room_created" || message.type === "battle_room_joined" || message.type === "battle_room_ready") {
       sessionState.battleJoined = true;
-    }
-    if (message.type === "battle_room_ready") {
       sessionState.pending = false;
-      sessionState.battleJoined = true;
+      sessionState.joined = true;
+      refreshSessionUi();
     }
-    sessionState.joined = sessionState.tradeJoined || sessionState.battleJoined;
-    refreshSessionUi();
-    return;
+    if (message.type === "battle_finished" || message.type === "battle_finished_received") {
+      // Batalha acabou, mas a sala de batalha ainda existe até o peer desconectar ou contexto mudar
+    }
   }
+
   switch (message.type) {
     case "connected":
-      log("Conectado ao servidor.");
+      log("Conectado ao servidor. Pronto para entrar na sala.");
       refreshSessionUi();
       break;
+
     case "player_context_updated":
       sessionState.pending = false;
       sessionState.joined = true;
       sessionState.tradeJoined = Boolean(message.trade_room);
       sessionState.battleJoined = Boolean(message.battle_room);
-      setSessionStatus("Save sincronizado com a mesma sala.", `${loadedSave?.label || "Save local"}. Troca e batalha continuam disponíveis.`);
-      log("Contexto do jogador atualizado na sessão.");
+      setSessionStatus("Sessão sincronizada.", "Troca e batalha disponíveis.");
+      log("Contexto do jogador atualizado.");
       refreshSessionUi();
       break;
+
     case "generation_mismatch":
     case "game_mismatch":
     case "error":
-      sessionState.pending = false;
+      // Recuperação automática se a sala já existir ao tentar criar
+      if (message.code === "room_exists" && sessionState.action === "create") {
+        log("A sala já existe. Tentando entrar nela automaticamente...");
+        sessionState.action = "join";
+        void openPendingSession();
+        return;
+      }
+
+      // Recuperação automática se a sala não existir ao tentar entrar
+      if (message.code === "room_not_found" && sessionState.action === "join") {
+        log("A sala não existe. Tentando criá-la automaticamente...");
+        sessionState.action = "create";
+        void openPendingSession();
+        return;
+      }
+      
+      // Erros que permitem nova tentativa imediata sem fechar socket
+      const isAuthError = message.code === "invalid_password" || message.code === "room_not_found" || message.code === "room_exists";
+      if (isAuthError) {
+        sessionState.pending = false;
+        // Mantemos o sessionState.action para o usuário ver o que tentou
+        log(`Erro na sala: ${message.message}`);
+      } else {
+        sessionState.pending = false;
+      }
+
       setStatus(message.message || "Erro no servidor.");
       battleFlowController?.handleBattleServerError(message);
       setSessionStatus(message.message || "Erro na sessão.");
-      log(`Erro: ${message.message || message.code}`);
+      log(`Erro (${message.code}): ${message.message}`);
+      refreshSessionUi();
       break;
-    case "heartbeat":
-      break;
+      
     default:
-      log(`Evento: ${message.type}`);
+      if (!handledByTrade && !handledByBattle) {
+        log(`Evento: ${message.type}`);
+      }
   }
 }
 
-createSessionButton.addEventListener("click", () => {
-  void startSession("create").catch((error) => setSessionStatus(error.message || String(error)));
-});
-joinSessionButton.addEventListener("click", () => {
+accessSessionButton.addEventListener("click", () => {
   void startSession("join").catch((error) => setSessionStatus(error.message || String(error)));
 });
 openTradeTabButton?.addEventListener("click", () => {
@@ -3350,10 +3387,10 @@ backToModeFromTradeButton?.addEventListener("click", () => {
 backToModeFromBattleButton?.addEventListener("click", () => {
   activateTab("setup");
 });
-document.querySelector("#roomName").addEventListener("input", () => {
+roomNameEl.addEventListener("input", () => {
   refreshSessionUi();
 });
-document.querySelector("#roomPassword").addEventListener("input", () => {
+roomPasswordEl.addEventListener("input", () => {
   refreshSessionUi();
 });
 leaveSessionButton.addEventListener("click", () => {
@@ -3484,7 +3521,12 @@ saveFileEl.addEventListener("change", async () => {
     };
     sessionState.saveLocked = true;
     saveFileEl.disabled = true;
-    saveSummaryEl.innerHTML = `<span>${loadedSaveHeadline(loadedSave)}</span><strong>${loadedSave.party.length} Pokemon na party</strong>`;
+    saveSummaryEl.innerHTML = `<span>${loadedSaveHeadline(loadedSave)}</span><strong>${loadedSave.party.length} Pokémon na party</strong>`;
+    
+    // Transição automática: esconde o carregamento e mostra a sala
+    setupSaveStageEl.classList.add("setup-stage-hidden");
+    setupRoomStageEl.classList.remove("setup-stage-hidden");
+    
     setStatus(`Save carregado: ${loadedSave.label}.`);
     log(`Save carregado: ${file.name} (${loadedSave.label}).`);
   } catch (error) {

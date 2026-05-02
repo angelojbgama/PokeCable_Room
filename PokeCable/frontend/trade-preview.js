@@ -28,8 +28,10 @@ window.POKECABLE_TRADE_PREVIEW = {
 
       tradeCompatibilityPreviewEl.textContent = "Aguardando oferta...";
       tradeCompatibilityPreviewEl.className = "trade-preview-body trade-preview-empty";
-      tradeEvolutionPreviewEl.textContent = "Sem evolução prevista.";
+      
+      tradeEvolutionPreviewEl.innerHTML = "";
       tradeEvolutionPreviewEl.className = "trade-preview-body trade-preview-empty";
+      tradeEvolutionPreviewEl.hidden = true;
 
       const emptyLayout = (msg) => `
         <div class="pokemon-detail-block">
@@ -157,7 +159,6 @@ window.POKECABLE_TRADE_PREVIEW = {
       const removedMoves = (report?.removed_moves || []).map((move) => `Golpe removido: ${move.name || `Move #${move.move_id}`}`);
       const removedItems = (report?.removed_items || []).map((item) => `Item removido: ${item.name || `Item #${item.item_id}`}`);
       const removedFields = (report?.removed_fields || []).map((field) => `${field === "ability" ? "Ability" : field === "nature" ? "Nature" : field} será removido.`);
-      const transformations = (report?.transformations || []).slice();
       const statusClass = report?.compatible ? "compatible" : "blocked";
       const statusLabel = report?.compatible ? "Transferência OK" : "Transferência Bloqueada";
       const meta = `Origem Gen ${report?.source_generation || payload.generation} ↔ Destino Gen ${targetGeneration}`;
@@ -175,7 +176,6 @@ window.POKECABLE_TRADE_PREVIEW = {
           ${listSectionHtml("Itens removidos", removedItems)}
           ${listSectionHtml("Campos removidos", removedFields)}
           ${itemTransferSectionHtml(report?.item_transfer)}
-          ${listSectionHtml("Transformações", transformations)}
           ${listSectionHtml("Avisos", warnings)}
         </div>
       `;
@@ -187,22 +187,15 @@ window.POKECABLE_TRADE_PREVIEW = {
         return;
       }
       const targetGeneration = explicitTargetGeneration || report?.target_generation || getLoadedSaveGeneration() || payload.generation;
-      const summary = payload.display_summary || (payload.summary && payload.summary.display_summary) || normalizePokemonDisplay(payload);
       const preview = previewTradeEvolutionForPayload(payload, report, targetGeneration);
+      
       if (!preview) {
-        const message = report?.compatible
-          ? "Sem evolução prevista para esta troca."
-          : "Sem evolução prevista porque a troca será bloqueada.";
-        tradeEvolutionPreviewEl.className = "trade-preview-body";
-        tradeEvolutionPreviewEl.innerHTML = `
-          <div class="trade-report-meta">
-            ${renderPokemonSummaryHtml(payload, summary, { variant: "trade" })}
-            <p>${escapeHtml(message)}</p>
-          </div>
-        `;
+        tradeEvolutionPreviewEl.innerHTML = "";
+        tradeEvolutionPreviewEl.hidden = true;
         return;
       }
 
+      tradeEvolutionPreviewEl.hidden = false;
       const isShiny = Boolean(payload.is_shiny || payload.canonical?.is_shiny || payload.metadata?.is_shiny);
       const baseSprite = pokemonSpriteUrl(preview.source_national_dex_id, "", isShiny);
       const targetSprite = pokemonSpriteUrl(preview.target_national_dex_id, "", isShiny);

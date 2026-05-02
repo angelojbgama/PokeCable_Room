@@ -40,7 +40,6 @@ window.POKECABLE_WEB_COMPATIBILITY = {
           target_species_id: payload.species_id,
           target_species_id_space: targetGeneration === 1 ? "gen1_internal" : targetGeneration === 2 ? "national_dex" : "gen3_internal"
         };
-        report.transformations.push(`Modo same-generation: dados originais serão aplicados na Gen ${targetGeneration}.`);
         return report;
       }
       const canonical = canonicalFromPayload(payload);
@@ -48,9 +47,6 @@ window.POKECABLE_WEB_COMPATIBILITY = {
         report.compatible = false;
         report.blocking_reasons.push("Payload cross-generation sem canonical.");
         return report;
-      }
-      if (report.mode && report.mode !== "same_generation") {
-        report.transformations.push(`Modo derivado: ${report.mode}`);
       }
       const nationalId = Number(canonical.species.national_dex_id);
       const targetSpeciesId = nationalToNative(targetGeneration, nationalId);
@@ -66,7 +62,6 @@ window.POKECABLE_WEB_COMPATIBILITY = {
         report.blocking_reasons.push(`${canonical.species.name} National Dex #${nationalId} nao existe na Gen ${targetGeneration}.`);
         return report;
       }
-      report.transformations.push(`Espécie: National Dex #${nationalId} convertido para ID ${targetSpeciesId} na Gen ${targetGeneration}.`);
       const maxMove = targetGeneration === 1 ? 165 : targetGeneration === 2 ? 251 : 354;
       for (const move of canonical.moves || []) {
         const moveId = Number(move.move_id || move);
