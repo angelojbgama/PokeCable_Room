@@ -21,9 +21,9 @@
         <span>O navegador não envia save completo ao servidor. Depois da troca, ele gera um backup e um novo arquivo para baixar.</span>
       </section>
 
-      <section class="tab-panel active" id="tab-setup" data-tab-panel="setup">
+      <section id="tab-setup">
         <div class="grid grid-single">
-          <form class="panel" id="roomForm">
+          <form class="panel" id="roomForm" onsubmit="return false;">
             <div id="setupHeader">
               <div class="setup-hero">
                 <div class="setup-hero-text">
@@ -36,7 +36,7 @@
             <div id="setupSaveStage">
               <label>
                 Save local .sav/.srm
-                <input id="saveFile" type="file" accept=".sav,.srm" />
+                <input id="saveFile" type="file" accept=".sav,.srm,.SAV,.SRM" />
               </label>
 
               <div class="save-summary" id="saveSummary">
@@ -102,7 +102,7 @@
         </div>
       </section>
 
-      <section class="tab-panel" id="tab-trade" data-tab-panel="trade">
+      <section id="tab-trade" class="setup-stage-hidden">
         <div class="grid grid-single">
           <section class="panel">
             <div class="panel-head">
@@ -111,6 +111,21 @@
                 <p>A sessão já está aberta. Selecione um Pokémon, envie a oferta e confirme a troca.</p>
               </div>
               <button type="button" id="backToModeFromTrade" class="ghost">Escolher modo</button>
+            </div>
+
+            <div class="connected-players-wrapper">
+              <span class="pill-label" style="margin-bottom: 8px; display: block;">Treinadores na Sala</span>
+              <div class="connected-players-box">
+                <div class="player-pill" id="localPlayerPill">
+                  <span class="pill-label">Você</span>
+                  <strong id="localPlayerName">-</strong>
+                </div>
+                <div class="pill-divider">↔</div>
+                <div class="player-pill is-empty" id="peerPlayerPill">
+                  <span class="pill-label">Parceiro de Troca</span>
+                  <strong id="peerPlayerName">Aguardando...</strong>
+                </div>
+              </div>
             </div>
           </section>
         </div>
@@ -191,7 +206,7 @@
         </div>
       </section>
 
-      <section class="tab-panel" id="tab-battle" data-tab-panel="battle">
+      <section id="tab-battle" class="setup-stage-hidden">
         <div class="grid">
           <section class="panel">
             <div class="panel-head">
@@ -216,6 +231,18 @@
               <div>
                 <span>Time</span>
                 <strong id="battleTeamCount">0 Pokémon</strong>
+              </div>
+            </div>
+
+            <div class="battle-inventory-area">
+              <div class="inventory-card inventory-card-compact">
+                <div class="inventory-card-head">
+                  <span>Equipar Itens (Mochila)</span>
+                  <small id="selectedBattleItemStatus">Nenhum item selecionado.</small>
+                </div>
+                <div id="battleInventoryPreview" class="inventory-preview-body">
+                  Carregue um save para selecionar itens da mochila.
+                </div>
               </div>
             </div>
 
@@ -247,7 +274,7 @@
         </div>
       </section>
 
-      <section class="tab-panel" id="tab-logs" data-tab-panel="logs">
+      <section class="panel" style="margin-top: 20px;">
         <section class="log-panel" aria-label="Eventos">
           <div class="panel-head compact">
             <h2>Eventos</h2>
@@ -274,6 +301,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="/move-names.js"></script>
+    <script src="/learnsets.js"></script>
     <script src="/ability-names.js"></script>
     <script src="/item-names.js"></script>
     <script src="/item-categories.js"></script>

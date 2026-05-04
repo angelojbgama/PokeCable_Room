@@ -37,9 +37,16 @@ class BaseConverter:
             report.blocking_reasons.append(f"Conversor {self.mode} recebeu payload do modo {report.mode}.")
         return report
 
-    def convert(self, canonical: CanonicalPokemon, target_parser, target_location: str, policy: str = "safe_default") -> ConversionResult:
+    def convert(
+        self,
+        canonical: CanonicalPokemon,
+        target_parser,
+        target_location: str,
+        policy: str = "safe_default",
+        resolved_moves: dict[int, int] | None = None,
+    ) -> ConversionResult:
         report = self.can_convert(canonical, policy=policy)
-        converted = self._normalized_copy(canonical, report)
+        converted = self._normalized_copy(canonical, report, resolved_moves=resolved_moves)
         return ConversionResult(
             canonical_before=canonical,
             canonical_after=converted,
@@ -57,33 +64,54 @@ class BaseConverter:
         target_location: str,
         canonical: CanonicalPokemon,
         policy: str = "safe_default",
+        resolved_moves: dict[int, int] | None = None,
     ) -> ConversionResult:
-        result = self.convert(canonical, target_parser, target_location, policy=policy)
+        result = self.convert(canonical, target_parser, target_location, policy=policy, resolved_moves=resolved_moves)
         if not result.compatibility_report.compatible:
             raise ValueError("; ".join(result.compatibility_report.blocking_reasons))
         target_parser.import_canonical(target_location, result.canonical_after)
         result.wrote_to_save = True
         return result
 
-    def _normalized_copy(self, canonical: CanonicalPokemon, report: CompatibilityReport) -> CanonicalPokemon:
+    def _normalized_copy(
+        self, canonical: CanonicalPokemon, report: CompatibilityReport, resolved_moves: dict[int, int] | None = None
+    ) -> CanonicalPokemon:
         converted = deepcopy(canonical)
-        self._apply_report_normalization(converted, report)
+        self._apply_report_normalization(converted, report, resolved_moves=resolved_moves)
         return converted
 
-    def _apply_report_normalization(self, converted: CanonicalPokemon, report: CompatibilityReport) -> None:
+    def _apply_report_normalization(
+        self, converted: CanonicalPokemon, report: CompatibilityReport, resolved_moves: dict[int, int] | None = None
+    ) -> None:
         if converted.species is not None:
             converted.species.target_species_id = report.normalized_species.get("target_species_id")
             converted.species.target_species_id_space = report.normalized_species.get("target_species_id_space")
+        
         removed_move_ids = {int(move["move_id"]) for move in report.removed_moves if move.get("move_id") is not None}
+        
         if removed_move_ids:
-            had_moves = any(move.move_id not in {None, 0} for move in converted.moves)
-            converted.moves = [
-                move
-                for move in converted.moves
-                if move.move_id not in removed_move_ids and move_exists(move.move_id, self.target_generation)
-            ]
+            new_moves = []
+            for move in converted.moves:
+                m_id = int(move.move_id or 0)
+                if m_id in removed_move_ids:
+                    # Aplica resolucao do usuario se existir
+                    replacement_id = int(resolved_moves.get(m_id, resolved_moves.get(str(m_id), 0))) if resolved_moves else 0
+                    if replacement_id > 0:
+                        new_moves.append(
+                            CanonicalMove(
+                                move_id=replacement_id,
+                                name=move_name(replacement_id) or f"Move #{replacement_id}",
+                                source_generation=self.target_generation,
+                            )
+                        )
+                    # Se replacement_id == 0, o move e simplesmente removido
+                elif move_exists(m_id, self.target_generation):
+                    new_moves.append(move)
+            
+            converted.moves = new_moves
+            
             should_apply_fallback = any("Pound sera aplicado" in item for item in report.transformations)
-            if had_moves and not converted.moves and should_apply_fallback:
+            if not converted.moves and should_apply_fallback:
                 converted.moves = [
                     CanonicalMove(
                         move_id=1,

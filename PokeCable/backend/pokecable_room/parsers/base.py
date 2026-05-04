@@ -174,6 +174,9 @@ class SaveParser(Protocol):
     def get_game_id(self) -> str:
         ...
 
+    def get_player_name(self) -> str:
+        ...
+
     def list_party(self) -> list[PokemonSummary]:
         ...
 
@@ -271,6 +274,9 @@ class ParserNotImplemented:
 
     def get_game_id(self) -> str:
         return self.game_id
+
+    def get_player_name(self) -> str:
+        raise NotImplementedError("Leitura do nome do jogador sera implementada na fase da geracao correspondente.")
 
     def list_party(self) -> list[PokemonSummary]:
         raise NotImplementedError("Listagem de party sera implementada na fase da geracao correspondente.")

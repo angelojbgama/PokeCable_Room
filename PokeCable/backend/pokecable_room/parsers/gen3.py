@@ -4,7 +4,7 @@ import base64
 from dataclasses import dataclass
 from pathlib import Path
 
-from pokecable_room.canonical import CanonicalItem, CanonicalMove, CanonicalOriginalData, CanonicalPokemon
+from pokecable_room.canonical import CanonicalItem, CanonicalMove, CanonicalOriginalData, CanonicalPokemon, CanonicalStats
 from pokecable_room.compatibility import CompatibilityReport, build_compatibility_report
 from pokecable_room.data.gender_rates import gender_from_gen3_personality
 from pokecable_room.data.growth_rates import level_from_species_experience
@@ -311,6 +311,13 @@ class Gen3Parser:
     def get_game_id(self) -> str:
         return self.game_id
 
+    def get_player_name(self) -> str:
+        data = self._require_data()
+        slot = self._require_slot()
+        # O nome do jogador fica no inicio da Secao 0 do SaveBlock2
+        section0_offset = slot.section_offsets[0]
+        return self._decode_text(data[section0_offset : section0_offset + 7]) or "Player"
+
     def list_party(self) -> list[PokemonSummary]:
         data = self._require_data()
         count = self._party_count()
@@ -421,6 +428,8 @@ class Gen3Parser:
         secure = self._decrypt_secure(raw[:BOX_MON_SIZE])
         growth = self._substruct_offset(raw[:BOX_MON_SIZE], 0)
         attacks = self._substruct_offset(raw[:BOX_MON_SIZE], 1)
+        evs_offset = self._substruct_offset(raw[:BOX_MON_SIZE], 2)
+        misc_offset = self._substruct_offset(raw[:BOX_MON_SIZE], 3)
         held_item_id = int.from_bytes(secure[growth + 2 : growth + 4], "little") or None
         is_egg = bool(details["is_egg"])
         national_id = 0 if is_egg else native_to_national(3, summary.species_id)
@@ -429,6 +438,30 @@ class Gen3Parser:
             move_id = int.from_bytes(secure[attacks + offset : attacks + offset + 2], "little")
             if move_id:
                 moves.append(CanonicalMove(move_id=move_id, source_generation=3))
+        
+        # IVs and Misc
+        iv_raw = int.from_bytes(secure[misc_offset : misc_offset + 4], "little")
+        ivs = CanonicalStats(
+            hp=iv_raw & 0x1F,
+            attack=(iv_raw >> 5) & 0x1F,
+            defense=(iv_raw >> 10) & 0x1F,
+            speed=(iv_raw >> 15) & 0x1F,
+            special_attack=(iv_raw >> 20) & 0x1F,
+            special_defense=(iv_raw >> 25) & 0x1F,
+        )
+        is_egg = bool((iv_raw >> 30) & 1) or bool(details["is_egg"])
+        ability_bit = (iv_raw >> 31) & 1
+
+        # EVs
+        evs = CanonicalStats(
+            hp=secure[evs_offset + 0],
+            attack=secure[evs_offset + 1],
+            defense=secure[evs_offset + 2],
+            speed=secure[evs_offset + 3],
+            special_attack=secure[evs_offset + 4],
+            special_defense=secure[evs_offset + 5],
+        )
+
         return CanonicalPokemon(
             source_generation=3,
             source_game=self.game_id,
@@ -443,6 +476,9 @@ class Gen3Parser:
             held_item=CanonicalItem(item_id=held_item_id, name=item_name(held_item_id, 3), source_generation=3)
             if held_item_id is not None
             else None,
+            ivs=ivs,
+            evs=evs,
+            ability=str(ability_bit),
             original_data=CanonicalOriginalData(
                 generation=3,
                 game=self.game_id,
@@ -474,8 +510,14 @@ class Gen3Parser:
         trainer_id = int(canonical_pokemon.trainer_id) & 0xFFFFFFFF
         species_id = national_to_native(3, canonical_pokemon.species.national_dex_id)
         secure = bytearray(SECURE_SIZE)
+        
+        # Substruct offsets
         growth = SUBSTRUCT_ORDERS[personality % 24][0] * 12
         attacks = SUBSTRUCT_ORDERS[personality % 24][1] * 12
+        evs_offset = SUBSTRUCT_ORDERS[personality % 24][2] * 12
+        misc_offset = SUBSTRUCT_ORDERS[personality % 24][3] * 12
+
+        # Growth Substruct
         secure[growth : growth + 2] = species_id.to_bytes(2, "little")
         if canonical_pokemon.held_item and canonical_pokemon.held_item.item_id:
             item_id = canonical_pokemon.held_item.item_id
@@ -484,10 +526,49 @@ class Gen3Parser:
             if item_exists(item_id, 3):
                 secure[growth + 2 : growth + 4] = int(item_id).to_bytes(2, "little")
         secure[growth + 4 : growth + 8] = int(canonical_pokemon.experience or 0).to_bytes(4, "little", signed=False)
+        
+        # Attacks Substruct
         for offset, move in enumerate(canonical_pokemon.moves[:4]):
             if move_exists(move.move_id, 3):
                 secure[attacks + offset * 2 : attacks + offset * 2 + 2] = int(move.move_id).to_bytes(2, "little")
                 secure[attacks + 8 + offset] = min(99, int(move.pp or move.max_pp or 0))
+
+        # EVs Substruct (Effort Values)
+        # Gen 1/2 Stat Exp (0-65535) -> Gen 3 EVs (0-255)
+        # Mapping: floor(StatExp / 256)
+        if canonical_pokemon.evs:
+            secure[evs_offset + 0] = min(255, int((canonical_pokemon.evs.hp or 0) / 256))
+            secure[evs_offset + 1] = min(255, int((canonical_pokemon.evs.attack or 0) / 256))
+            secure[evs_offset + 2] = min(255, int((canonical_pokemon.evs.defense or 0) / 256))
+            secure[evs_offset + 3] = min(255, int((canonical_pokemon.evs.speed or 0) / 256))
+            secure[evs_offset + 4] = min(255, int((canonical_pokemon.evs.special_attack or canonical_pokemon.evs.special or 0) / 256))
+            secure[evs_offset + 5] = min(255, int((canonical_pokemon.evs.special_defense or canonical_pokemon.evs.special or 0) / 256))
+
+        # Misc Substruct (IVs, Egg, Ability)
+        # Gen 1/2 DVs (0-15) -> Gen 3 IVs (0-31)
+        # Mapping: DV * 2
+        iv_data = 0
+        if canonical_pokemon.ivs:
+            hp_iv = min(31, int(canonical_pokemon.ivs.hp or 0) * 2)
+            atk_iv = min(31, int(canonical_pokemon.ivs.attack or 0) * 2)
+            def_iv = min(31, int(canonical_pokemon.ivs.defense or 0) * 2)
+            spd_iv = min(31, int(canonical_pokemon.ivs.speed or 0) * 2)
+            spatk_iv = min(31, int(canonical_pokemon.ivs.special_attack or canonical_pokemon.ivs.special or 0) * 2)
+            spdef_iv = min(31, int(canonical_pokemon.ivs.special_defense or canonical_pokemon.ivs.special or 0) * 2)
+            
+            iv_data |= (hp_iv & 0x1F)
+            iv_data |= (atk_iv & 0x1F) << 5
+            iv_data |= (def_iv & 0x1F) << 10
+            iv_data |= (spd_iv & 0x1F) << 15
+            iv_data |= (spatk_iv & 0x1F) << 20
+            iv_data |= (spdef_iv & 0x1F) << 25
+        
+        # Ability bit (Bit 31 of IV field)
+        ability_bit = (personality & 1) 
+        iv_data |= (ability_bit << 31)
+        
+        secure[misc_offset : misc_offset + 4] = iv_data.to_bytes(4, "little")
+
         checksum = self._box_checksum(bytes(secure))
         encrypted = self._encrypt_secure(bytes(secure), personality, trainer_id)
         raw = bytearray(PARTY_MON_SIZE)

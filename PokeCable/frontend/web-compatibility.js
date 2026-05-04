@@ -63,14 +63,21 @@ window.POKECABLE_WEB_COMPATIBILITY = {
         return report;
       }
       const maxMove = targetGeneration === 1 ? 165 : targetGeneration === 2 ? 251 : 354;
+      const learnableIds = window.POKECABLE_LEARNSETS ? (window.POKECABLE_LEARNSETS[`${targetGeneration}-${nationalId}`] || []) : [];
+      const validReplacements = learnableIds.map(id => ({ move_id: id, name: moveName(id) || `Move #${id}` }));
+
       for (const move of canonical.moves || []) {
         const moveId = Number(move.move_id || move);
         if (moveId > maxMove) {
-          report.removed_moves.push({ move_id: moveId, name: move.name || moveName(moveId) || `Move #${moveId}` });
+          report.removed_moves.push({ 
+            move_id: moveId, 
+            name: move.name || moveName(moveId) || `Move #${moveId}`,
+            valid_replacements: validReplacements
+          });
           if (!report.data_loss.includes("moves")) report.data_loss.push("moves");
+          report.requires_user_confirmation = true;
         }
-      }
-      if (canonical.held_item && canonical.held_item.item_id) {
+      }      if (canonical.held_item && canonical.held_item.item_id) {
         const localSave = getLoadedSave();
         if (localSave) {
           report.item_transfer = resolveItemTransferDecisionForSave(payload, localSave);

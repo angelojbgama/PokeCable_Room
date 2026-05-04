@@ -1,0 +1,235 @@
+Iniciando Teste com Saves Reais...
+
+--- BATALHA REAL: ASH vs LEAF ---
+|init|battle
+|player|p1|Ash
+|player|p2|Leaf
+|poke|p1|Pikachu, L100
+|poke|p1|Sandslash, L100
+|poke|p1|Primeape, L100
+|poke|p1|Victreebel, L100
+|poke|p1|Tentacruel, L100
+|poke|p1|Rhydon, L100
+|poke|p2|Articuno, L53
+|poke|p2|Moltres, L55
+|poke|p2|Mewtwo, L72
+|poke|p2|Charizard, L100
+|poke|p2|Haunter, L25
+|poke|p2|Blastoise, L68
+|start|
+|switch|p1a: PIKACHU|Pikachu, L100|16578/16578
+|switch|p2a: ARTICUNO|Articuno, L53|158/158
+DEBUG: Acao recebida de p1 (ash): move
+DEBUG: Acao recebida de p2 (leaf): move
+|turn|1
+|move|p1a: PIKACHU|agility|p2a: ARTICUNO
+|move|p2a: ARTICUNO|ice-beam|p1a: PIKACHU
+|damage|p1a: PIKACHU|16575/16578
+DEBUG: Acao recebida de p1 (ash): move
+DEBUG: Acao recebida de p2 (leaf): move
+|turn|2
+|move|p1a: PIKACHU|thunder|p2a: ARTICUNO
+|-supereffective|
+|damage|p2a: ARTICUNO|0 fnt
+|faint|p2a: ARTICUNO
+DEBUG: p2 precisa trocar o Pokemon desmaiado.
+DEBUG: Acao recebida de p2 (leaf): switch
+|switch|p2a: MOLTRES|Moltres, L55|165/165
+DEBUG: Troca forcada de p2 resolvida.
+DEBUG: Todas as trocas forcadas concluidas.
+DEBUG: Acao recebida de p1 (ash): move
+DEBUG: Acao recebida de p2 (leaf): move
+|turn|3
+|move|p1a: PIKACHU|agility|p2a: MOLTRES
+|move|p2a: MOLTRES|agility|p1a: PIKACHU
+DEBUG: Acao recebida de p1 (ash): move
+DEBUG: Acao recebida de p2 (leaf): move
+|turn|4
+|move|p1a: PIKACHU|thunderbolt|p2a: MOLTRES
+|-supereffective|
+|damage|p2a: MOLTRES|0 fnt
+|faint|p2a: MOLTRES
+DEBUG: p2 precisa trocar o Pokemon desmaiado.
+DEBUG: Acao recebida de p2 (leaf): switch
+|switch|p2a: MASTER|Mewtwo, L72|238/238
+DEBUG: Troca forcada de p2 resolvida.
+DEBUG: Todas as trocas forcadas concluidas.
+DEBUG: Acao recebida de p1 (ash): move
+DEBUG: Acao recebida de p2 (leaf): move
+|turn|5
+|move|p1a: PIKACHU|thunderbolt|p2a: MASTER
+|damage|p2a: MASTER|0 fnt
+|faint|p2a: MASTER
+DEBUG: p2 precisa trocar o Pokemon desmaiado.
+DEBUG: Acao recebida de p2 (leaf): switch
+|switch|p2a: TOTTI|Blastoise, L68|192/192
+DEBUG: Troca forcada de p2 resolvida.
+DEBUG: Todas as trocas forcadas concluidas.
+DEBUG: Acao recebida de p1 (ash): move
+DEBUG: Acao recebida de p2 (leaf): move
+|turn|6
+|move|p1a: PIKACHU|agility|p2a: TOTTI
+|move|p2a: TOTTI|hydro-pump|p1a: PIKACHU
+|damage|p1a: PIKACHU|16574/16578
+DEBUG: Acao recebida de p1 (ash): move
+DEBUG: Acao recebida de p2 (leaf): move
+|turn|7
+|move|p1a: PIKACHU|slam|p2a: TOTTI
+|damage|p2a: TOTTI|0 fnt
+|faint|p2a: TOTTI
+DEBUG: p2 precisa trocar o Pokemon desmaiado.
+DEBUG: Acao recebida de p2 (leaf): switch
+|switch|p2a: CIARME|Charizard, L100|278/278
+DEBUG: Troca forcada de p2 resolvida.
+DEBUG: Todas as trocas forcadas concluidas.
+DEBUG: Acao recebida de p1 (ash): move
+DEBUG: Acao recebida de p2 (leaf): move
+|turn|8
+|move|p1a: PIKACHU|slam|p2a: CIARME
+|-miss|p1a: PIKACHU|p2a: CIARME
+|move|p2a: CIARME|strength|p1a: PIKACHU
+|damage|p1a: PIKACHU|16572/16578
+DEBUG: Acao recebida de p1 (ash): move
+DEBUG: Acao recebida de p2 (leaf): move
+|turn|9
+|move|p1a: PIKACHU|thunderbolt|p2a: CIARME
+|-supereffective|
+|damage|p2a: CIARME|0 fnt
+|faint|p2a: CIARME
+DEBUG: p2 precisa trocar o Pokemon desmaiado.
+DEBUG: Acao recebida de p2 (leaf): switch
+|switch|p2a: HAUNTER|Haunter, L25|57/57
+DEBUG: Troca forcada de p2 resolvida.
+DEBUG: Todas as trocas forcadas concluidas.
+DEBUG: Acao recebida de p1 (ash): move
+DEBUG: Acao recebida de p2 (leaf): move
+|turn|10
+|move|p1a: PIKACHU|slam|p2a: HAUNTER
+|-immune|
+|damage|p2a: HAUNTER|57/57
+|move|p2a: HAUNTER|spite|p1a: PIKACHU
+DEBUG: Acao recebida de p1 (ash): move
+DEBUG: Acao recebida de p2 (leaf): move
+|turn|11
+|move|p1a: PIKACHU|agility|p2a: HAUNTER
+|move|p2a: HAUNTER|spite|p1a: PIKACHU
+DEBUG: Acao recebida de p1 (ash): move
+DEBUG: Acao recebida de p2 (leaf): move
+|turn|12
+|move|p1a: PIKACHU|slam|p2a: HAUNTER
+|-immune|
+|damage|p2a: HAUNTER|57/57
+|move|p2a: HAUNTER|night-shade|p1a: PIKACHU
+|-crit|
+|damage|p1a: PIKACHU|16547/16578
+DEBUG: Acao recebida de p1 (ash): move
+DEBUG: Acao recebida de p2 (leaf): move
+|turn|13
+|move|p1a: PIKACHU|thunderbolt|p2a: HAUNTER
+|damage|p2a: HAUNTER|0 fnt
+|faint|p2a: HAUNTER
+|win|Ash
+
+==================================================
+INICIANDO TESTES DE MECANICAS ESPECIFICAS
+==================================================
+
+--- TESTE: STRUGGLE (Sem PP) ---
+|init|battle
+|player|p1|P1
+|player|p2|P2
+|poke|p1|Pikachu, L100
+|poke|p2|Bulbasaur, L100
+|start|
+|switch|p1a: Pikachu|Pikachu, L100|231/231
+|switch|p2a: Bulbasaur|Bulbasaur, L100|231/231
+DEBUG: Acao recebida de p1 (p1): move
+DEBUG: Acao recebida de p2 (p2): move
+|turn|1
+|move|p1a: Pikachu|Struggle|p2a: Bulbasaur
+|damage|p2a: Bulbasaur|189/231
+|-damage|p1a: Pikachu|174/231|[from] recoil
+|move|p2a: Bulbasaur|pound|p1a: Pikachu
+|damage|p1a: Pikachu|140/231
+DEBUG: Acao recebida de p1 (p1): move
+DEBUG: Acao recebida de p2 (p2): move
+|turn|2
+|move|p2a: Bulbasaur|pound|p1a: Pikachu
+|damage|p1a: Pikachu|106/231
+|move|p1a: Pikachu|Struggle|p2a: Bulbasaur
+|damage|p2a: Bulbasaur|146/231
+|-damage|p1a: Pikachu|49/231|[from] recoil
+Turno 1: P1 usa Protect
+DEBUG: Acao recebida de p1 (p1): move
+DEBUG: Acao recebida de p2 (p2): move
+|turn|1
+|move|p1a: ProtectUser|protect|p2a: Attacker
+|move|p2a: Attacker|tackle|p1a: ProtectUser
+|damage|p1a: ProtectUser|201/231
+
+Turno 2: P1 usa Dig (Carga)
+DEBUG: Acao recebida de p1 (p1): move
+DEBUG: Acao recebida de p2 (p2): move
+|turn|2
+|move|p2a: Attacker|tackle|p1a: ProtectUser
+|damage|p1a: ProtectUser|172/231
+|move|p1a: ProtectUser|dig|[still]
+|-prepare|p1a: ProtectUser|dig
+
+Turno 3: P1 usa Dig (Ataque)
+DEBUG: Acao recebida de p1 (p1): move
+DEBUG: Acao recebida de p2 (p2): move
+|turn|3
+|move|p2a: Attacker|tackle|p1a: ProtectUser
+|-miss|p2a: Attacker|p1a: ProtectUser
+|move|p1a: ProtectUser|dig|p2a: Attacker
+|damage|p2a: Attacker|167/231
+
+Turno 1: P1 usa Spikes
+DEBUG: Acao recebida de p1 (p1): move
+DEBUG: Acao recebida de p2 (p2): move
+|turn|1
+|move|p2a: P2-A|tackle|p1a: Skarmory
+|damage|p1a: Skarmory|199/231
+|move|p1a: Skarmory|spikes|p2a: P2-A
+|-sidestart|p2: P2|Spikes
+
+Turno 2: P1 usa Whirlwind
+DEBUG: Acao recebida de p1 (p1): move
+DEBUG: Acao recebida de p2 (p2): move
+|turn|2
+|move|p2a: P2-A|tackle|p1a: Skarmory
+|damage|p1a: Skarmory|169/231
+|move|p1a: Skarmory|whirlwind|p2a: P2-A
+|drag|p2a: P2-A|P2-B, L100|231/231
+|switch|p2a: P2-B|P2-B, L100|231/231
+|-damage|p2a: P2-B|203/231|[from] Spikes
+|init|battle
+|player|p1|P1
+|player|p2|P2
+|poke|p1|Alakazam, L100
+|poke|p2|Gyarados, L100
+|start|
+|switch|p1a: Alakazam|Alakazam, L100|231/231
+|switch|p2a: Gyarados|Gyarados, L100|231/231
+|-ability|p2a: Gyarados|Intimidate
+|-unboost|p1a: Alakazam|atk|1
+
+Turno 1: P1 envenena P2, Synchronize deve ativar
+DEBUG: Acao recebida de p1 (p1): move
+DEBUG: Acao recebida de p2 (p2): move
+|turn|1
+|move|p1a: Alakazam|poison-powder|p2a: Gyarados
+|-miss|p1a: Alakazam|p2a: Gyarados
+|move|p2a: Gyarados|tackle|p1a: Alakazam
+|damage|p1a: Alakazam|200/231
+
+Turno 1: P1 usa Recover e Leftovers cura no fim do turno
+DEBUG: Acao recebida de p1 (p1): move
+DEBUG: Acao recebida de p2 (p2): move
+|turn|1
+|move|p2a: Dummy|tackle|p1a: Healer
+|damage|p1a: Healer|67/231
+|move|p1a: Healer|recover|p2a: Dummy
+
+=== TODOS OS TESTES CONCLUIDOS ===

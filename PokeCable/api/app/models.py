@@ -184,6 +184,7 @@ class PokemonOffer:
 class Player:
     slot: PlayerSlot
     client_id: str
+    name: str
     generation: int
     game: str
     supported_trade_modes: list[str] = field(default_factory=list)
@@ -192,7 +193,9 @@ class Player:
 
     def to_public_dict(self) -> dict[str, Any]:
         return {
+            "slot": self.slot,
             "client_id": self.client_id,
+            "name": self.name,
             "generation": self.generation,
             "game": self.game,
             "supported_trade_modes": self.supported_trade_modes,
@@ -220,6 +223,7 @@ class Room:
     write_done: dict[PlayerSlot, bool] = field(default_factory=lambda: {"A": False, "B": False})
     write_errors: dict[PlayerSlot, str] = field(default_factory=lambda: {"A": "", "B": ""})
     write_metadata: dict[PlayerSlot, dict[str, Any] | None] = field(default_factory=lambda: {"A": None, "B": None})
+    resolved_moves: dict[PlayerSlot, dict[int, int] | None] = field(default_factory=lambda: {"A": None, "B": None})
     write_phase: str = "idle"
     max_players: int = 2
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

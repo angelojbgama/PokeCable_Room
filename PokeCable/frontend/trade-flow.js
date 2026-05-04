@@ -75,6 +75,7 @@ window.POKECABLE_TRADE_FLOW = {
         type: action === "create" ? "create_room" : "join_room",
         room_name: roomName,
         password,
+        player_name: loadedSave.player_name || "Treinador",
         generation: loadedSave.generation,
         game: loadedSave.game,
         supported_trade_modes: supportedTradeModes(loadedSave.generation),
@@ -188,7 +189,7 @@ window.POKECABLE_TRADE_FLOW = {
       send({
         type: "preflight_result",
         compatible: report.compatible,
-        requires_user_confirmation: false,
+        requires_user_confirmation: report.requires_user_confirmation,
         report,
         error: report.blocking_reasons.join("; ")
       });

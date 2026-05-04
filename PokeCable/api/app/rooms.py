@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import secrets
 from datetime import timedelta
 from typing import Iterable
 
@@ -35,19 +36,11 @@ class RoomManager:
         self,
         room_timeout_seconds: int | None = None,
         max_rooms: int | None = None,
-        cross_generation_enabled: bool | None = None,
         enabled_trade_modes: object | None = None,
     ) -> None:
         self.room_timeout_seconds = room_timeout_seconds or int(os.getenv("ROOM_TIMEOUT_SECONDS", "900"))
         self.max_rooms = max_rooms or int(os.getenv("MAX_ROOMS", "200"))
-        self.cross_generation_enabled = (
-            bool(cross_generation_enabled)
-            if cross_generation_enabled is not None
-            else os.getenv("ALLOW_CROSS_GENERATION", "false").strip().lower() in {"1", "true", "yes", "on"}
-        )
-        self.enabled_trade_modes = self._normalize_enabled_trade_modes(
-            enabled_trade_modes if enabled_trade_modes is not None else os.getenv("ENABLED_TRADE_MODES", "")
-        )
+        self.enabled_trade_modes = {TIME_CAPSULE_GEN1_GEN2, FORWARD_TRANSFER_TO_GEN3, LEGACY_DOWNCONVERT_EXPERIMENTAL}
         self.rooms: dict[str, Room] = {}
         self.client_rooms: dict[str, tuple[str, PlayerSlot]] = {}
         self._lock = asyncio.Lock()
@@ -58,6 +51,7 @@ class RoomManager:
         room_name: str,
         password: str,
         client_id: str,
+        player_name: str,
         generation: int,
         game: str,
         trade_mode: str | None = None,
@@ -108,6 +102,7 @@ class RoomManager:
             room.players[slot] = Player(
                 slot=slot,
                 client_id=client_id,
+                name=player_name,
                 generation=generation,
                 game=game,
                 supported_trade_modes=creator_supported_modes,
@@ -123,6 +118,7 @@ class RoomManager:
         room_name: str,
         password: str,
         client_id: str,
+        player_name: str,
         generation: int,
         game: str,
         supported_trade_modes: list[str] | None = None,
@@ -156,6 +152,7 @@ class RoomManager:
             room.players[slot] = Player(
                 slot=slot,
                 client_id=client_id,
+                name=player_name,
                 generation=generation,
                 game=game,
                 supported_trade_modes=entrant_supported_modes,
@@ -204,14 +201,42 @@ class RoomManager:
             room.reset_preflight()
             return room, slot, offer
 
-    async def confirm_trade(self, *, client_id: str) -> tuple[Room, PlayerSlot, bool]:
+    async def confirm_trade(
+        self, *, client_id: str, resolved_moves: dict[int, int] | None = None
+    ) -> tuple[Room, PlayerSlot, bool]:
         async with self._lock:
             room, slot = self._room_for_client_locked(client_id)
             if not room.has_both_offers():
                 raise RoomError("offers_missing", "Aguardando os dois jogadores enviarem seus Pokemon.")
             if not room.has_both_preflight_ok():
                 raise RoomError("preflight_required", "Aguardando validacao preflight dos dois jogadores.")
+            
             room.confirmations[slot] = True
+            room.resolved_moves[slot] = resolved_moves
+            
+            # Se recebemos resolucoes, aplicamos agora no payload que este jogador vai receber (o do peer)
+            if resolved_moves:
+                peer_slot = room.peer_slot(slot)
+                offer_to_modify = room.offers[peer_slot]
+                if offer_to_modify and offer_to_modify.canonical:
+                    canonical = offer_to_modify.canonical
+                    moves = canonical.get("moves", [])
+                    new_moves = []
+                    for move in moves:
+                        m_id = int(move.get("move_id") or 0)
+                        # Verifica se ha resolucao para este golpe
+                        res_id = resolved_moves.get(m_id) or resolved_moves.get(str(m_id))
+                        if res_id is not None:
+                            if int(res_id) > 0:
+                                # Substitui
+                                move["move_id"] = int(res_id)
+                                move.pop("name", None) # Forca o parser a re-identificar o nome se necessario
+                                new_moves.append(move)
+                            # Se res_id == 0, o move e removido (nao adicionado ao new_moves)
+                        else:
+                            new_moves.append(move)
+                    canonical["moves"] = new_moves
+
             if room.is_committed():
                 room.write_phase = "preparing"
             return room, slot, room.is_committed()
@@ -467,8 +492,6 @@ class RoomManager:
         room.derived_modes = {"A": mode_for_a, "B": mode_for_b}
         required_cross_modes = {mode for mode in room.derived_modes.values() if mode != SAME_GENERATION}
         if required_cross_modes:
-            if not self.cross_generation_enabled:
-                raise RoomError("game_mismatch", "Este servidor nao habilitou troca entre geracoes.")
             for slot, mode in room.derived_modes.items():
                 if mode == SAME_GENERATION:
                     continue

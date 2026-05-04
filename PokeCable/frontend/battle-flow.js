@@ -17,11 +17,76 @@ window.POKECABLE_BATTLE_FLOW = {
       battleTeamCountEl,
       confirmBattleButton,
       sendBattleTeamButton,
-      forfeitBattleButton
+      forfeitBattleButton,
+      battleInventoryPreviewEl,
+      selectedBattleItemStatusEl,
+      battleTeamPreviewEl
     } = elements;
+
+    let selectedItem = null;
+    const teamItems = {}; // location -> item_id
 
     function setBattleActionsEnabled(enabled) {
       for (const button of battleActionsEl.querySelectorAll("[data-battle-action]")) button.disabled = !enabled;
+    }
+
+    function renderBattleTeamPreview() {
+      const loadedSave = getLoadedSave();
+      if (!loadedSave || !battleTeamPreviewEl) return;
+
+      const team = loadedSave.party.filter(p => !p.is_egg).slice(0, 6);
+      const engineData = state.currentBattleRequest?.side?.pokemon || [];
+
+      battleTeamPreviewEl.innerHTML = team.map((pokemon, index) => {
+        const item = teamItems[pokemon.location];
+        const itemName = item ? (window.POKECABLE_ITEM_NAMES?.[3]?.[item] || window.POKECABLE_ITEM_NAMES?.[2]?.[item] || `Item #${item}`) : "Nenhum";
+        
+        let condition = "";
+        let isFainted = false;
+
+        if (engineData[index]) {
+          condition = engineData[index].condition || "";
+          isFainted = condition.includes("fnt") || condition.startsWith("0/");
+        }
+
+        return `
+          <div class="team-preview-item${isFainted ? " is-fainted" : ""}">
+            <div class="team-preview-name">
+              ${pokemon.nickname || pokemon.species_name} (Lv. ${pokemon.level})
+              ${condition ? `<span class="pokemon-condition-badge">${escapeHtml(condition)}</span>` : ""}
+            </div>
+            <div class="team-preview-item-slot">
+              Item: <strong>${itemName}</strong>
+              ${!isFainted && !state.currentBattleId ? `<button type="button" class="equip-item-button" data-equip-to="${pokemon.location}">Equipar</button>` : ""}
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function updateBattleInventoryPreview() {
+      const loadedSave = getLoadedSave();
+      if (!battleInventoryPreviewEl) return;
+      if (!loadedSave) {
+        battleInventoryPreviewEl.innerHTML = "Carregue um save para selecionar itens.";
+        return;
+      }
+
+      const validPockets = ["bag_items", "items", "berries"];
+      const entries = (loadedSave.inventory || [])
+        .filter(e => validPockets.includes(e.pocket_name) && e.storage === "bag" && e.quantity > 0);
+
+      if (!entries.length) {
+        battleInventoryPreviewEl.innerHTML = "Mochila vazia.";
+        return;
+      }
+
+      battleInventoryPreviewEl.innerHTML = entries.map(entry => `
+        <button type="button" class="inventory-item inventory-item-selectable${selectedItem?.item_id === entry.item_id ? " is-selected" : ""}" 
+                data-battle-item-id="${entry.item_id}" data-pocket="${entry.pocket_name}">
+          ${entry.item_name} x${entry.quantity}
+        </button>
+      `).join("");
     }
 
     function renderBattleActions(request = null) {
@@ -85,6 +150,9 @@ window.POKECABLE_BATTLE_FLOW = {
       sendBattleTeamButton.disabled = !state.hasJoinedBattleRoom || !state.roomReady || !hasTeam || Boolean(state.currentBattleId);
       confirmBattleButton.disabled = !state.readyToConfirm;
       forfeitBattleButton.disabled = !state.hasJoinedBattleRoom || (!state.currentBattleId && !state.roomReady);
+      
+      updateBattleInventoryPreview();
+      renderBattleTeamPreview();
     }
 
     function battleTeam() {
@@ -96,6 +164,15 @@ window.POKECABLE_BATTLE_FLOW = {
         .map((pokemon) => {
           const payload = loadedSave.exportPayload(pokemon.location);
           const canonical = payload.canonical;
+          
+          const virtualItem = teamItems[pokemon.location];
+          if (virtualItem) {
+            canonical.held_item = { 
+              item_id: Number(virtualItem), 
+              name: (window.POKECABLE_ITEM_NAMES?.[3]?.[virtualItem] || window.POKECABLE_ITEM_NAMES?.[2]?.[virtualItem] || `Item #${virtualItem}`) 
+            };
+          }
+
           if (canonical && canonical.original_data) {
             canonical.original_data = { ...canonical.original_data, raw_data_base64: null };
           }
@@ -129,6 +206,7 @@ window.POKECABLE_BATTLE_FLOW = {
         type: action === "create" ? "create_battle_room" : "join_battle_room",
         room_name: roomName,
         password,
+        player_name: loadedSave.player_name || "Treinador",
         generation: loadedSave.generation,
         game: loadedSave.game
       });
@@ -139,7 +217,17 @@ window.POKECABLE_BATTLE_FLOW = {
         setBattleStatus("A sala ainda nao esta pronta para batalha.");
         return;
       }
+      
+      const loadedSave = getLoadedSave();
       const team = battleTeam();
+      
+      Object.values(teamItems).forEach(itemId => {
+        const entry = (loadedSave.inventory || []).find(e => Number(e.item_id) === Number(itemId));
+        if (entry && entry.quantity > 0) {
+          entry.quantity -= 1;
+        }
+      });
+
       battleTeamCountEl.textContent = `${team.length} Pokémon enviados`;
       state.readyToConfirm = false;
       syncButtons();
@@ -239,6 +327,7 @@ window.POKECABLE_BATTLE_FLOW = {
           state.currentBattleRequest = message.request || null;
           setBattleStatus("Escolha uma ação de batalha.");
           renderBattleActions(state.currentBattleRequest);
+          renderBattleTeamPreview(); // Atualiza a lista lateral com o status real
           setBattleActionsEnabled(true);
           battleLog(state.currentBattleRequest ? "|request|ação disponível para este jogador" : "|request|escolha um golpe ou passe o turno");
           syncButtons();
@@ -247,6 +336,24 @@ window.POKECABLE_BATTLE_FLOW = {
           state.currentBattleId = null;
           state.currentBattleRequest = null;
           state.readyToConfirm = false;
+          
+          if (message.item_resolutions) {
+            const loadedSave = getLoadedSave();
+            const myResolutions = message.item_resolutions[state.clientId] || message.item_resolutions[state.localSlot];
+            if (myResolutions && loadedSave) {
+              myResolutions.forEach(res => {
+                if (!res.consumed) {
+                  const entry = (loadedSave.inventory || []).find(e => Number(e.item_id) === Number(res.item_id));
+                  if (entry) {
+                    entry.quantity += 1;
+                  }
+                }
+              });
+              Object.keys(teamItems).forEach(k => delete teamItems[k]);
+              log("Itens nao consumidos foram devolvidos a mochila.");
+            }
+          }
+
           if (message.reason === "peer_disconnected") {
             state.roomReady = false;
             setBattleStatus("O outro jogador saiu. A sala continua aguardando novo oponente.");
@@ -302,6 +409,7 @@ window.POKECABLE_BATTLE_FLOW = {
       handleBattleMessage,
       handleBattleServerError,
       handleBattleSocketClosed,
+      renderBattleTeamPreview,
       handleBattleActionClick(event) {
         const button = event.target.closest("[data-battle-action]");
         if (!button) return false;
@@ -310,6 +418,34 @@ window.POKECABLE_BATTLE_FLOW = {
         setBattleStatus(`Ação enviada: ${action}.`);
         send({ type: "battle_action", battle_id: state.currentBattleId, action });
         return true;
+      },
+      handleBattleItemClick(event) {
+        const itemBtn = event.target.closest("[data-battle-item-id]");
+        if (itemBtn) {
+          const itemId = itemBtn.dataset.battleItemId;
+          const pocket = itemBtn.dataset.pocket;
+          const loadedSave = getLoadedSave();
+          selectedItem = (loadedSave.inventory || []).find(e => e.item_id == itemId && e.pocket_name === pocket);
+          
+          if (selectedBattleItemStatusEl) {
+            selectedBattleItemStatusEl.textContent = selectedItem ? `Item: ${selectedItem.item_name}` : "Nenhum";
+          }
+          updateBattleInventoryPreview();
+          return true;
+        }
+
+        const equipBtn = event.target.closest("[data-equip-to]");
+        if (equipBtn) {
+          const location = equipBtn.dataset.equipTo;
+          if (selectedItem) {
+            teamItems[location] = selectedItem.item_id;
+            selectedItem = null;
+            if (selectedBattleItemStatusEl) selectedBattleItemStatusEl.textContent = "Nenhum";
+            syncButtons();
+          }
+          return true;
+        }
+        return false;
       },
       handleBattleConfirm() {
         state.readyToConfirm = false;

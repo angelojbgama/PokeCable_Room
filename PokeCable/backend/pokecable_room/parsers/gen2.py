@@ -420,6 +420,10 @@ class Gen2Parser:
     def get_game_id(self) -> str:
         return self.game_id
 
+    def get_player_name(self) -> str:
+        data = self._require_data()
+        return self._decode_text(data[0x200B : 0x200B + NAME_SIZE]) or "Player"
+
     def list_party(self) -> list[PokemonSummary]:
         data = self._require_data()
         layout = self._require_layout()
@@ -554,6 +558,35 @@ class Gen2Parser:
         raw = mon + self._ot_bytes(index) + self._nickname_bytes(index)
         held_item_id = mon[0x01] or None
         moves = [CanonicalMove(move_id=move_id, source_generation=2) for move_id in mon[0x02:0x06] if move_id]
+        
+        # DVs
+        dv_raw = mon[0x1B:0x1D]
+        atk_dv = dv_raw[0] >> 4
+        def_dv = dv_raw[0] & 0x0F
+        spd_dv = dv_raw[1] >> 4
+        spc_dv = dv_raw[1] & 0x0F
+        hp_dv = ((atk_dv & 1) << 3) | ((def_dv & 1) << 2) | ((spd_dv & 1) << 1) | (spc_dv & 1)
+
+        ivs = CanonicalStats(
+            hp=hp_dv,
+            attack=atk_dv,
+            defense=def_dv,
+            speed=spd_dv,
+            special=spc_dv,
+            special_attack=spc_dv,
+            special_defense=spc_dv,
+        )
+
+        evs = CanonicalStats(
+            hp=int.from_bytes(mon[0x11:0x13], "big"),
+            attack=int.from_bytes(mon[0x13:0x15], "big"),
+            defense=int.from_bytes(mon[0x15:0x17], "big"),
+            speed=int.from_bytes(mon[0x17:0x19], "big"),
+            special=int.from_bytes(mon[0x19:0x1B], "big"),
+            special_attack=int.from_bytes(mon[0x19:0x1B], "big"),
+            special_defense=int.from_bytes(mon[0x19:0x1B], "big"),
+        )
+
         return CanonicalPokemon(
             source_generation=2,
             source_game=self.game_id,
@@ -568,6 +601,8 @@ class Gen2Parser:
             held_item=CanonicalItem(item_id=held_item_id, name=item_name(held_item_id, 2), source_generation=2)
             if held_item_id is not None
             else None,
+            ivs=ivs,
+            evs=evs,
             original_data=CanonicalOriginalData(
                 generation=2,
                 game=self.game_id,

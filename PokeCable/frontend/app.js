@@ -40,8 +40,8 @@ const battleFormatEl = document.querySelector("#battleFormat");
 const battleTeamCountEl = document.querySelector("#battleTeamCount");
 const battleTeamPreviewEl = document.querySelector("#battleTeamPreview");
 const battleActionsEl = document.querySelector("#battleActions");
-const tabButtons = Array.from(document.querySelectorAll("[data-tab]"));
-const tabPanels = Array.from(document.querySelectorAll("[data-tab-panel]"));
+const battleInventoryPreviewEl = document.querySelector("#battleInventoryPreview");
+const selectedBattleItemStatusEl = document.querySelector("#selectedBattleItemStatus");
 const setupStatusEl = document.querySelector("#setupStatus");
 const setupSelectedSummaryEl = document.querySelector("#setupSelectedSummary");
 const setupSelectionDetailEl = document.querySelector("#setupSelectionDetail");
@@ -70,6 +70,10 @@ const tradeTogglePokemonPcButton = document.querySelector("#tradeTogglePokemonPc
 
 const roomNameEl = document.querySelector("#roomName");
 const roomPasswordEl = document.querySelector("#roomPassword");
+const localPlayerNameEl = document.querySelector("#localPlayerName");
+const peerPlayerNameEl = document.querySelector("#peerPlayerName");
+const localPlayerPillEl = document.querySelector("#localPlayerPill");
+const peerPlayerPillEl = document.querySelector("#peerPlayerPill");
 
 const speciesData = window.POKECABLE_SPECIES_DATA;
 if (!speciesData) {
@@ -476,7 +480,9 @@ const sessionState = {
   joined: false,
   tradeJoined: false,
   battleJoined: false,
-  saveLocked: false
+  saveLocked: false,
+  clientId: null,
+  slot: null
 };
 const tradeState = {
   localPayload: null,
@@ -691,8 +697,19 @@ const battleFlowController = battleFlowModule?.createBattleFlowController({
     battleTeamCountEl,
     sendBattleTeamButton,
     confirmBattleButton,
-    forfeitBattleButton
+    forfeitBattleButton,
+    battleInventoryPreviewEl,
+    selectedBattleItemStatusEl,
+    battleTeamPreviewEl
   }
+});
+
+battleInventoryPreviewEl?.addEventListener("click", (event) => {
+  battleFlowController?.handleBattleItemClick(event);
+});
+
+battleTeamPreviewEl?.addEventListener("click", (event) => {
+  battleFlowController?.handleBattleItemClick(event);
 });
 
 function clearTradePreviews() {
@@ -985,8 +1002,10 @@ function loadedSaveHeadline(save) {
 }
 
 function getActiveTab() {
-  const activeTabButton = tabButtons.find((button) => button.classList.contains("active"));
-  return activeTabButton ? activeTabButton.dataset.tab : "setup";
+  if (!document.querySelector("#tab-setup").classList.contains("setup-stage-hidden")) return "setup";
+  if (!document.querySelector("#tab-trade").classList.contains("setup-stage-hidden")) return "trade";
+  if (!document.querySelector("#tab-battle").classList.contains("setup-stage-hidden")) return "battle";
+  return "setup";
 }
 
 function refreshSessionUi() {
@@ -1008,17 +1027,10 @@ function refreshSessionUi() {
   roomNameEl.disabled = inputsDisabled;
   roomPasswordEl.disabled = inputsDisabled;
 
-  tabButtons.forEach((button) => {
-    if (button.dataset.tab === "trade" || button.dataset.tab === "battle") {
-      button.disabled = !roomChoiceReady;
-    }
-  });
-
   if (setupSaveStageEl) setupSaveStageEl.classList.toggle("setup-stage-hidden", hasLoadedSave);
   if (setupRoomStageEl) setupRoomStageEl.classList.toggle("setup-stage-hidden", !hasLoadedSave || sessionState.joined);
   if (setupChoiceStageEl) setupChoiceStageEl.classList.toggle("setup-stage-hidden", !roomChoiceReady);
   
-  // Garantir que os previews sejam atualizados
   if (hasLoadedSave) {
     if (isSetupTab) updateSetupPartyPreview();
     if (getActiveTab() === "trade") updateTradePartyPreview();
@@ -1043,16 +1055,12 @@ function refreshSessionUi() {
 }
 
 function activateTab(tabName) {
-  const targetButton = tabButtons.find((button) => button.dataset.tab === tabName);
-  if (targetButton?.disabled) return;
-  tabButtons.forEach((button) => {
-    const active = button.dataset.tab === tabName;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-selected", active ? "true" : "false");
+  // Oculta todos os painéis principais
+  ["tab-setup", "tab-trade", "tab-battle"].forEach(id => {
+    document.getElementById(id)?.classList.add("setup-stage-hidden");
   });
-  tabPanels.forEach((panel) => {
-    panel.classList.toggle("active", panel.dataset.tabPanel === tabName);
-  });
+  // Mostra apenas o selecionado
+  document.getElementById(`tab-${tabName}`)?.classList.remove("setup-stage-hidden");
   refreshSessionUi();
 }
 
@@ -1117,6 +1125,15 @@ function bytesToBase64(bytes) {
 }
 
 async function sha256Hex(bytes) {
+  if (!window.crypto || !window.crypto.subtle) {
+    console.warn("crypto.subtle não disponível. Usando hash simplificado.");
+    let hash = 0;
+    for (let i = 0; i < bytes.length; i++) {
+      hash = ((hash << 5) - hash) + bytes[i];
+      hash |= 0;
+    }
+    return "fallback-" + Math.abs(hash).toString(16);
+  }
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest)).map((value) => value.toString(16).padStart(2, "0")).join("");
 }
@@ -3284,21 +3301,117 @@ function leaveSession() {
 function handleMessage(message) {
   if (message.type === "heartbeat") return;
 
+  // Atualiza metadados da sessão se presentes na mensagem
+  if (message.client_id) {
+    sessionState.clientId = message.client_id;
+    console.debug(`[Session] Client ID set: ${message.client_id}`);
+  }
+  if (message.slot) {
+    sessionState.slot = message.slot;
+    console.debug(`[Session] Slot set: ${message.slot}`);
+  }
+
   // Filtra mensagens para os controladores específicos
   const handledByTrade = message.type !== "connected" && tradeFlowController?.handleTradeMessage(message);
   const handledByBattle = message.type !== "connected" && battleFlowController?.handleBattleMessage(message);
 
-  if (handledByTrade) {
-    if (message.type === "room_created" || message.type === "room_joined" || message.type === "room_ready") {
-      sessionState.tradeJoined = true;
-      sessionState.pending = false;
-      sessionState.joined = true;
-      refreshSessionUi();
+  // Atualização dos nomes dos players na interface de troca
+  if (message.room && message.room.players) {
+    const players = message.room.players;
+    const playerSlots = Object.keys(players);
+    
+    let localPlayer = null;
+    let peerPlayer = null;
+    let localSlot = null;
+
+    // 1. Tenta identificar o localSlot de forma rigorosa
+    playerSlots.forEach(slot => {
+      const p = players[slot];
+      const matchId = sessionState.clientId && p.client_id === sessionState.clientId;
+      const matchSlot = sessionState.slot && slot === sessionState.slot;
+      if (matchId || matchSlot) {
+        localSlot = slot;
+      }
+    });
+
+    // 2. Fallbacks para identificação do localSlot
+    if (!localSlot) {
+      if (playerSlots.length === 1 && (sessionState.joined || sessionState.pending)) {
+        localSlot = playerSlots[0];
+      } else if (sessionState.slot && players[sessionState.slot]) {
+        localSlot = sessionState.slot;
+      }
     }
-    if (message.type === "trade_cancelled" && message.reason !== "peer_disconnected") {
-      sessionState.tradeJoined = false;
-      refreshSessionUi();
+
+    // 3. Atribuição de local e peer
+    if (localSlot) {
+      localPlayer = players[localSlot];
+      const peerSlot = playerSlots.find(s => s !== localSlot);
+      if (peerSlot) peerPlayer = players[peerSlot];
+    } else if (playerSlots.length === 2) {
+      // Heurística de fallback: se não sabemos quem somos mas há 2, 
+      // o peer provavelmente é o que não é o Slot que achamos ser o nosso se o slot estivesse setado
+      if (sessionState.slot === "A") peerPlayer = players["B"];
+      else if (sessionState.slot === "B") peerPlayer = players["A"];
+      else peerPlayer = players["B"]; // Fallback final
     }
+
+    if (localPlayerNameEl) {
+      localPlayerNameEl.textContent = localPlayer?.name || loadedSave?.player_name || "Você";
+    }
+
+    if (peerPlayerNameEl) {
+      if (peerPlayer && peerPlayer.name) {
+        peerPlayerNameEl.textContent = peerPlayer.name;
+        peerPlayerPillEl?.classList.remove("is-empty");
+        peerPlayerPillEl?.classList.add("is-online");
+      } else {
+        peerPlayerNameEl.textContent = "Aguardando...";
+        peerPlayerPillEl?.classList.add("is-empty");
+        peerPlayerPillEl?.classList.remove("is-online");
+      }
+    }
+    
+    if (peerPlayer && peerPlayer.name && (message.type === "room_ready" || message.type === "room_joined" || message.type === "battle_room_ready")) {
+      // Só loga se o nome estiver disponível e for uma mensagem de entrada/prontidão
+      log(`O treinador ${peerPlayer.name} está na sala.`);
+    }
+
+    // Log de diagnóstico se ainda estiver "Aguardando..." com 2 players
+    if (playerSlots.length >= 2 && !peerPlayer) {
+      console.warn("[Debug] 2 players na sala mas peerPlayer nao identificado.", {
+        sessionClientId: sessionState.clientId,
+        sessionSlot: sessionState.slot,
+        players: players
+      });
+    }
+  }
+
+  switch (message.type) {
+    case "peer_disconnected":
+      log("O parceiro de troca se desconectou.");
+      if (peerPlayerNameEl) {
+        peerPlayerNameEl.textContent = "Aguardando...";
+        peerPlayerPillEl?.classList.add("is-empty");
+        peerPlayerPillEl?.classList.remove("is-online");
+      }
+      break;
+
+    case "connected":
+      sessionState.clientId = message.client_id;
+      break;
+  }
+
+  if (message.type === "room_created" || message.type === "room_joined" || message.type === "room_ready" || message.type === "room_context_updated") {
+    sessionState.tradeJoined = true;
+    sessionState.pending = false;
+    sessionState.joined = true;
+    refreshSessionUi();
+  }
+  
+  if (message.type === "trade_cancelled" && message.reason !== "peer_disconnected") {
+    sessionState.tradeJoined = false;
+    refreshSessionUi();
   }
 
   if (handledByBattle) {
@@ -3396,9 +3509,6 @@ roomPasswordEl.addEventListener("input", () => {
 leaveSessionButton.addEventListener("click", () => {
   leaveSession();
 });
-tabButtons.forEach((button) => {
-  button.addEventListener("click", () => activateTab(button.dataset.tab));
-});
 sendTradeOfferButton.addEventListener("click", () => {
   try {
     tradeFlowController?.sendOffer();
@@ -3408,7 +3518,19 @@ sendTradeOfferButton.addEventListener("click", () => {
 });
 confirmButton.addEventListener("click", () => {
   confirmButton.disabled = true;
-  send({ type: "confirm_trade" });
+  
+  // Coleta resoluções de golpes se houver dropdowns na tela
+  const resolvedMoves = {};
+  document.querySelectorAll(".move-replacement-select").forEach(select => {
+    const originalMoveId = select.dataset.originalMoveId;
+    const replacementMoveId = Number(select.value);
+    resolvedMoves[originalMoveId] = replacementMoveId;
+  });
+
+  send({ 
+    type: "confirm_trade",
+    resolved_moves: Object.keys(resolvedMoves).length > 0 ? resolvedMoves : null
+  });
 });
 sendBattleTeamButton.addEventListener("click", () => {
   try {

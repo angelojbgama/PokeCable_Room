@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 
-from pokecable_room.canonical import CanonicalMove, CanonicalOriginalData, CanonicalPokemon
+from pokecable_room.canonical import CanonicalMove, CanonicalOriginalData, CanonicalPokemon, CanonicalStats
 from pokecable_room.compatibility import CompatibilityReport, build_compatibility_report
 from pokecable_room.data.inventory_layouts import inventory_layout_for_game
 from pokecable_room.data.items import item_category, item_name
@@ -256,6 +256,10 @@ class Gen1Parser:
     def get_game_id(self) -> str:
         return self.game_id
 
+    def get_player_name(self) -> str:
+        data = self._require_data()
+        return self._decode_text(data[CHECKSUM_START : CHECKSUM_START + NAME_SIZE]) or "Player"
+
     def list_party(self) -> list[PokemonSummary]:
         data = self._require_data()
         count = data[PARTY_OFFSET]
@@ -343,6 +347,34 @@ class Gen1Parser:
         mon = self._mon_bytes(index)
         raw = mon + self._ot_bytes(index) + self._nickname_bytes(index)
         moves = [CanonicalMove(move_id=move_id, source_generation=1) for move_id in mon[0x08:0x0C] if move_id]
+        # DVs
+        dv_raw = mon[0x1B:0x1D]
+        atk_dv = dv_raw[0] >> 4
+        def_dv = dv_raw[0] & 0x0F
+        spd_dv = dv_raw[1] >> 4
+        spc_dv = dv_raw[1] & 0x0F
+        hp_dv = ((atk_dv & 1) << 3) | ((def_dv & 1) << 2) | ((spd_dv & 1) << 1) | (spc_dv & 1)
+
+        ivs = CanonicalStats(
+            hp=hp_dv,
+            attack=atk_dv,
+            defense=def_dv,
+            speed=spd_dv,
+            special=spc_dv,
+            special_attack=spc_dv,
+            special_defense=spc_dv,
+        )
+
+        evs = CanonicalStats(
+            hp=int.from_bytes(mon[0x11:0x13], "big"),
+            attack=int.from_bytes(mon[0x13:0x15], "big"),
+            defense=int.from_bytes(mon[0x15:0x17], "big"),
+            speed=int.from_bytes(mon[0x17:0x19], "big"),
+            special=int.from_bytes(mon[0x19:0x1B], "big"),
+            special_attack=int.from_bytes(mon[0x19:0x1B], "big"),
+            special_defense=int.from_bytes(mon[0x19:0x1B], "big"),
+        )
+
         return CanonicalPokemon(
             source_generation=1,
             source_game=self.game_id,
@@ -354,6 +386,8 @@ class Gen1Parser:
             trainer_id=summary.trainer_id,
             experience=int.from_bytes(mon[0x0E:0x11], "big"),
             moves=moves,
+            ivs=ivs,
+            evs=evs,
             original_data=CanonicalOriginalData(
                 generation=1,
                 game=self.game_id,

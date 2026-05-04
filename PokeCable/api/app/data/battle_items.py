@@ -1,0 +1,30 @@
+from __future__ import annotations
+
+# Mapeamento item_id -> { name, effect_type, ... }
+BATTLE_ITEMS: dict[int, dict] = {
+    132: {"name": "Oran Berry", "effect_type": "heal_threshold", "value": 10, "threshold": 0.5},
+    134: {"name": "Lum Berry", "effect_type": "cure_status"},
+    135: {"name": "Sitrus Berry", "effect_type": "heal_threshold", "value": 30, "threshold": 0.5},
+    158: {"name": "Lum Berry (Gen 2 Alt)", "effect_type": "cure_status"},
+    163: {"name": "Light Ball", "effect_type": "species_boost", "species": [25], "stat": "spa", "value": 2.0},
+    185: {"name": "Thick Club", "effect_type": "species_boost", "species": [104, 105], "stat": "atk", "value": 2.0},
+    196: {"name": "Soul Dew", "effect_type": "species_boost", "species": [380, 381], "stat": "special", "value": 1.5},
+    197: {"name": "Choice Band", "effect_type": "boost_stat", "stat": "atk", "value": 1.5},
+    199: {"name": "Silver Powder", "effect_type": "boost_type", "boost_type": "bug", "value": 1.1},
+    210: {"name": "Metal Coat", "effect_type": "boost_type", "boost_type": "steel", "value": 1.1},
+    211: {"name": "Leftovers", "effect_type": "heal_end_turn", "value": 0.0625},
+    214: {"name": "Soft Sand", "effect_type": "boost_type", "boost_type": "ground", "value": 1.1},
+    217: {"name": "Black Glasses", "effect_type": "boost_type", "boost_type": "dark", "value": 1.1},
+    218: {"name": "Black Belt", "effect_type": "boost_type", "boost_type": "fighting", "value": 1.1},
+    219: {"name": "Magnet", "effect_type": "boost_type", "boost_type": "electric", "value": 1.1},
+    220: {"name": "Mystic Water", "effect_type": "boost_type", "boost_type": "water", "value": 1.1},
+    221: {"name": "Sharp Beak", "effect_type": "boost_type", "boost_type": "flying", "value": 1.1},
+    222: {"name": "Poison Barb", "effect_type": "boost_type", "boost_type": "poison", "value": 1.1},
+    223: {"name": "Never Melt Ice", "effect_type": "boost_type", "boost_type": "ice", "value": 1.1},
+    224: {"name": "Spell Tag", "effect_type": "boost_type", "boost_type": "ghost", "value": 1.1},
+    226: {"name": "Charcoal", "effect_type": "boost_type", "boost_type": "fire", "value": 1.1},
+    227: {"name": "Dragon Fang", "effect_type": "boost_type", "boost_type": "dragon", "value": 1.1},
+    228: {"name": "Silk Scarf", "effect_type": "boost_type", "boost_type": "normal", "value": 1.1},
+    230: {"name": "DeepSeaTooth", "effect_type": "species_boost", "species": [366], "stat": "spa", "value": 2.0},
+    231: {"name": "DeepSeaScale", "effect_type": "species_boost", "species": [366], "stat": "spd", "value": 2.0},
+}

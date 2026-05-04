@@ -18,6 +18,7 @@ BATTLE_FORMATS_BY_GENERATION = {
 class BattlePlayer:
     slot: PlayerSlot
     client_id: str
+    name: str
     generation: int
     game: str
     team: list[dict[str, Any]] = field(default_factory=list)
@@ -27,6 +28,7 @@ class BattlePlayer:
     def to_public_dict(self) -> dict[str, Any]:
         return {
             "client_id": self.client_id,
+            "name": self.name,
             "generation": self.generation,
             "game": self.game,
             "team_size": len(self.team),

@@ -25,6 +25,7 @@ class BattleManager:
         room_name: str,
         password: str,
         client_id: str,
+        player_name: str,
         generation: int,
         game: str,
         format_id: str | None = None,
@@ -49,7 +50,7 @@ class BattleManager:
                 expires_at=now_utc() + timedelta(seconds=self.room_timeout_seconds),
             )
             slot: PlayerSlot = "A"
-            room.players[slot] = BattlePlayer(slot=slot, client_id=client_id, generation=generation, game=game)
+            room.players[slot] = BattlePlayer(slot=slot, client_id=client_id, name=player_name, generation=generation, game=game)
             self.rooms[room_name] = room
             self.client_rooms[client_id] = (room_name, slot)
             return room, slot
@@ -60,6 +61,7 @@ class BattleManager:
         room_name: str,
         password: str,
         client_id: str,
+        player_name: str,
         generation: int,
         game: str,
     ) -> tuple[BattleRoom, PlayerSlot]:
@@ -79,7 +81,7 @@ class BattleManager:
             if not verify_room_password(password, room.password_hash):
                 raise RoomError("invalid_password", "Senha incorreta.")
             slot: PlayerSlot = "A" if "A" not in room.players else "B"
-            room.players[slot] = BattlePlayer(slot=slot, client_id=client_id, generation=generation, game=game)
+            room.players[slot] = BattlePlayer(slot=slot, client_id=client_id, name=player_name, generation=generation, game=game)
             room.generation = max(player.generation for player in room.players.values())
             room.format_id = BATTLE_FORMATS_BY_GENERATION[room.generation]
             room.status = "ready"

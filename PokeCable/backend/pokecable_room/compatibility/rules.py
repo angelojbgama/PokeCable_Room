@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pokecable_room.canonical import CanonicalPokemon
 from pokecable_room.data.items import equivalent_item_id, item_exists, item_name
+from pokecable_room.data.learnsets import get_learnable_moves
 from pokecable_room.data.moves import move_exists, move_name
 from pokecable_room.data.species import national_to_native, species_exists_in_generation
 
@@ -80,13 +81,26 @@ def _apply_species_rules(report: CompatibilityReport, canonical: CanonicalPokemo
 
 def _apply_move_rules(report: CompatibilityReport, canonical: CanonicalPokemon, policy: str) -> None:
     original_move_count = 0
+    national_id = report.normalized_species.get("national_dex_id")
+    learnable_ids = get_learnable_moves(report.target_generation, national_id) if national_id else []
+    
+    valid_replacements = []
+    for m_id in learnable_ids:
+        valid_replacements.append({"move_id": m_id, "name": move_name(m_id) or f"Move #{m_id}"})
+
     for move in canonical.moves:
         if move.move_id in {0, None}:
             continue
         original_move_count += 1
         if move_exists(move.move_id, report.target_generation):
             continue
-        removed = {"move_id": move.move_id, "name": move.name or move_name(move.move_id) or f"Move #{move.move_id}"}
+        
+        removed = {
+            "move_id": move.move_id, 
+            "name": move.name or move_name(move.move_id) or f"Move #{move.move_id}",
+            "valid_replacements": valid_replacements
+        }
+        
         if policy in {"strict", "safe_default"}:
             report.compatible = False
             report.blocking_reasons.append(f"Move {removed['name']} nao existe na Gen {report.target_generation}.")

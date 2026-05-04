@@ -151,12 +151,30 @@ window.POKECABLE_TRADE_PREVIEW = {
       const warnings = (report?.warnings || []).slice();
       const dataLoss = (report?.data_loss || []).map((entry) => {
         if (entry === "held_item") return "Held item será removido.";
-        if (entry === "moves") return "Golpes incompatíveis serão removidos.";
+        if (entry === "moves") return "Golpes incompatíveis precisam de atenção.";
         if (entry === "ability") return "Ability será removida.";
         if (entry === "nature") return "Nature será removida.";
         return String(entry);
       });
-      const removedMoves = (report?.removed_moves || []).map((move) => `Golpe removido: ${move.name || `Move #${move.move_id}`}`);
+
+      const removedMovesHtml = (report?.removed_moves || []).map((move) => {
+        const label = `Golpe perdido: <strong>${escapeHtml(move.name)}</strong>`;
+        if (!move.valid_replacements || move.valid_replacements.length === 0) {
+          return `<div class="move-resolution-row">${label} <small>(Sem substitutos)</small></div>`;
+        }
+        
+        const options = move.valid_replacements.map(r => `<option value="${r.move_id}">${escapeHtml(r.name)}</option>`).join("");
+        return `
+          <div class="move-resolution-row">
+            <span>${label} ➔ substituir por:</span>
+            <select class="move-replacement-select" data-original-move-id="${move.move_id}">
+              <option value="0">-- Deixar Vazio --</option>
+              ${options}
+            </select>
+          </div>
+        `;
+      }).join("");
+
       const removedItems = (report?.removed_items || []).map((item) => `Item removido: ${item.name || `Item #${item.item_id}`}`);
       const removedFields = (report?.removed_fields || []).map((field) => `${field === "ability" ? "Ability" : field === "nature" ? "Nature" : field} será removido.`);
       const statusClass = report?.compatible ? "compatible" : "blocked";
@@ -172,7 +190,7 @@ window.POKECABLE_TRADE_PREVIEW = {
         <div class="trade-report-sections">
           ${listSectionHtml("Bloqueios", blockedReasons)}
           ${listSectionHtml("Perdas de dados", dataLoss)}
-          ${listSectionHtml("Golpes removidos", removedMoves)}
+          ${removedMovesHtml ? `<div class="trade-report-section"><strong>Resolução de Golpes</strong><div class="list">${removedMovesHtml}</div></div>` : ""}
           ${listSectionHtml("Itens removidos", removedItems)}
           ${listSectionHtml("Campos removidos", removedFields)}
           ${itemTransferSectionHtml(report?.item_transfer)}

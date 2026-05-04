@@ -54,7 +54,7 @@ class ConnectionHub:
             elif message_type == "preflight_result":
                 await self._preflight_result(client_id, message)
             elif message_type == "confirm_trade":
-                await self._confirm_trade(client_id)
+                await self._confirm_trade(client_id, message)
             elif message_type == "write_ready":
                 await self._write_ready(client_id, message)
             elif message_type == "write_done":
@@ -90,6 +90,7 @@ class ConnectionHub:
             room_name=message.get("room_name"),
             password=str(message.get("password") or ""),
             client_id=client_id,
+            player_name=str(message.get("player_name") or "Treinador"),
             generation=message.get("generation"),
             game=message.get("game"),
             trade_mode=message.get("trade_mode"),
@@ -114,6 +115,7 @@ class ConnectionHub:
             room_name=message.get("room_name"),
             password=str(message.get("password") or ""),
             client_id=client_id,
+            player_name=str(message.get("player_name") or "Treinador"),
             generation=message.get("generation"),
             game=message.get("game"),
             supported_trade_modes=list(message.get("supported_trade_modes") or []),
@@ -121,10 +123,15 @@ class ConnectionHub:
         )
         self._remember_client(room.room_name, slot, client_id)
         logger.info("room_joined room=%s generation=%s trade_mode=%s slot=%s", room.room_name, room.generation, room.trade_mode, slot)
+        
+        # Envia confirmação para quem entrou
         await self._send(client_id, {"type": "room_joined", "client_id": client_id, "slot": slot, "room": room.to_public_dict()})
+        
         peer_offer = room.offers.get(room.peer_slot(slot))
         if peer_offer is not None:
             await self._send(client_id, {"type": "peer_offer_received", "offer": peer_offer.to_public_dict()})
+        
+        # Notifica todos na sala que a sala está pronta e envia o estado completo da sala (com os nomes)
         await self._broadcast(room, {"type": "room_ready", "room": room.to_public_dict()})
 
     async def _offer_pokemon(self, client_id: str, message: dict[str, Any]) -> None:
@@ -164,8 +171,9 @@ class ConnectionHub:
         elif ready:
             await self._broadcast(room, {"type": "preflight_ready", "reports": reports, "room": room.to_public_dict()})
 
-    async def _confirm_trade(self, client_id: str) -> None:
-        room, slot, committed = await self.room_manager.confirm_trade(client_id=client_id)
+    async def _confirm_trade(self, client_id: str, message: dict[str, Any]) -> None:
+        resolved_moves = message.get("resolved_moves")
+        room, slot, committed = await self.room_manager.confirm_trade(client_id=client_id, resolved_moves=resolved_moves)
         logger.info("trade_confirmed room=%s slot=%s committed=%s", room.room_name, slot, committed)
         await self._send(client_id, {"type": "trade_confirmed", "slot": slot})
         if committed:
@@ -370,6 +378,7 @@ class ConnectionHub:
             room_name=message.get("room_name"),
             password=str(message.get("password") or ""),
             client_id=client_id,
+            player_name=str(message.get("player_name") or "Treinador"),
             generation=message.get("generation"),
             game=message.get("game"),
             format_id=message.get("format_id"),
@@ -383,6 +392,7 @@ class ConnectionHub:
             room_name=message.get("room_name"),
             password=str(message.get("password") or ""),
             client_id=client_id,
+            player_name=str(message.get("player_name") or "Treinador"),
             generation=message.get("generation"),
             game=message.get("game"),
         )
@@ -418,14 +428,30 @@ class ConnectionHub:
         room, _slot, result = await self.battle_manager.send_action(client_id=client_id, action=str(message.get("action") or "pass"))
         await self._broadcast_battle(room.room_name, {"type": "battle_log", "battle_id": room.battle_id, "logs": result.logs})
         if result.finished:
-            await self._broadcast_battle(room.room_name, {"type": "battle_finished", "battle_id": room.battle_id, "logs": result.logs})
+            await self._broadcast_battle(
+                room.room_name, 
+                {
+                    "type": "battle_finished", 
+                    "battle_id": room.battle_id, 
+                    "logs": result.logs,
+                    "item_resolutions": result.item_resolutions
+                }
+            )
         else:
             await self._send_battle_action_requests(room.room_name, room.battle_id, result.requests)
 
     async def _battle_forfeit(self, client_id: str) -> None:
         room, _slot, result = await self.battle_manager.forfeit(client_id=client_id)
         await self._broadcast_battle(room.room_name, {"type": "battle_log", "battle_id": room.battle_id, "logs": result.logs})
-        await self._broadcast_battle(room.room_name, {"type": "battle_finished", "battle_id": room.battle_id, "logs": result.logs})
+        await self._broadcast_battle(
+            room.room_name, 
+            {
+                "type": "battle_finished", 
+                "battle_id": room.battle_id, 
+                "logs": result.logs,
+                "item_resolutions": result.item_resolutions
+            }
+        )
 
     async def _disconnect(self, client_id: str) -> None:
         self.connections.pop(client_id, None)

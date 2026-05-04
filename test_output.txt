@@ -1,0 +1,370 @@
+--- Pokecable Battle Simulator (Automated Test) ---
+Carregando Time 1 (Gen 1 - Yellow)...
+DEBUG: Carregando save/gen 1/Pokémon - Yellow Version.sav...
+DEBUG: Save carregado com sucesso.
+DEBUG: Listando party...
+DEBUG: Exportando pokemon 0...
+DEBUG: Pokemon 0 encontrado: Pikachu
+DEBUG: Exportando pokemon 1...
+DEBUG: Pokemon 1 encontrado: Sandslash
+DEBUG: Exportando pokemon 2...
+DEBUG: Pokemon 2 encontrado: Primeape
+DEBUG: Exportando pokemon 3...
+DEBUG: Pokemon 3 encontrado: Victreebel
+DEBUG: Exportando pokemon 4...
+DEBUG: Pokemon 4 encontrado: Tentacruel
+DEBUG: Exportando pokemon 5...
+DEBUG: Pokemon 5 encontrado: Rhydon
+Carregando Time 2 (Gen 3 - LeafGreen)...
+DEBUG: Carregando save/gen 3/Pokémon - LeafGreen Version.sav...
+DEBUG: Save carregado com sucesso.
+DEBUG: Party count detectado: 6
+DEBUG: Section 1 offset: 0xe000
+DEBUG: Listando party...
+DEBUG: Exportando pokemon 0...
+DEBUG: Pokemon 0 encontrado: Articuno
+DEBUG: Exportando pokemon 1...
+DEBUG: Pokemon 1 encontrado: Moltres
+DEBUG: Exportando pokemon 2...
+DEBUG: Pokemon 2 encontrado: Mewtwo
+DEBUG: Exportando pokemon 3...
+DEBUG: Pokemon 3 encontrado: Charizard
+DEBUG: Exportando pokemon 4...
+DEBUG: Pokemon 4 encontrado: Haunter
+DEBUG: Exportando pokemon 5...
+DEBUG: Pokemon 5 encontrado: Blastoise
+Team ASH (Gen1): ['Pikachu', 'Sandslash', 'Primeape', 'Victreebel', 'Tentacruel', 'Rhydon']
+Team LEAF (Gen3): ['Articuno', 'Moltres', 'Mewtwo', 'Charizard', 'Haunter', 'Blastoise']
+--------------------------------------------------
+|init|battle
+|player|p1|Ash (Gen1)
+|player|p2|Leaf (Gen3)
+|poke|p1|Pikachu, L100
+|poke|p1|Sandslash, L100
+|poke|p1|Primeape, L100
+|poke|p1|Victreebel, L100
+|poke|p1|Tentacruel, L100
+|poke|p1|Rhydon, L100
+|poke|p2|Articuno, L53
+|poke|p2|Moltres, L55
+|poke|p2|Mewtwo, L72
+|poke|p2|Charizard, L100
+|poke|p2|Haunter, L25
+|poke|p2|Blastoise, L68
+|start|
+|switch|p1a: PIKACHU|Pikachu, L100|273/273
+|switch|p2a: ARTICUNO|Articuno, L53|158/158
+DEBUG: Acao recebida de p1 (ash_id): switch
+DEBUG: Acao recebida de p2 (leaf_id): switch
+|turn|1
+|switch|p1a: VICTREEBEL|Victreebel, L100|363/363
+|switch|p2a: MASTER|Mewtwo, L72|238/238
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): switch
+|turn|2
+|switch|p2a: MOLTRES|Moltres, L55|165/165
+|move|p1a: VICTREEBEL|sleep-powder|p2a: MOLTRES
+|-resisted|
+|damage|p2a: MOLTRES|165/165
+|-status|p2a: MOLTRES|slp
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|3
+|move|p1a: VICTREEBEL|substitute|p2a: MOLTRES
+|damage|p2a: MOLTRES|165/165
+|cant|p2a: MOLTRES|slp
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|4
+|move|p1a: VICTREEBEL|sleep-powder|p2a: MOLTRES
+|-resisted|
+|damage|p2a: MOLTRES|165/165
+|cant|p2a: MOLTRES|slp
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|5
+|cant|p2a: MOLTRES|slp
+|move|p1a: VICTREEBEL|poison-powder|p2a: MOLTRES
+|damage|p2a: MOLTRES|165/165
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): switch
+|turn|6
+|switch|p2a: ARTICUNO|Articuno, L53|158/158
+|move|p1a: VICTREEBEL|poison-powder|p2a: ARTICUNO
+|damage|p2a: ARTICUNO|158/158
+|-status|p2a: ARTICUNO|psn
+|-damage|p2a: ARTICUNO|139/158|[from] psn
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|7
+|move|p1a: VICTREEBEL|substitute|p2a: ARTICUNO
+|damage|p2a: ARTICUNO|139/158
+|move|p2a: ARTICUNO|ice-beam|p1a: VICTREEBEL
+|-supereffective|
+|damage|p1a: VICTREEBEL|309/363
+|-damage|p2a: ARTICUNO|120/158|[from] psn
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|8
+|move|p1a: VICTREEBEL|poison-powder|p2a: ARTICUNO
+|-miss|p1a: VICTREEBEL|p2a: ARTICUNO
+|move|p2a: ARTICUNO|mist|p1a: VICTREEBEL
+|-supereffective|
+|damage|p1a: VICTREEBEL|309/363
+|-singleturn|p2a: ARTICUNO|Protect
+|-damage|p2a: ARTICUNO|101/158|[from] psn
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|9
+|move|p1a: VICTREEBEL|stun-spore|p2a: ARTICUNO
+|-resisted|
+|damage|p2a: ARTICUNO|101/158
+|move|p2a: ARTICUNO|rock-smash|p1a: VICTREEBEL
+|-resisted|
+|damage|p1a: VICTREEBEL|305/363
+|-damage|p2a: ARTICUNO|82/158|[from] psn
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|10
+|move|p1a: VICTREEBEL|sleep-powder|p2a: ARTICUNO
+|-miss|p1a: VICTREEBEL|p2a: ARTICUNO
+|move|p2a: ARTICUNO|fly|[still]
+|-prepare|p2a: ARTICUNO|fly
+|-damage|p2a: ARTICUNO|63/158|[from] psn
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|11
+|move|p1a: VICTREEBEL|stun-spore|p2a: ARTICUNO
+|-miss|p1a: VICTREEBEL|p2a: ARTICUNO
+|move|p2a: ARTICUNO|fly|p1a: VICTREEBEL
+|-supereffective|
+|damage|p1a: VICTREEBEL|251/363
+|-damage|p2a: ARTICUNO|44/158|[from] psn
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): switch
+|turn|12
+|switch|p2a: TOTTI|Blastoise, L68|192/192
+|move|p1a: VICTREEBEL|poison-powder|p2a: TOTTI
+|damage|p2a: TOTTI|192/192
+|-status|p2a: TOTTI|psn
+|-damage|p2a: TOTTI|168/192|[from] psn
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|13
+|move|p1a: VICTREEBEL|stun-spore|p2a: TOTTI
+|-miss|p1a: VICTREEBEL|p2a: TOTTI
+|move|p2a: TOTTI|hydro-pump|p1a: VICTREEBEL
+|-resisted|
+|damage|p1a: VICTREEBEL|226/363
+|-damage|p2a: TOTTI|144/192|[from] psn
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|14
+|move|p1a: VICTREEBEL|poison-powder|p2a: TOTTI
+|damage|p2a: TOTTI|144/192
+|move|p2a: TOTTI|surf|p1a: VICTREEBEL
+|-resisted|
+|damage|p1a: VICTREEBEL|203/363
+|-damage|p2a: TOTTI|120/192|[from] psn
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|15
+|move|p1a: VICTREEBEL|stun-spore|p2a: TOTTI
+|-supereffective|
+|damage|p2a: TOTTI|120/192
+|move|p2a: TOTTI|dig|[still]
+|-prepare|p2a: TOTTI|dig
+|-damage|p2a: TOTTI|96/192|[from] psn
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|16
+|move|p1a: VICTREEBEL|poison-powder|p2a: TOTTI
+|-miss|p1a: VICTREEBEL|p2a: TOTTI
+|move|p2a: TOTTI|dig|p1a: VICTREEBEL
+|damage|p1a: VICTREEBEL|177/363
+|-damage|p2a: TOTTI|72/192|[from] psn
+DEBUG: Acao recebida de p1 (ash_id): switch
+DEBUG: Acao recebida de p2 (leaf_id): switch
+|turn|17
+|switch|p1a: TENTACRUEL|Tentacruel, L100|363/363
+|switch|p2a: MASTER|Mewtwo, L72|238/238
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|18
+|move|p1a: TENTACRUEL|hydro-pump|p2a: MASTER
+|damage|p2a: MASTER|0 fnt
+|faint|p2a: MASTER
+DEBUG: p2 precisa trocar o Pokemon desmaiado.
+DEBUG: Acao recebida de p2 (leaf_id): switch
+|switch|p2a: TOTTI|Blastoise, L68|72/192
+DEBUG: Troca forcada de p2 resolvida.
+DEBUG: Todas as trocas forcadas concluidas.
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|19
+|move|p1a: TENTACRUEL|hyper-beam|p2a: TOTTI
+|damage|p2a: TOTTI|0 fnt
+|faint|p2a: TOTTI
+DEBUG: p2 precisa trocar o Pokemon desmaiado.
+DEBUG: Acao recebida de p2 (leaf_id): switch
+|switch|p2a: HAUNTER|Haunter, L25|57/57
+DEBUG: Troca forcada de p2 resolvida.
+DEBUG: Todas as trocas forcadas concluidas.
+DEBUG: Acao recebida de p1 (ash_id): switch
+DEBUG: Acao recebida de p2 (leaf_id): switch
+|turn|20
+|switch|p1a: SANDSLASH|Sandslash, L100|353/353
+|switch|p2a: MOLTRES|Moltres, L55|165/165
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|21
+|move|p1a: SANDSLASH|swift|p2a: MOLTRES
+|damage|p2a: MOLTRES|44/165
+|-curestatus|p2a: MOLTRES|slp|[msg]
+|move|p2a: MOLTRES|fire-spin|p1a: SANDSLASH
+|damage|p1a: SANDSLASH|335/353
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|22
+|move|p1a: SANDSLASH|swift|p2a: MOLTRES
+|damage|p2a: MOLTRES|0 fnt
+|faint|p2a: MOLTRES
+DEBUG: p2 precisa trocar o Pokemon desmaiado.
+DEBUG: Acao recebida de p2 (leaf_id): switch
+|switch|p2a: ARTICUNO|Articuno, L53|44/158
+DEBUG: Troca forcada de p2 resolvida.
+DEBUG: Todas as trocas forcadas concluidas.
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|23
+|move|p1a: SANDSLASH|swift|p2a: ARTICUNO
+|damage|p2a: ARTICUNO|0 fnt
+|faint|p2a: ARTICUNO
+DEBUG: p2 precisa trocar o Pokemon desmaiado.
+DEBUG: Acao recebida de p2 (leaf_id): switch
+|switch|p2a: CIARME|Charizard, L100|278/278
+DEBUG: Troca forcada de p2 resolvida.
+DEBUG: Todas as trocas forcadas concluidas.
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|24
+|move|p2a: CIARME|fly|[still]
+|-prepare|p2a: CIARME|fly
+|move|p1a: SANDSLASH|cut|p2a: CIARME
+|-miss|p1a: SANDSLASH|p2a: CIARME
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|25
+|move|p2a: CIARME|fly|p1a: SANDSLASH
+|damage|p1a: SANDSLASH|271/353
+|move|p1a: SANDSLASH|slash|p2a: CIARME
+|damage|p2a: CIARME|204/278
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|26
+|move|p2a: CIARME|cut|p1a: SANDSLASH
+|-crit|
+|damage|p1a: SANDSLASH|220/353
+|move|p1a: SANDSLASH|cut|p2a: CIARME
+|-miss|p1a: SANDSLASH|p2a: CIARME
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|27
+|move|p2a: CIARME|heat-wave|p1a: SANDSLASH
+|damage|p1a: SANDSLASH|84/353
+|move|p1a: SANDSLASH|swift|p2a: CIARME
+|damage|p2a: CIARME|141/278
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|28
+|move|p2a: CIARME|heat-wave|p1a: SANDSLASH
+|damage|p1a: SANDSLASH|0 fnt
+|faint|p1a: SANDSLASH
+DEBUG: p1 precisa trocar o Pokemon desmaiado.
+DEBUG: Acao recebida de p1 (ash_id): switch
+|switch|p1a: TENTACRUEL|Tentacruel, L100|363/363
+DEBUG: Troca forcada de p1 resolvida.
+DEBUG: Todas as trocas forcadas concluidas.
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|29
+|move|p1a: TENTACRUEL|blizzard|p2a: CIARME
+|damage|p2a: CIARME|36/278
+|move|p2a: CIARME|heat-wave|p1a: TENTACRUEL
+|-miss|p2a: CIARME|p1a: TENTACRUEL
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): switch
+|turn|30
+|switch|p2a: HAUNTER|Haunter, L25|57/57
+|move|p1a: TENTACRUEL|hyper-beam|p2a: HAUNTER
+|-miss|p1a: TENTACRUEL|p2a: HAUNTER
+DEBUG: Acao recebida de p1 (ash_id): switch
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|31
+|switch|p1a: PIKACHU|Pikachu, L100|273/273
+|move|p2a: HAUNTER|curse|p1a: PIKACHU
+|damage|p1a: PIKACHU|273/273
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|32
+|move|p1a: PIKACHU|thunder|p2a: HAUNTER
+|-crit|
+|damage|p2a: HAUNTER|0 fnt
+|faint|p2a: HAUNTER
+DEBUG: p2 precisa trocar o Pokemon desmaiado.
+DEBUG: Acao recebida de p2 (leaf_id): switch
+|switch|p2a: CIARME|Charizard, L100|36/278
+DEBUG: Troca forcada de p2 resolvida.
+DEBUG: Todas as trocas forcadas concluidas.
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|33
+|move|p1a: PIKACHU|agility|p2a: CIARME
+|damage|p2a: CIARME|36/278
+|move|p2a: CIARME|heat-wave|p1a: PIKACHU
+|damage|p1a: PIKACHU|143/273
+|-status|p1a: PIKACHU|brn
+|-damage|p1a: PIKACHU|109/273|[from] brn
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|34
+|move|p1a: PIKACHU|agility|p2a: CIARME
+|damage|p2a: CIARME|36/278
+|move|p2a: CIARME|fly|[still]
+|-prepare|p2a: CIARME|fly
+|-damage|p1a: PIKACHU|75/273|[from] brn
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|35
+|move|p1a: PIKACHU|agility|p2a: CIARME
+|-miss|p1a: PIKACHU|p2a: CIARME
+|move|p2a: CIARME|fly|p1a: PIKACHU
+|-miss|p2a: CIARME|p1a: PIKACHU
+|-damage|p1a: PIKACHU|41/273|[from] brn
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|36
+|move|p1a: PIKACHU|agility|p2a: CIARME
+|damage|p2a: CIARME|36/278
+|move|p2a: CIARME|strength|p1a: PIKACHU
+|damage|p1a: PIKACHU|0 fnt
+|faint|p1a: PIKACHU
+DEBUG: p1 precisa trocar o Pokemon desmaiado.
+DEBUG: Acao recebida de p1 (ash_id): switch
+|switch|p1a: RHYDON|Rhydon, L100|413/413
+DEBUG: Troca forcada de p1 resolvida.
+DEBUG: Todas as trocas forcadas concluidas.
+DEBUG: Acao recebida de p1 (ash_id): move
+DEBUG: Acao recebida de p2 (leaf_id): move
+|turn|37
+|move|p2a: CIARME|strength|p1a: RHYDON
+|-resisted|
+|damage|p1a: RHYDON|395/413
+|move|p1a: RHYDON|take-down|p2a: CIARME
+|damage|p2a: CIARME|0 fnt
+|faint|p2a: CIARME
+|-damage|p1a: RHYDON|366/413|[from] recoil
+|win|Ash (Gen1)
+--------------------------------------------------
+BATALHA CONCLUIDA NO TURNO 38!
+VENCEDOR: Ash (Gen1)
