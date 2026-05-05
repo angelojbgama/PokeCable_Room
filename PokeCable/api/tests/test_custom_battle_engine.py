@@ -1,14 +1,14 @@
 import pytest
 import math
-from app.battle_engine_core import CustomBattleEngine, BattleSide, STRUGGLE
-from app.battle_pokemon import BattlePokemon, BattleMove, BattleStats
+from app.engines.gen3.battle_engine_core import CustomBattleEngine, BattleSide, STRUGGLE
+from app.engines.gen3.battle_pokemon import BattlePokemon, BattleMove, BattleStats
 
 def create_mock_pokemon(name="Mew", level=50, moves=None, ability=None, hp=100):
     stats = BattleStats(hp=hp, atk=100, defen=100, spa=100, spd=100, spe=100)
     if not moves:
         moves = [BattleMove(1, "Pound", "normal", 40, 100, 35, 35, 0, "physical", "")]
     return BattlePokemon(
-        species_id=151,
+        national_id=151,
         name=name,
         nickname=name,
         level=level,
@@ -38,7 +38,7 @@ def test_struggle_recoil():
     
     # Simula ação de struggle (move_index = -1)
     engine.submit_action("p1", {"type": "move", "move_index": -1})
-    engine.submit_action("p2", {"type": "move", "move_index": 0})
+    engine.submit_action("p2", {"type": "pass"})
     
     # Struggle na Gen 3 tira 1/4 do HP maximo em recoil
     assert p1.current_hp == 100 - 25
@@ -52,14 +52,14 @@ def test_ohko_moves():
     
     # Forçamos o hit na engine ou no calculate_hit? 
     # Aqui vamos testar a lógica do calculo de dano
-    from app.battle_damage import calculate_damage
+    from app.engines.gen3.battle_damage import calculate_damage
     dmg, mult = calculate_damage(p1, p2, horn_drill)
     
     assert dmg == p2.current_hp
     
     # Testar falha por level menor
     p1.level = 40
-    from app.battle_utils import calculate_hit
+    from app.engines.gen3.battle_utils import calculate_hit
     hit = calculate_hit(30, 0, 0, user_level=p1.level, target_level=p2.level, is_ohko=True)
     assert hit is False
 
@@ -72,7 +72,7 @@ def test_substitute_absorption():
     
     # Ataca Mew com Substitute
     pound = BattleMove(1, "Pound", "normal", 40, 100, 35, 35, 0, "physical", "")
-    engine._execute_action("p2", {"type": "move", "move_index": 0})
+    engine._execute_action("p2", {"type": "move", "move_index": 0}, 0)
     
     # HP real de p1 nao deve mudar, substitute_hp deve diminuir
     assert p1.current_hp == 400
@@ -86,7 +86,7 @@ def test_synchronize_ability():
     p2 = create_mock_pokemon(moves=[t_wave])
     engine = setup_engine(p1, p2)
     
-    engine._execute_action("p2", {"type": "move", "move_index": 0})
+    engine._execute_action("p2", {"type": "move", "move_index": 0}, 0)
     
     assert p1.status_condition == "par"
     # Synchronize deve ter passado para p2
@@ -112,7 +112,7 @@ def test_spikes_damage():
     engine = CustomBattleEngine("test", side1, side2)
     
     engine.sides["p2"].spikes_layers = 1
-    engine._switch_in("p2", 1) # Troca para o reserva
+    engine._switch_in("p2", 1, 0) # Troca para o reserva
     
     # 1 layer = 1/8 de 100 = 12
     assert p2_bench.current_hp == 100 - 12

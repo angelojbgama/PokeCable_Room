@@ -72,7 +72,7 @@ class CustomBattleEngine:
         global STRUGGLE
         from .battle_pokemon import BattleMove
         STRUGGLE = BattleMove(
-            move_id=-1, name="Struggle", type="normal", power=50, accuracy=None, 
+            move_id=-1, name="Struggle", type="normal", power=50, accuracy=0, 
             pp=1, max_pp=1, priority=0, damage_class="physical", effect="User receives 1/4 recoil."
         )
 
@@ -375,6 +375,14 @@ class CustomBattleEngine:
                     t_tag = f"{peer_side_id}{chr(97+peer_side.active_indices.index(p_idx))}"
                     self.add_log(f"|-ability|{slot_tag}: {pkmn.nickname}|{target.ability}|[from] ability: Trace|[of] {t_tag}: {target.nickname}")
                     break
+        
+        # Task 7.4: Weather abilities
+        if pkmn.ability == "drizzle":
+            self.set_weather("rain", -1)
+        elif pkmn.ability == "drought":
+            self.set_weather("sun", -1)
+        elif pkmn.ability == "sand-stream":
+            self.set_weather("sandstorm", -1)
         
         # Check items on entry (ex: White Herb)
         self._check_and_use_items("entry")

@@ -78,6 +78,70 @@ def get_dynamic_power(attacker: BattlePokemon, defender: BattlePokemon, move: Ba
 
     return move.power
 
+def calculate_damage_gen1(
+    attacker: BattlePokemon, 
+    defender: BattlePokemon, 
+    move: BattleMove, 
+    is_critical: bool = False,
+    random_factor: int | None = None
+) -> tuple[int, float]:
+    """
+    Calcula o dano usando a formula da Geração 1.
+    Retorna (dano_final, multiplicador_tipo).
+    """
+    move_type = move.type
+    type_multiplier = get_type_multiplier(move_type, defender.types, generation=1)
+
+    if type_multiplier > 0:
+        move_name_lower = move.name.lower().replace("-", "").replace(" ", "")
+        if move_name_lower in ["horndrill", "fissure", "guillotine"]:
+            return defender.current_hp, type_multiplier
+        if move_name_lower in ["seismictoss", "nightshade"]:
+            return attacker.level, type_multiplier
+        elif move_name_lower == "dragonrage":
+            return 40, type_multiplier
+        elif move_name_lower == "sonicboom":
+            return 20, type_multiplier
+        elif move_name_lower == "psywave":
+            dmg = math.floor(attacker.level * (random.randint(0, 100) + 50) / 100)
+            return max(1, dmg), type_multiplier
+
+    if move.power <= 0 or move.damage_class == "status":
+        return 0, type_multiplier
+
+    # Stats: Na Gen 1, Special Attack = Special Defense
+    is_special = is_special_type(move_type, generation=1)
+
+    if is_critical:
+        # Crítico na Gen 1 ignora modificadores de status
+        a = attacker.stats.spa if is_special else attacker.stats.atk
+        d = defender.stats.spa if is_special else defender.stats.defen
+    else:
+        a = attacker.get_modified_stat("spa") if is_special else attacker.get_modified_stat("atk")
+        d = defender.get_modified_stat("spa") if is_special else defender.get_modified_stat("def")
+
+    if d <= 0: d = 1
+
+    level = attacker.level
+    if is_critical: level *= 2
+
+    v = math.floor(math.floor(math.floor(2 * level / 5 + 2) * move.power * a / d) / 50) + 2
+
+    # STAB
+    if move_type in attacker.types:
+        v = math.floor(v * 1.5)
+
+    # Tipo
+    v = math.floor(v * type_multiplier)
+
+    # Random Factor (217-255) / 255
+    if random_factor is None:
+        random_factor = random.randint(217, 255)
+    v = math.floor(v * random_factor / 255)
+
+    if type_multiplier > 0 and v <= 0: v = 1
+    return int(v), type_multiplier
+
 def calculate_damage(
     attacker: BattlePokemon, 
     defender: BattlePokemon, 
@@ -86,14 +150,19 @@ def calculate_damage(
     weather: str = "none",
     defender_semi_invulnerable: str | None = None,
     defending_side: Any = None,
-    random_factor: int | None = None
+    random_factor: int | None = None,
+    generation: int = 3
 ) -> tuple[int, float]:
     """
-    Calcula o dano de um golpe usando a formula da Gen 3 com arredondamentos precisos.
+    Calcula o dano de um golpe usando a formula da geracao correspondente.
     Retorna (dano_final, multiplicador_tipo).
     """
+    if generation == 1:
+        return calculate_damage_gen1(attacker, defender, move, is_critical, random_factor)
+
     move_type = move.type
     move_name_lower = move.name.lower().replace("-", "").replace(" ", "")
+
     
     if move_name_lower == "hiddenpower":
         move_type, _ = get_hidden_power_data(attacker)

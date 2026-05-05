@@ -11,10 +11,10 @@ from .battle_utils import (
     calculate_other_stat,
     get_nature_modifiers,
 )
-from .data.base_stats import get_base_stats
-from .data.move_combat_data import get_move_combat_data
-from .data.pokemon_abilities import SPECIES_ABILITIES
-from .data.battle_items import BATTLE_ITEMS
+from ...data.base_stats import get_base_stats
+from ...data.move_combat_data import get_move_combat_data
+from ...data.pokemon_abilities import SPECIES_ABILITIES
+from ...data.battle_items import BATTLE_ITEMS
 
 @dataclass
 class BattleMove:
@@ -125,15 +125,23 @@ class BattlePokemon:
             return BATTLE_ITEMS.get(self.held_item_id)
         return None
 
-    def get_modified_stat(self, stat_name: str, weather: str = "none", stage_override: int | None = None, ignore_burn_penalty: bool = False) -> int:
+    def get_modified_stat(self, stat_name: str, weather: str = "none", stage_override: int | None = None, ignore_burn_penalty: bool = False, generation: int = 3) -> int:
         """Retorna o stat modificado pelos estagios (-6 a +6), condicoes de status e habilidades."""
         # Se for accuracy ou evasion, tratamos de forma diferente (base 100)
         if stat_name in ["accuracy", "evasion"]:
             base_val = 100
         else:
-            base_val = getattr(self.stats, stat_name if stat_name != "def" else "defen")
+            # Na Gen 1, spd usa o valor de spa (Special)
+            if generation == 1 and stat_name == "spd":
+                base_val = self.stats.spa
+            else:
+                base_val = getattr(self.stats, stat_name if stat_name != "def" else "defen")
             
         stage = self.stat_stages.get(stat_name, 0) if stage_override is None else stage_override
+        # Na Gen 1, o estagio de spd e o mesmo de spa
+        if generation == 1 and stat_name == "spd":
+            stage = self.stat_stages.get("spa", 0) if stage_override is None else stage_override
+
         # Clamp stage
         stage = max(-6, min(6, stage))
         
@@ -145,28 +153,35 @@ class BattlePokemon:
         final_val = math.floor(base_val * multiplier)
 
         # Penalidades e Bônus de Status/Ability (Gen 3)
-        if stat_name == "atk":
-            # Burn reduz atk pela metade, a menos que tenha Guts ou ignore_burn_penalty (ex: Facade)
-            if self.status_condition == "brn" and self.ability != "guts" and not ignore_burn_penalty:
-                final_val = math.floor(final_val / 2)
-            # Task 7.16: Guts (1.5x Atk se tiver qualquer status)
-            if self.status_condition and self.ability == "guts":
-                final_val = math.floor(final_val * 1.5)
-        
-        elif stat_name == "def":
-            # Task 7.16: Marvel Scale (1.5x Def se tiver qualquer status)
-            if self.status_condition and self.ability == "marvel-scale":
-                final_val = math.floor(final_val * 1.5)
-
-        elif stat_name == "spe":
-            # Paralisia reduz speed para 1/4 (Gen 3)
-            if self.status_condition == "par":
-                final_val = math.floor(final_val / 4)
+        if generation >= 3:
+            if stat_name == "atk":
+                # Burn reduz atk pela metade, a menos que tenha Guts ou ignore_burn_penalty (ex: Facade)
+                if self.status_condition == "brn" and self.ability != "guts" and not ignore_burn_penalty:
+                    final_val = math.floor(final_val / 2)
+                # Task 7.16: Guts (1.5x Atk se tiver qualquer status)
+                if self.status_condition and self.ability == "guts":
+                    final_val = math.floor(final_val * 1.5)
             
-            # Task 7.16: Swift Swim / Chlorophyll
-            if (self.ability == "swift-swim" and weather == "rain") or \
-               (self.ability == "chlorophyll" and weather == "sun"):
-                final_val *= 2
+            elif stat_name == "def":
+                # Task 7.16: Marvel Scale (1.5x Def se tiver qualquer status)
+                if self.status_condition and self.ability == "marvel-scale":
+                    final_val = math.floor(final_val * 1.5)
+
+            elif stat_name == "spe":
+                # Paralisia reduz speed para 1/4 (Gen 3)
+                if self.status_condition == "par":
+                    final_val = math.floor(final_val / 4)
+                
+                # Task 7.16: Swift Swim / Chlorophyll
+                if (self.ability == "swift-swim" and weather == "rain") or \
+                   (self.ability == "chlorophyll" and weather == "sun"):
+                    final_val *= 2
+        elif generation == 1:
+            # Na Gen 1, Burn reduz Atk pela metade e Paralyze reduz Speed para 1/4
+            if stat_name == "atk" and self.status_condition == "brn":
+                final_val = math.floor(final_val / 2)
+            elif stat_name == "spe" and self.status_condition == "par":
+                final_val = math.floor(final_val / 4)
             
         return max(1, final_val)
 

@@ -1,16 +1,18 @@
 # Tarefas da Engine de Batalha (Custom Hardcore)
 
-## Fase 1: Base de Dados e Modelos (Normalização Gen 3)
-- [x] **1.1. Extração de Base Stats:** Criar um script para baixar os "Base Stats" (HP, Atk, Def, SpA, SpD, Spe) e Tipos de todos os 386 Pokémon da PokéAPI.
-- [x] **1.2. Extração de Dados de Golpes:** Criar um script para baixar os dados de combate dos golpes (Power, Accuracy, Type, Effect, Priority).
-- [x] **1.3. Fórmulas de Status Gen 3:** Implementar o algoritmo que calcula os status reais usando Nível, Base Stats, IVs, EVs e Natureza.
-- [x] **1.4. Modelo `BattlePokemon`:** Criar a classe que representa o Pokémon em batalha, instanciada a partir do `CanonicalPokemon` e usando as fórmulas criadas.
+## Fase 0: Arquitetura de Isolamento (Multi-Engine)
+- [x] **0.1. Estrutura de Diretórios:** Isolar as engines em `app/engines/gen1`, `gen2` e `gen3`.
+- [x] **0.2. BattleEngineRouter:** Implementar o roteador que despacha as batalhas para a engine correta baseado no `format_id`.
+- [x] **0.3. Interfaces Comuns:** Definir `BattleEngineAdapter` para garantir interoperabilidade entre o servidor WebSocket e as diferentes gerações.
 
-## Fase 2: O Motor Principal (Core Engine)
-- [x] **2.1. Estrutura da Batalha:** Criar a classe `CustomBattleEngine` que gerenciará o estado (Turnos, Lados do Campo, Pokémon ativos).
-- [x] **2.2. Matriz de Tipos (Type Chart):** Implementar a tabela de fraquezas/resistências da Geração 3 (ex: Água > Fogo = 2.0x de dano).
-- [x] **2.3. Fórmula de Dano Base:** Programar o cálculo matemático exato de dano (Level, Power, Ataque/Defesa, STAB, Modificador de Tipo e Fator Aleatório).
-- [x] **2.4. Resolução de Turno (Action Queue):** Criar a lógica que decide quem ataca primeiro baseado na Speed e na Prioridade do golpe.
+## Fase 1: Engine Gen 1 vs Gen 1 (Puro RBY)
+- [x] **1.1. Modelos Gen 1:** Criar `PokemonGen1` com DVs (0-15), Stat Exp e Stat "Special" unificado.
+- [x] **1.2. Matriz de Tipos Gen 1:** Implementar fraquezas clássicas (Ghost imune a Psychic, Bug vs Poison).
+- [x] **1.3. Fórmula de Dano Gen 1:** Implementar a matemática original de Red/Blue/Yellow.
+- [x] **1.4. Acertos Críticos Gen 1:** Chance baseada na `Base Speed`.
+- [x] **1.5. Precisão Gen 1:** Implementar glitch do 1/256.
+- [ ] **1.6. Status Condicionais Gen 1:** Sleep (perde turno ao acordar), Freeze (permanente).
+- [ ] **1.7. Movimentos de Aprisionamento:** Wrap, Bind, Fire Spin bloqueando ações.
 ## Fase 3: Ações, Golpes e Efeitos (State Machine)
 - [x] **3.1. Physical/Special Split:** Implementar a regra clássica onde o "Tipo" do golpe define se ele usa Attack ou Special Attack.
 - [x] **3.2. Precisão e Esquiva:** Implementar o RNG para verificar se o ataque acerta (Accuracy vs Evasion).

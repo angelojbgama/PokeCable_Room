@@ -69,7 +69,7 @@ ACCURACY_EVASION_STAGE_MODIFIERS: dict[int, float] = {
     1: 4/3, 2: 5/3, 3: 6/3, 4: 7/3, 5: 8/3, 6: 9/3
 }
 
-# Tabela de chances de Crítico (Gen 3)
+# Tabela de chances de Crítico (Gen 2-3)
 # Stage -> Probabilidade
 CRIT_CHANCE_STAGES: dict[int, float] = {
     0: 1/16,
@@ -79,10 +79,22 @@ CRIT_CHANCE_STAGES: dict[int, float] = {
     4: 1/2
 }
 
-def determine_critical(crit_stage: int) -> bool:
-    """Determina se um golpe sera critico baseado no estagio de critico (0-4+)."""
-    stage = max(0, min(4, crit_stage))
-    chance = CRIT_CHANCE_STAGES[stage]
+def determine_critical(crit_stage: int, generation: int = 3, base_speed: int = 0) -> bool:
+    """
+    Determina se um golpe sera critico.
+    Na Gen 1, baseia-se na Base Speed. Na Gen 2+, baseia-se em estagios.
+    """
+    if generation >= 2:
+        stage = max(0, min(4, crit_stage))
+        chance = CRIT_CHANCE_STAGES[stage]
+    else:
+        # Formula Gen 1: (BaseSpeed * Multiplier) / 512
+        # Multiplier e 1 para moves normais, 8 para moves de alto critico (crit_stage > 0)
+        multiplier = 8.0 if crit_stage > 0 else 1.0
+        # O limite maximo de chance na Gen 1 e ~99.6% (255/256)
+        chance = (base_speed * multiplier) / 512.0
+        if chance > 0.996: chance = 0.996
+        
     return random.random() < chance
 
 def calculate_hit(
@@ -113,4 +125,3 @@ def calculate_hit(
         chance = move_accuracy * ACCURACY_EVASION_STAGE_MODIFIERS[stage_diff]
     
     return random.randint(1, 100) <= chance
-
