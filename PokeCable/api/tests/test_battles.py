@@ -5,6 +5,7 @@ import unittest
 
 from app.battles import BattleManager
 from app.battle_engine import LocalBattleEngineAdapter
+from app.models import RoomError
 
 
 def canonical_team(species: str = "Mew") -> list[dict]:
@@ -71,7 +72,7 @@ class BattleManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result.finished)
         self.assertTrue(any("|choice|a|move 1" == line for line in result.logs))
 
-    async def test_cross_generation_battle_uses_highest_generation_format(self) -> None:
+    async def test_cross_generation_battle_rejects_mixed_generation_join(self) -> None:
         room, _slot = await self.manager.create_room(
             room_name="cross-battle",
             password="pw",
@@ -81,18 +82,18 @@ class BattleManagerTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(room.format_id, "gen1customgame")
 
-        room, slot = await self.manager.join_room(
-            room_name="cross-battle",
-            password="pw",
-            client_id="b",
-            generation=3,
-            game="pokemon_emerald",
-        )
+        with self.assertRaises(RoomError) as ctx:
+            await self.manager.join_room(
+                room_name="cross-battle",
+                password="pw",
+                client_id="b",
+                generation=3,
+                game="pokemon_emerald",
+            )
 
-        self.assertEqual(slot, "B")
-        self.assertTrue(room.is_ready())
-        self.assertEqual(room.generation, 3)
-        self.assertEqual(room.format_id, "gen3customgame")
+        self.assertEqual(ctx.exception.code, "generation_mismatch")
+        self.assertEqual(room.generation, 1)
+        self.assertEqual(room.format_id, "gen1customgame")
 
     async def test_forfeit_finishes_battle(self) -> None:
         await self.manager.create_room(room_name="ff", password="pw", client_id="a", generation=3, game="pokemon_emerald")
@@ -126,15 +127,17 @@ class BattleManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(room.status, "waiting_for_teams")
         self.assertFalse(room.players["B"].ready)
 
-    async def test_update_player_context_recalculates_battle_format(self) -> None:
+    async def test_update_player_context_rejects_generation_mismatch(self) -> None:
         await self.manager.create_room(room_name="ctx", password="pw", client_id="a", generation=1, game="pokemon_red")
         room, _slot = await self.manager.join_room(room_name="ctx", password="pw", client_id="b", generation=1, game="pokemon_blue")
         self.assertEqual(room.format_id, "gen1customgame")
 
-        room, slot = await self.manager.update_player_context(client_id="b", generation=3, game="pokemon_emerald")
-        self.assertEqual(slot, "B")
-        self.assertEqual(room.generation, 3)
-        self.assertEqual(room.format_id, "gen3customgame")
+        with self.assertRaises(RoomError) as ctx:
+            await self.manager.update_player_context(client_id="b", generation=3, game="pokemon_emerald")
+
+        self.assertEqual(ctx.exception.code, "generation_mismatch")
+        self.assertEqual(room.generation, 1)
+        self.assertEqual(room.format_id, "gen1customgame")
         self.assertEqual(room.status, "ready")
 
     async def test_cleanup_expired_removes_battle_room(self) -> None:

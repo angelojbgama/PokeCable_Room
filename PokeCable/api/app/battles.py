@@ -10,6 +10,35 @@ from .security import hash_room_password, verify_room_password
 from .battle_engine import BattleEngineAdapter, BattleEngineResult, build_battle_engine
 
 
+def _generation_from_format_id(format_id: str | None) -> int | None:
+    if not format_id:
+        return None
+    format_lower = str(format_id).strip().lower()
+    if format_lower.startswith("gen1"):
+        return 1
+    if format_lower.startswith("gen2"):
+        return 2
+    if format_lower.startswith("gen3"):
+        return 3
+    return None
+
+
+def _team_generation(team: list[dict[str, Any]]) -> int | None:
+    generations: set[int] = set()
+    for member in team:
+        if not isinstance(member, dict):
+            continue
+        source_generation = member.get("source_generation")
+        if source_generation is None:
+            source_generation = member.get("generation")
+        if source_generation is None:
+            continue
+        generations.add(int(source_generation))
+    if len(generations) > 1:
+        raise RoomError("generation_mismatch", "Time de batalha nao pode misturar geracoes no mesmo time.")
+    return next(iter(generations)) if generations else None
+
+
 class BattleManager:
     def __init__(self, *, room_timeout_seconds: int = 900, max_rooms: int = 100, adapter: BattleEngineAdapter | None = None) -> None:
         self.room_timeout_seconds = room_timeout_seconds
@@ -41,6 +70,12 @@ class BattleManager:
                 raise RoomError("room_exists", "Ja existe uma sala de batalha com esse nome.")
             if len(self.rooms) >= self.max_rooms:
                 raise RoomError("server_full", "Limite de salas de batalha atingido.")
+            if format_id is not None:
+                format_generation = _generation_from_format_id(format_id)
+                if format_generation is None:
+                    raise RoomError("generation_mismatch", "O format_id da sala precisa indicar a geracao da batalha.")
+                if format_generation != generation:
+                    raise RoomError("generation_mismatch", "O format_id da sala precisa bater com a geracao da batalha.")
             format_id = str(format_id or BATTLE_FORMATS_BY_GENERATION[generation])
             room = BattleRoom(
                 room_name=room_name,
@@ -80,9 +115,14 @@ class BattleManager:
                 raise RoomError("room_full", "A sala de batalha ja possui dois jogadores.")
             if not verify_room_password(password, room.password_hash):
                 raise RoomError("invalid_password", "Senha incorreta.")
+            if generation != room.generation:
+                raise RoomError(
+                    "generation_mismatch",
+                    f"A sala de batalha e Gen {room.generation}. Seu save e Gen {generation}.",
+                )
             slot: PlayerSlot = "A" if "A" not in room.players else "B"
             room.players[slot] = BattlePlayer(slot=slot, client_id=client_id, name=player_name, generation=generation, game=game)
-            room.generation = max(player.generation for player in room.players.values())
+            room.generation = generation
             room.format_id = BATTLE_FORMATS_BY_GENERATION[room.generation]
             room.status = "ready"
             self.client_rooms[client_id] = (room_name, slot)
@@ -96,9 +136,16 @@ class BattleManager:
             if room.status == "finished":
                 self._reset_room_for_new_match_locked(room)
             player = room.players[slot]
+            sanitized_team = _sanitize_team(team)
+            team_generation = _team_generation(sanitized_team)
+            if team_generation is not None and team_generation != room.generation:
+                raise RoomError(
+                    "generation_mismatch",
+                    f"Time da batalha e Gen {team_generation}, mas a sala espera Gen {room.generation}.",
+                )
             for member in room.players.values():
                 member.confirmed = False
-            player.team = _sanitize_team(team)
+            player.team = sanitized_team
             player.ready = True
             room.status = "teams_ready" if room.has_both_teams() else ("waiting_for_teams" if room.is_ready() else "waiting")
             return room, slot, room.has_both_teams()
@@ -181,12 +228,23 @@ class BattleManager:
             generation = parse_generation(generation)
             game = parse_game_id(game, generation)
             player = room.players[slot]
+            peer_generation = None
+            if room.is_ready():
+                peer_slot = room.peer_slot(slot)
+                peer = room.players.get(peer_slot)
+                if peer is not None:
+                    peer_generation = peer.generation
+                    if peer_generation != generation:
+                        raise RoomError(
+                            "generation_mismatch",
+                            f"A sala de batalha e Gen {peer_generation}. Seu save e Gen {generation}.",
+                        )
             player.generation = generation
             player.game = game
             player.team = []
             player.ready = False
             player.confirmed = False
-            room.generation = max(member.generation for member in room.players.values())
+            room.generation = generation if peer_generation is None else peer_generation
             room.format_id = BATTLE_FORMATS_BY_GENERATION[room.generation]
             room.battle_id = None
             room.status = "ready" if room.is_ready() else "waiting"

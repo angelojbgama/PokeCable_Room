@@ -25,10 +25,9 @@ def test_gen2_bug_vs_poison_nerf():
     multiplier = get_type_multiplier_gen2("bug", ["poison"])
     assert multiplier == 1.0 # Em vez de 2.0
     
-    # Poison vs. Bug agora é 2.0 (era 2.0) - na verdade, mudou para 1.0 e depois 2.0 de novo?
-    # Checando a fonte... Sim, Poison -> Bug é 2.0 em Gen 2.
+    # Poison vs. Bug também é neutro na Gen 2.
     multiplier = get_type_multiplier_gen2("poison", ["bug"])
-    assert multiplier == 2.0
+    assert multiplier == 1.0
 
 def test_gen2_ice_vs_fire_nerf():
     # Ice vs. Fire agora é 0.5x

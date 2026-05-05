@@ -16,6 +16,13 @@ from ...data.move_combat_data import get_move_combat_data
 from ...data.pokemon_abilities import SPECIES_ABILITIES
 from ...data.battle_items import BATTLE_ITEMS
 
+
+def _pick_int(value_map: dict[str, Any], *keys: str, default: int) -> int:
+    for key in keys:
+        if key in value_map and value_map[key] is not None:
+            return int(value_map[key])
+    return default
+
 @dataclass
 class BattleMove:
     move_id: int
@@ -201,56 +208,33 @@ class BattlePokemon:
             raise ValueError(f"Base stats nao encontrados para o Pokemon #{national_id}")
         
         level = int(canonical.get("level") or 1)
-        source_gen = int(canonical.get("source_generation") or 3)
+        source_gen = int(canonical.get("source_generation") or canonical.get("generation") or 3)
+        if source_gen != 3:
+            raise ValueError(f"BattlePokemon Gen 3 requer source_generation=3, recebeu {source_gen}.")
         trainer_id = int(canonical.get("trainer_id") or 0)
         
         # 1. IVs e EVs (se nao existirem, assume valores padrao de batalha justa)
         c_ivs = canonical.get("ivs", {}) or {}
         ivs = {
-            "hp": int(c_ivs.get("hp", 31)),
-            "atk": int(c_ivs.get("attack", 31) or c_ivs.get("atk", 31)),
-            "def": int(c_ivs.get("defense", 31) or c_ivs.get("def", 31)),
-            "spa": int(c_ivs.get("special_attack", 31) or c_ivs.get("spa", 31)),
-            "spd": int(c_ivs.get("special_defense", 31) or c_ivs.get("spd", 31)),
-            "spe": int(c_ivs.get("speed", 31) or c_ivs.get("spe", 31)),
+            "hp": _pick_int(c_ivs, "hp", default=31),
+            "atk": _pick_int(c_ivs, "attack", "atk", default=31),
+            "def": _pick_int(c_ivs, "defense", "def", default=31),
+            "spa": _pick_int(c_ivs, "special_attack", "spa", default=31),
+            "spd": _pick_int(c_ivs, "special_defense", "spd", default=31),
+            "spe": _pick_int(c_ivs, "speed", "spe", default=31),
         }
-        
-        # Task 10.2: Normalização de DVs para IVs (Gen 1/2 -> Gen 3)
-        if source_gen < 3:
-            for k in ivs:
-                ivs[k] = min(31, ivs[k] * 2 + (1 if ivs[k] > 7 else 0))
 
         c_evs = canonical.get("evs", {}) or {}
         evs = {
-            "hp": int(c_evs.get("hp", 0)),
-            "atk": int(c_evs.get("attack", 0)),
-            "def": int(c_evs.get("defense", 0)),
-            "spa": int(c_evs.get("special_attack", 0)),
-            "spd": int(c_evs.get("special_defense", 0)),
-            "spe": int(c_evs.get("speed", 0)),
+            "hp": _pick_int(c_evs, "hp", default=0),
+            "atk": _pick_int(c_evs, "attack", "atk", default=0),
+            "def": _pick_int(c_evs, "defense", "def", default=0),
+            "spa": _pick_int(c_evs, "special_attack", "spa", default=0),
+            "spd": _pick_int(c_evs, "special_defense", "spd", default=0),
+            "spe": _pick_int(c_evs, "speed", "spe", default=0),
         }
-        
-        # Task 10.3: Normalização de Stat Exp para EVs (Cap 510)
-        if source_gen < 3:
-            for k in evs:
-                evs[k] = min(255, math.floor(evs[k] / 256))
-            
-            # Aplica Cap de 510 (Balanceamento exigido pelo usuario)
-            total_evs = sum(evs.values())
-            if total_evs > 510:
-                factor = 510.0 / total_evs
-                for k in evs:
-                    evs[k] = math.floor(evs[k] * factor)
 
-        # Task 10.1: Natureza e Personality (Determinístico para Gen 1/2)
         personality = int(canonical.get("personality") or 0)
-        if source_gen < 3 and personality == 0:
-            personality = (ivs["atk"] & 0xF) | \
-                          ((ivs["def"] & 0xF) << 4) | \
-                          ((ivs["spe"] & 0xF) << 8) | \
-                          ((ivs["spa"] & 0xF) << 12) | \
-                          ((trainer_id & 0xFFFF) << 16)
-            personality &= 0xFFFFFFFF
 
         nature_id = personality % 25
         modifiers = get_nature_modifiers(personality)

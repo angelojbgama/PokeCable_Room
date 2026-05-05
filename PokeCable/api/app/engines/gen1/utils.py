@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .models import PokemonGen1
 
-def determine_critical_gen1(base_speed: int, is_high_crit: bool = False) -> bool:
+def determine_critical_gen1(base_speed: int, is_high_crit: bool = False, focus_energy: bool = False) -> bool:
     """
     Determina se um golpe sera critico na Gen 1.
     Formula: P = BaseSpeed * Multiplier / 512
@@ -14,19 +14,20 @@ def determine_critical_gen1(base_speed: int, is_high_crit: bool = False) -> bool
     """
     multiplier = 8.0 if is_high_crit else 1.0
     chance = (base_speed * multiplier) / 512.0
-    
-    # O limite maximo de chance na Gen 1 e ~99.6% (255/256)
     if chance > 0.996:
         chance = 0.996
+    if focus_energy:
+        # Gen 1 bug: Focus Energy worsens critical hit odds instead of improving them.
+        chance /= 4.0
         
     return random.random() < chance
 
-def calculate_hit_gen1(accuracy: int, user_acc_stage: int, target_eva_stage: int) -> bool:
+def calculate_hit_gen1(accuracy: int | None, user_acc_stage: int, target_eva_stage: int) -> bool:
     """
     Verifica se um golpe acertou na Gen 1.
     Inclui o famoso glitch do 1/256 (exceto para Swift).
     """
-    if accuracy == 0: # Moves que nao erram (Swift)
+    if accuracy is None or accuracy == 0: # Moves que nao erram (Swift) ou nao usam accuracy
         return True
         
     # Multiplicadores de stage Gen 1

@@ -4,7 +4,7 @@ import base64
 from dataclasses import dataclass
 from pathlib import Path
 
-from pokecable_room.canonical import CanonicalItem, CanonicalMove, CanonicalOriginalData, CanonicalPokemon
+from pokecable_room.canonical import CanonicalItem, CanonicalMove, CanonicalOriginalData, CanonicalPokemon, CanonicalStats
 from pokecable_room.compatibility import CompatibilityReport, build_compatibility_report
 from pokecable_room.data.gender_rates import gender_from_gen2_attack_dv
 from pokecable_room.data.inventory_layouts import inventory_layout_for_game
