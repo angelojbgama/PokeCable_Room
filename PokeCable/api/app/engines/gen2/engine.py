@@ -82,22 +82,47 @@ def _copy_move(move: BattleMoveGen2) -> BattleMoveGen2:
 GEN2_SELF_TARGET_MOVES = {
     "agility",
     "batonpass",
+    "acidarmor",
     "conversion",
+    "conversion2",
+    "growth",
+    "harden",
+    "bellydrum",
+    "detect",
+    "endure",
+    "amnesia",
+    "healbell",
+    "meditate",
+    "mist",
     "lightscreen",
     "moonlight",
+    "minimize",
+    "mindreader",
+    "lockon",
+    "sharpen",
+    "protect",
     "reflect",
     "recover",
     "rest",
     "morningsun",
+    "safeguard",
     "synthesis",
     "swordsdance",
     "milkdrink",
     "softboiled",
+    "substitute",
+    "destinybond",
 }
 
 GEN2_STATUS_TARGET_MOVES = {
     "confuseray",
     "flash",
+    "supersonic",
+    "sweetkiss",
+    "sweetscent",
+    "scaryface",
+    "stringshot",
+    "cottonspore",
     "poisonpowder",
     "poisongas",
     "thunderwave",
@@ -130,9 +155,18 @@ GEN2_STAT_LOWER_BY_MOVE = {
     "tailwhip": ("def", -1),
 }
 
-GEN2_CONFUSION_MOVES = {"confuseray", "dynamicpunch"}
-GEN2_FLINCH_MOVES = {"bite", "stomp", "headbutt", "rockslide", "hyperfang"}
-GEN2_DRAIN_MOVES = {"absorb", "megadrain", "gigadrain", "leechlife"}
+GEN2_CONFUSION_MOVES = {"confuseray", "psybeam", "confusion", "dizzypunch", "dynamicpunch"}
+GEN2_SPECIAL_DEF_DROP_MOVES = {"acid", "psychic"}
+GEN2_ATTACK_DROP_ON_HIT_MOVES = {"aurorabeam"}
+GEN2_DEFENSE_DROP_ON_HIT_MOVES = {"irontail"}
+GEN2_SPEED_DROP_ON_HIT_MOVES = {"bubblebeam", "icywind"}
+GEN2_ACCURACY_DROP_ON_HIT_MOVES = {"octazooka"}
+GEN2_ATTACK_RAISE_ON_HIT_MOVES = {"metalclaw"}
+GEN2_DEFENSE_RAISE_ON_HIT_MOVES = {"steelwing"}
+GEN2_TRI_STATUS_MOVES = {"triattack"}
+GEN2_PARALYZE_ON_HIT_MOVES = {"spark", "zapcannon"}
+GEN2_FLINCH_MOVES = {"bite", "stomp", "headbutt", "rockslide", "hyperfang", "lowkick", "snore"}
+GEN2_DRAIN_MOVES = {"absorb", "megadrain", "gigadrain", "leechlife", "dreameater"}
 GEN2_RECOIL_MOVES = {"takedown", "doubleedge", "submission", "jumpkick", "highjumpkick", "struggle"}
 GEN2_TRAP_MOVES = {"wrap", "bind", "firespin", "clamp", "whirlpool"}
 GEN2_BIDE_MOVES = {"bide"}
@@ -140,6 +174,24 @@ GEN2_COUNTER_MOVES = {"counter"}
 GEN2_MIRROR_COAT_MOVES = {"mirrorcoat"}
 GEN2_DISABLE_MOVES = {"disable"}
 GEN2_ENCORE_MOVES = {"encore"}
+GEN2_TRAP_LOCK_MOVES = {"meanlook", "spiderweb"}
+GEN2_ATTRACT_MOVES = {"attract"}
+GEN2_FORESIGHT_MOVES = {"foresight"}
+GEN2_LOCK_ON_MOVES = {"lockon", "mindreader"}
+GEN2_SPIKES_MOVES = {"spikes"}
+GEN2_PAIN_SPLIT_MOVES = {"painsplit"}
+GEN2_SPIKE_CLEANSING_MOVES = {"rapidspin"}
+GEN2_POWERSHIFT_MOVES = {"swagger", "charm"}
+GEN2_NIGHTMARE_MOVES = {"nightmare"}
+GEN2_SPITE_MOVES = {"spite"}
+GEN2_CURSE_MOVES = {"curse"}
+GEN2_PURSUIT_MOVES = {"pursuit"}
+GEN2_PRESENT_MOVES = {"present"}
+GEN2_FORCE_SWITCH_MOVES = {"roar", "whirlwind"}
+GEN2_BELLY_DRUM_MOVES = {"bellydrum"}
+GEN2_PROTECT_MOVES = {"protect", "detect"}
+GEN2_ENDURE_MOVES = {"endure"}
+GEN2_SUBSTITUTE_MOVES = {"substitute"}
 GEN2_LEECH_SEED_MOVES = {"leechseed"}
 GEN2_MIMIC_MOVES = {"mimic"}
 GEN2_MIRROR_MOVE_MOVES = {"mirrormove"}
@@ -147,6 +199,12 @@ GEN2_METRONOME_MOVES = {"metronome"}
 GEN2_TRANSFORM_MOVES = {"transform"}
 GEN2_CONVERSION_MOVES = {"conversion"}
 GEN2_RAGE_MOVES = {"rage"}
+GEN2_SELF_FAINT_MOVES = {"selfdestruct", "explosion"}
+GEN2_FUTURE_SIGHT_MOVES = {"futuresight"}
+GEN2_RETURN_POWER_MOVES = {"return", "frustration"}
+GEN2_HP_BASED_POWER_MOVES = {"flail", "reversal"}
+GEN2_LOW_KICK_MOVES = {"lowkick"}
+GEN2_DREAM_EATER_MOVES = {"dreameater"}
 GEN2_WEATHER_MOVES = {"raindance", "sunnyday", "sandstorm"}
 GEN2_CHARGE_MOVES = {"fly", "dig", "razorwind", "solarbeam", "skyattack", "skullbash"}
 GEN2_CALL_MOVE_NAMES = {"metronome", "sleeptalk"}
@@ -185,6 +243,11 @@ class BattleSideGen2:
     active_index: int = 0
     reflect_turns: int = 0
     light_screen_turns: int = 0
+    spikes_layers: int = 0
+    safeguard_turns: int = 0
+    future_sight_turns: int = 0
+    future_sight_damage: int = 0
+    future_sight_source_side: str | None = None
 
     @property
     def active_pokemon(self) -> PokemonGen2 | None:
@@ -201,7 +264,8 @@ class BattleEngineGen2:
         self.finished = False
         self.logs: list[str] = []
         self.pending_actions: dict[str, dict[str, Any]] = {}
-        self.force_switch_player: str | None = None
+        self.force_switch_players: set[str] = set()
+        self.skip_remaining_actions: bool = False
         self.weather: str | None = None
         self.weather_turns: int = 0
 
@@ -221,6 +285,7 @@ class BattleEngineGen2:
 
     def _switch_in(self, side_id: str, index: int) -> None:
         side = self.sides[side_id]
+        old_active = side.active_pokemon
         side.active_index = index
         pkmn = side.active_pokemon
         if not pkmn:
@@ -231,10 +296,91 @@ class BattleEngineGen2:
         pkmn.stat_stages = {k: 0 for k in pkmn.stat_stages}
         pkmn.clear_volatile_state()
         self.add_log(f"|switch|{side_id}a: {pkmn.nickname}|{pkmn.name}, L{pkmn.level}|{self._condition(pkmn)}")
+        if old_active is not None and old_active is not pkmn:
+            self._clear_source_linked_effects_on_switch_out(side_id)
+        if side.spikes_layers > 0 and "flying" not in pkmn.types:
+            damage = max(1, math.floor(pkmn.max_hp / 8))
+            pkmn.current_hp = max(0, pkmn.current_hp - damage)
+            self.add_log(f"|-damage|{side_id}a: {pkmn.nickname}|{self._condition(pkmn)}|[from] Spikes")
+            if pkmn.current_hp <= 0:
+                self.add_log(f"|faint|{side_id}a: {pkmn.nickname}")
+                self.force_switch_players.add(side.player_id)
 
     def _condition(self, pkmn: PokemonGen2) -> str:
         status = pkmn.status_condition.upper() if pkmn.status_condition else ""
         return f"{pkmn.current_hp}/{pkmn.max_hp}{' ' + status if status else ''}"
+
+    def _clear_source_linked_effects_on_switch_out(self, source_side_id: str) -> None:
+        peer_side_id = "p2" if source_side_id == "p1" else "p1"
+        target = self.sides[peer_side_id].active_pokemon
+        if not target:
+            return
+        if target.mean_look_source_side == source_side_id:
+            target.mean_looked = False
+            target.mean_look_source_side = None
+        if target.spider_web_source_side == source_side_id:
+            target.spider_webbed = False
+            target.spider_web_source_side = None
+        if target.attracted_to_side == source_side_id:
+            target.attracted_to_side = None
+
+    def _power_from_happiness(self, pkmn: PokemonGen2, *, reverse: bool = False) -> int:
+        value = max(0, min(255, pkmn.happiness))
+        if reverse:
+            value = 255 - value
+        return max(0, math.floor(value / 2.5))
+
+    def _power_from_remaining_hp(self, pkmn: PokemonGen2) -> int:
+        if pkmn.max_hp <= 0:
+            return 20
+        ratio = pkmn.current_hp / pkmn.max_hp
+        if ratio >= 0.6875:
+            return 20
+        if ratio >= 0.354:
+            return 40
+        if ratio >= 0.208:
+            return 80
+        if ratio >= 0.104:
+            return 100
+        if ratio >= 0.042:
+            return 150
+        return 200
+
+    def _low_kick_power(self, target: PokemonGen2) -> int:
+        weight = getattr(target, "weight", 50.0)
+        if weight < 10:
+            return 20
+        if weight < 25:
+            return 40
+        if weight < 50:
+            return 60
+        if weight < 100:
+            return 80
+        if weight < 200:
+            return 100
+        return 120
+
+    def _future_sight_damage(self, attacker: PokemonGen2, defender: PokemonGen2) -> int:
+        future_move = BattleMoveGen2(
+            move_id=0,
+            name="Future Sight",
+            type="psychic",
+            power=80,
+            accuracy=90,
+            pp=1,
+            max_pp=1,
+            priority=0,
+            damage_class="special",
+        )
+        damage, _ = calculate_damage_gen2(
+            attacker,
+            defender,
+            future_move,
+            False,
+            random_factor=random.randint(217, 255),
+            power_override=80,
+        )
+        return max(1, damage)
 
     def _move_index_by_id(self, pkmn: PokemonGen2, move_id: int | None) -> int | None:
         if move_id is None:
@@ -310,7 +456,7 @@ class BattleEngineGen2:
         self.add_log(f"|-damage|{slot_tag}: {pkmn.nickname}|{self._condition(pkmn)}|[from] confusion")
         if pkmn.current_hp <= 0:
             self.add_log(f"|faint|{slot_tag}: {pkmn.nickname}")
-            self.force_switch_player = self.sides[side_id].player_id
+            self.force_switch_players.add(self.sides[side_id].player_id)
 
     def _apply_major_status(self, target: PokemonGen2, side_id: str, status: str, move_name: str) -> bool:
         slot_tag = f"{side_id}a"
@@ -320,6 +466,8 @@ class BattleEngineGen2:
 
         major_statuses = {"brn", "psn", "tox", "par", "slp", "frz"}
         if target.status_condition in major_statuses:
+            return False
+        if self.sides[side_id].safeguard_turns > 0 and status in major_statuses:
             return False
 
         if status in {"psn", "tox"} and any(type_name in {"poison", "steel"} for type_name in target.types):
@@ -341,6 +489,8 @@ class BattleEngineGen2:
 
     def _apply_stat_stage(self, target: PokemonGen2, side_id: str, stat_name: str, amount: int, move_name: str) -> bool:
         slot_tag = f"{side_id}a"
+        if amount < 0 and target.mist_active:
+            return False
         delta = target.modify_stage(stat_name, amount)
         if delta == 0:
             return False
@@ -387,24 +537,52 @@ class BattleEngineGen2:
         damage: int,
         *,
         damage_class: str | None = None,
+        ignore_endure: bool = False,
+        trigger_destiny_bond: bool = True,
     ) -> int:
         if damage <= 0 or target.current_hp <= 0:
             return 0
 
         peer_side_id = "p2" if side_id == "p1" else "p1"
-        target.current_hp = max(0, target.current_hp - damage)
-        target.last_damage_taken = damage
+        target.last_damage_move_type = move.type
+
+        if target.substitute_hp > 0:
+            target.substitute_hp = max(0, target.substitute_hp - damage)
+            self.add_log(f"|-damage|{peer_side_id}a: {target.nickname}|{self._condition(target)}|[from] move: Substitute")
+            if target.substitute_hp <= 0:
+                self.add_log(f"|-end|{peer_side_id}a: {target.nickname}|substitute")
+            target.last_damage_taken = damage
+            target.last_damage_class = damage_class or move.damage_class
+            if target.bide_turns is not None:
+                target.bide_damage += damage
+            if target.rage_active:
+                delta = target.modify_stage("atk", 1)
+                if delta:
+                    self.add_log(f"|-boost|{peer_side_id}a: {target.nickname}|atk|up|[from] move: Rage")
+            return damage
+
+        actual_damage = damage
+        if target.endure_active and not ignore_endure and damage >= target.current_hp:
+            actual_damage = max(0, target.current_hp - 1)
+
+        target.current_hp = max(0, target.current_hp - actual_damage)
+        target.last_damage_taken = actual_damage
         target.last_damage_class = damage_class or move.damage_class
         if target.bide_turns is not None:
-            target.bide_damage += damage
-        if target.rage_active:
+            target.bide_damage += actual_damage
+        if target.rage_active and actual_damage > 0:
             delta = target.modify_stage("atk", 1)
             if delta:
                 self.add_log(f"|-boost|{peer_side_id}a: {target.nickname}|atk|up|[from] move: Rage")
         self.add_log(f"|damage|{peer_side_id}a: {target.nickname}|{self._condition(target)}")
         if target.current_hp <= 0:
             self.add_log(f"|faint|{peer_side_id}a: {target.nickname}")
-            self.force_switch_player = self.sides[peer_side_id].player_id
+            if trigger_destiny_bond and target.destiny_bond:
+                attacker.current_hp = 0
+                self.add_log(f"|-activate|{peer_side_id}a: {target.nickname}|move: Destiny Bond")
+                self.add_log(f"|faint|{side_id}a: {attacker.nickname}")
+                self.force_switch_players.add(self.sides[side_id].player_id)
+            self.force_switch_players.add(self.sides[peer_side_id].player_id)
         return damage
 
     def _record_last_move(self, pkmn: PokemonGen2, move: BattleMoveGen2) -> None:
@@ -477,9 +655,95 @@ class BattleEngineGen2:
                 self.add_log(f"|-status|{side_id}a: {pkmn.nickname}|slp|[from] move: {move.name}")
                 self.add_log(f"|-heal|{side_id}a: {pkmn.nickname}|{self._condition(pkmn)}|[from] move: {move.name}")
                 return True
+            if move_key == "growth":
+                changed = False
+                changed = self._apply_stat_stage(pkmn, side_id, "atk", 1, move.name) or changed
+                changed = self._apply_stat_stage(pkmn, side_id, "spa", 1, move.name) or changed
+                return changed
+            if move_key == "acidarmor":
+                return self._apply_stat_stage(pkmn, side_id, "def", 2, move.name)
+            if move_key in {"sharpen", "meditate"}:
+                return self._apply_stat_stage(pkmn, side_id, "atk", 1, move.name)
+            if move_key == "harden":
+                return self._apply_stat_stage(pkmn, side_id, "def", 1, move.name)
+            if move_key == "amnesia":
+                return self._apply_stat_stage(pkmn, side_id, "spd", 2, move.name)
+            if move_key == "minimize":
+                return self._apply_stat_stage(pkmn, side_id, "evasion", 2, move.name)
             if move_key in GEN2_STAT_RAISE_BY_MOVE:
                 stat_name, amount = GEN2_STAT_RAISE_BY_MOVE[move_key]
                 return self._apply_stat_stage(pkmn, side_id, stat_name, amount, move.name)
+            if move_key in GEN2_LOCK_ON_MOVES:
+                pkmn.lock_on_active = True
+                pkmn.mind_reader_active = move_key == "mindreader"
+                self.add_log(f"|-start|{side_id}a: {pkmn.nickname}|move: {move.name}")
+                return True
+            if move_key in GEN2_PROTECT_MOVES:
+                if pkmn.substitute_hp > 0:
+                    return False
+                chance = 255 >> min(pkmn.protect_chain, 8)
+                if chance <= 0 or random.randint(0, 254) >= chance:
+                    pkmn.protect_chain = 0
+                    return False
+                pkmn.protect_chain = min(8, pkmn.protect_chain + 1)
+                pkmn.is_protected = True
+                self.add_log(f"|-activate|{side_id}a: {pkmn.nickname}|move: {move.name}")
+                return True
+            if move_key in GEN2_ENDURE_MOVES:
+                if pkmn.substitute_hp > 0:
+                    return False
+                chance = 255 >> min(pkmn.protect_chain, 8)
+                if chance <= 0 or random.randint(0, 254) >= chance:
+                    pkmn.protect_chain = 0
+                    return False
+                pkmn.protect_chain = min(8, pkmn.protect_chain + 1)
+                pkmn.endure_active = True
+                self.add_log(f"|-activate|{side_id}a: {pkmn.nickname}|move: {move.name}")
+                return True
+            if move_key in GEN2_SUBSTITUTE_MOVES:
+                if pkmn.substitute_hp > 0:
+                    return False
+                cost = max(1, pkmn.max_hp // 4)
+                if pkmn.current_hp <= cost:
+                    return False
+                pkmn.current_hp -= cost
+                pkmn.substitute_hp = cost
+                self.add_log(f"|-start|{side_id}a: {pkmn.nickname}|move: {move.name}")
+                return True
+            if move_key == "mist":
+                if pkmn.mist_active:
+                    return False
+                pkmn.mist_active = True
+                self.add_log(f"|-activate|{side_id}a: {pkmn.nickname}|move: {move.name}")
+                return True
+            if move_key == "safeguard":
+                if self.sides[side_id].safeguard_turns > 0:
+                    return False
+                self.sides[side_id].safeguard_turns = 5
+                self.add_log(f"|-sidestart|{side_id}: {self.sides[side_id].player_name}|move: Safeguard")
+                return True
+            if move_key == "healbell":
+                cured = False
+                for ally in self.sides[side_id].team:
+                    if ally.status_condition in {"brn", "psn", "tox", "par", "slp", "frz"}:
+                        ally.status_condition = None
+                        ally.status_turns = 0
+                        ally.toxic_n = 1
+                        cured = True
+                self.add_log(f"|-activate|{side_id}a: {pkmn.nickname}|move: {move.name}")
+                return cured or True
+            if move_key == "bellydrum":
+                cost = max(1, pkmn.max_hp // 2)
+                if pkmn.current_hp <= cost or pkmn.stat_stages["atk"] >= 6:
+                    return False
+                pkmn.current_hp -= cost
+                pkmn.modify_stage("atk", 6 - pkmn.stat_stages["atk"])
+                self.add_log(f"|-activate|{side_id}a: {pkmn.nickname}|move: {move.name}")
+                return True
+            if move_key == "destinybond":
+                pkmn.destiny_bond = True
+                self.add_log(f"|-activate|{side_id}a: {pkmn.nickname}|move: {move.name}")
+                return True
             if move_key == "conversion":
                 if not pkmn.moves:
                     return False
@@ -488,6 +752,38 @@ class BattleEngineGen2:
                     return False
                 chosen = random.choice(candidates)
                 pkmn.types = [chosen.type]
+                self.add_log(f"|-activate|{side_id}a: {pkmn.nickname}|move: {move.name}")
+                return True
+            if move_key == "conversion2":
+                source_type = pkmn.last_damage_move_type or ""
+                if not source_type:
+                    return False
+                candidates = [
+                    type_name
+                    for type_name in (
+                        "normal",
+                        "fire",
+                        "water",
+                        "electric",
+                        "grass",
+                        "ice",
+                        "fighting",
+                        "poison",
+                        "ground",
+                        "flying",
+                        "psychic",
+                        "bug",
+                        "rock",
+                        "ghost",
+                        "dragon",
+                        "dark",
+                        "steel",
+                    )
+                    if get_type_multiplier_gen2(source_type, [type_name]) < 1.0
+                ]
+                if not candidates:
+                    return False
+                pkmn.types = [random.choice(candidates)]
                 self.add_log(f"|-activate|{side_id}a: {pkmn.nickname}|move: {move.name}")
                 return True
             if move_key == "lightscreen":
@@ -499,9 +795,37 @@ class BattleEngineGen2:
                 self.add_log(f"|-activate|{side_id}a: {pkmn.nickname}|move: {move.name}")
                 return True
             if move_key == "batonpass":
+                bench_indices = [index for index, ally in enumerate(self.sides[side_id].team) if index != self.sides[side_id].active_index and ally.current_hp > 0]
+                if not bench_indices:
+                    return False
+                passed_stages = copy.deepcopy(pkmn.stat_stages)
+                passed_substitute = pkmn.substitute_hp
+                next_index = bench_indices[0]
                 self.add_log(f"|-activate|{side_id}a: {pkmn.nickname}|move: {move.name}")
+                self._switch_in(side_id, next_index)
+                new_active = self.sides[side_id].active_pokemon
+                if new_active:
+                    new_active.stat_stages = passed_stages
+                    new_active.substitute_hp = passed_substitute
+                    if passed_substitute > 0:
+                        self.add_log(f"|-start|{side_id}a: {new_active.nickname}|substitute")
                 return True
             return False
+
+        if move_key == "perishsong":
+            affected = False
+            for perish_side_id, perish_side in self.sides.items():
+                perish_target = perish_side.active_pokemon
+                if not perish_target or perish_target.current_hp <= 0:
+                    continue
+                if perish_target.perish_song_turns is not None:
+                    continue
+                perish_target.perish_song_turns = 4
+                affected = True
+            if not affected:
+                return False
+            self.add_log(f"|-fieldstart|move: Perish Song")
+            return True
 
         if move_key in GEN2_WEATHER_MOVES:
             if move_key == "raindance":
@@ -689,15 +1013,171 @@ class BattleEngineGen2:
                 return True
             return False
 
+        if move_key in GEN2_SPIKES_MOVES:
+            side = self.sides[peer_side_id]
+            if side.spikes_layers > 0:
+                return False
+            side.spikes_layers = 1
+            self.add_log(f"|-sidestart|{peer_side_id}: {side.player_name}|move: Spikes")
+            return True
+
+        if move_key in GEN2_POWERSHIFT_MOVES:
+            if not target or target.substitute_hp > 0 or target.is_protected:
+                return False
+            if move_key == "charm":
+                return self._apply_stat_stage(target, peer_side_id, "atk", -2, move.name)
+            if move_key == "swagger":
+                delta = self._apply_stat_stage(target, peer_side_id, "atk", 2, move.name)
+                if delta > 0 and self.sides[peer_side_id].safeguard_turns == 0:
+                    target.is_confused = True
+                    target.confusion_turns = random.randint(2, 5)
+                    self.add_log(f"|-activate|{peer_side_id}a: {target.nickname}|confusion")
+                return delta != 0
+
+        if move_key in GEN2_TRAP_LOCK_MOVES:
+            if not target:
+                return False
+            if move_key == "meanlook":
+                if target.mean_looked:
+                    return False
+                target.mean_looked = True
+                target.mean_look_source_side = side_id
+            else:
+                if target.spider_webbed:
+                    return False
+                target.spider_webbed = True
+                target.spider_web_source_side = side_id
+            self.add_log(f"|-start|{peer_side_id}a: {target.nickname}|move: {move.name}")
+            return True
+
+        if move_key in GEN2_ATTRACT_MOVES:
+            if not target or target.is_protected:
+                return False
+            if pkmn.gender is None or target.gender is None or pkmn.gender == target.gender:
+                return False
+            if target.attracted_to_side is not None:
+                return False
+            target.attracted_to_side = side_id
+            self.add_log(f"|-start|{peer_side_id}a: {target.nickname}|move: Attract")
+            return True
+
+        if move_key in GEN2_NIGHTMARE_MOVES:
+            if not target or target.is_protected or target.substitute_hp > 0 or target.status_condition != "slp":
+                return False
+            if target.nightmare_active:
+                return False
+            target.nightmare_active = True
+            self.add_log(f"|-start|{peer_side_id}a: {target.nickname}|move: Nightmare")
+            return True
+
+        if move_key in GEN2_SPITE_MOVES:
+            if not target or target.is_protected or target.substitute_hp > 0 or target.last_move_id is None:
+                return False
+            if target.last_move_name in GEN2_CALL_MOVE_NAMES or target.last_move_name == "struggle":
+                return False
+            target_move_index = self._move_index_by_id(target, target.last_move_id)
+            if target_move_index is None:
+                return False
+            pp_loss = random.randint(2, 5)
+            target_move = target.moves[target_move_index]
+            if target_move.pp <= 0:
+                return False
+            target_move.pp = max(0, target_move.pp - pp_loss)
+            self.add_log(f"|-activate|{peer_side_id}a: {target.nickname}|move: Spite")
+            return True
+
+        if move_key in GEN2_FORESIGHT_MOVES:
+            if not target or target.is_protected or target.substitute_hp > 0 or target.foresight_active:
+                return False
+            target.foresight_active = True
+            self.add_log(f"|-start|{peer_side_id}a: {target.nickname}|move: Foresight")
+            return True
+
+        if move_key in GEN2_PAIN_SPLIT_MOVES:
+            if not target or target.is_protected or target.substitute_hp > 0:
+                return False
+            avg_hp = math.floor((pkmn.current_hp + target.current_hp) / 2)
+            pkmn.current_hp = min(pkmn.max_hp, avg_hp)
+            target.current_hp = min(target.max_hp, avg_hp)
+            self.add_log(f"|-activate|{side_id}a: {pkmn.nickname}|move: {move.name}")
+            return True
+
+        if move_key in GEN2_PRESENT_MOVES:
+            if not target or target.is_protected:
+                return False
+            roll = random.random()
+            if roll < 0.2:
+                heal = max(1, target.max_hp // 4)
+                target.current_hp = min(target.max_hp, target.current_hp + heal)
+                self.add_log(f"|-heal|{peer_side_id}a: {target.nickname}|{self._condition(target)}|[from] move: Present")
+                return True
+            power = 40 if roll < 0.6 else 80 if roll < 0.9 else 120
+            present_move = BattleMoveGen2(
+                move_id=move.move_id,
+                name=move.name,
+                type=move.type,
+                power=power,
+                accuracy=move.accuracy,
+                pp=move.pp,
+                max_pp=move.max_pp,
+                priority=move.priority,
+                damage_class="physical",
+                effect=move.effect,
+                high_crit=move.high_crit,
+                effect_chance=move.effect_chance,
+            )
+            return self._resolve_damage_move(side_id, pkmn, target, present_move, move_key, record_last_move=False)
+
+        if move_key in GEN2_CURSE_MOVES:
+            if "ghost" in pkmn.types:
+                if not target or target.is_protected or target.substitute_hp > 0 or target.curse_active:
+                    return False
+                pkmn.current_hp = max(0, pkmn.current_hp - max(1, pkmn.max_hp // 2))
+                target.curse_active = True
+                target.curse_source_side = side_id
+                self.add_log(f"|-start|{peer_side_id}a: {target.nickname}|move: Curse")
+                if pkmn.current_hp <= 0:
+                    self.add_log(f"|faint|{side_id}a: {pkmn.nickname}")
+                    self.force_switch_players.add(self.sides[side_id].player_id)
+                return True
+            if pkmn.stat_stages["atk"] >= 6 and pkmn.stat_stages["def"] >= 6:
+                return False
+            pkmn.modify_stage("spe", -1)
+            pkmn.modify_stage("atk", 1)
+            pkmn.modify_stage("def", 1)
+            self.add_log(f"|-activate|{side_id}a: {pkmn.nickname}|move: {move.name}")
+            return True
+
+        if move_key in GEN2_SPIKE_CLEANSING_MOVES:
+            side = self.sides[side_id]
+            side.spikes_layers = 0
+            pkmn.is_trapped = False
+            pkmn.trap_turns = 0
+            pkmn.leech_seeded = False
+            pkmn.leech_seed_source_side = None
+            self.add_log(f"|-activate|{side_id}a: {pkmn.nickname}|move: {move.name}")
+            return True
+
         if move_key in GEN2_STATUS_TARGET_MOVES:
             if not target:
+                return False
+            if target.is_protected and move_key not in {"meanlook", "spiderweb", "perishsong"}:
                 return False
             if target.substitute_hp > 0:
                 return False
             if move_key == "confuseray":
+                if self.sides[peer_side_id].safeguard_turns > 0:
+                    return False
                 target.is_confused = True
                 target.confusion_turns = random.randint(2, 5)
                 self.add_log(f"|-activate|{side_id}a: {pkmn.nickname}|move: {move.name}")
+                return True
+            if move_key in {"supersonic", "sweetkiss"}:
+                if self.sides[peer_side_id].safeguard_turns > 0:
+                    return False
+                target.is_confused = True
+                target.confusion_turns = random.randint(2, 5)
+                self.add_log(f"|-activate|{peer_side_id}a: {target.nickname}|confusion")
                 return True
             if move_key in {"sing", "sleeppowder"}:
                 return self._apply_major_status(target, peer_side_id, "slp", move.name)
@@ -708,6 +1188,17 @@ class BattleEngineGen2:
             if move_key in GEN2_STAT_LOWER_BY_MOVE:
                 stat_name, amount = GEN2_STAT_LOWER_BY_MOVE[move_key]
                 return self._apply_stat_stage(target, peer_side_id, stat_name, amount, move.name)
+            if move_key in {"scaryface", "stringshot", "cottonspore"}:
+                return self._apply_stat_stage(target, peer_side_id, "spe", -2, move.name)
+            if move_key == "sweetscent":
+                return self._apply_stat_stage(target, peer_side_id, "evasion", -1, move.name)
+            if move_key in GEN2_FORCE_SWITCH_MOVES:
+                target_side = self.sides[peer_side_id]
+                if sum(1 for ally in target_side.team if ally.current_hp > 0) <= 1:
+                    return False
+                self.force_switch_players.add(target_side.player_id)
+                self.add_log(f"|-forceswitch|{peer_side_id}a: {target.nickname}|move: {move.name}")
+                return True
 
         if move_key in GEN2_SELF_TARGET_MOVES:
             return False
@@ -752,6 +1243,73 @@ class BattleEngineGen2:
         if not target:
             return False
 
+        peer_action = self.pending_actions.get(peer_side_id)
+        consume_lock_on = pkmn.lock_on_active or pkmn.mind_reader_active
+
+        def clear_lock_on() -> None:
+            if consume_lock_on:
+                pkmn.lock_on_active = False
+                pkmn.mind_reader_active = False
+
+        if move_key in GEN2_FUTURE_SIGHT_MOVES:
+            if self.sides[peer_side_id].future_sight_turns > 0:
+                clear_lock_on()
+                return False
+            damage = self._future_sight_damage(pkmn, target)
+            self.sides[peer_side_id].future_sight_turns = 3
+            self.sides[peer_side_id].future_sight_damage = damage
+            self.sides[peer_side_id].future_sight_source_side = side_id
+            self.add_log(f"|-start|{peer_side_id}a: {target.nickname}|move: Future Sight")
+            clear_lock_on()
+            return True
+
+        if move_key in GEN2_SELF_FAINT_MOVES:
+            if target.is_protected:
+                pkmn.current_hp = 0
+                self.add_log(f"|faint|{side_id}a: {pkmn.nickname}")
+                self.force_switch_players.add(self.sides[side_id].player_id)
+                self.skip_remaining_actions = True
+                clear_lock_on()
+                return True
+
+            defender_def_override = max(1, math.floor(target.get_modified_stat("def") / 2))
+            damage, mult = calculate_damage_gen2(
+                pkmn,
+                target,
+                move,
+                False,
+                random_factor=random.randint(217, 255),
+                power_override=move.power,
+                defender_def_override=defender_def_override,
+            )
+            if mult == 0:
+                damage = 0
+            hit_substitute = target.substitute_hp > 0
+            if damage > 0:
+                self._apply_direct_damage(
+                    side_id,
+                    pkmn,
+                    target,
+                    move,
+                    damage,
+                    damage_class="physical",
+                )
+            elif hit_substitute:
+                self._apply_direct_damage(
+                    side_id,
+                    pkmn,
+                    target,
+                    move,
+                    0,
+                    damage_class="physical",
+                )
+            pkmn.current_hp = 0
+            self.add_log(f"|faint|{side_id}a: {pkmn.nickname}")
+            self.force_switch_players.add(self.sides[side_id].player_id)
+            self.skip_remaining_actions = True
+            clear_lock_on()
+            return True
+
         if not forced_charge_complete and move_key in GEN2_CHARGE_MOVES:
             if move_key == "solarbeam" and self.weather == "sun":
                 forced_charge_complete = True
@@ -764,6 +1322,7 @@ class BattleEngineGen2:
                 pkmn.charging_turns = 1
                 pkmn.charging_move_name = move.name
                 self.add_log(f"|-prepare|{side_id}a: {pkmn.nickname}|move: {move.name}")
+                clear_lock_on()
                 return True
 
         previous_rollout = pkmn.rollout_turns
@@ -791,25 +1350,56 @@ class BattleEngineGen2:
         elif previous_fury_cutter > 0:
             pkmn.fury_cutter_turns = 0
 
+        if move_key == "lowkick":
+            power_override = self._low_kick_power(target)
+        elif move_key in GEN2_RETURN_POWER_MOVES:
+            power_override = self._power_from_happiness(pkmn, reverse=move_key == "frustration")
+        elif move_key in GEN2_HP_BASED_POWER_MOVES:
+            power_override = self._power_from_remaining_hp(pkmn)
+        elif move_key == "snore":
+            power_override = 40
+        elif move_key == "pursuit" and peer_action and peer_action.get("type") == "switch":
+            power_override = max(1, move.power) * 2
+
         if move_key == "magnitude":
             power_override = random.choice([10, 30, 50, 70, 90, 110, 150])
+
+        if move_key == "snore" and pkmn.status_condition != "slp":
+            clear_lock_on()
+            return False
+
+        if move_key in GEN2_DREAM_EATER_MOVES and target.status_condition != "slp":
+            clear_lock_on()
+            return False
 
         accuracy = move.accuracy
         if move_key == "thunder" and self.weather == "rain":
             accuracy = 100
 
-        if target.semi_invulnerable:
+        target_types_override = None
+        target_evasion_stage = target.stat_stages["evasion"]
+        if target.foresight_active and move.type in {"normal", "fighting"}:
+            target_types_override = [type_name for type_name in target.types if type_name != "ghost"]
+            target_evasion_stage = 0
+
+        if target.semi_invulnerable and not consume_lock_on:
             if not self._move_hits_semi_invulnerable(move_key, target):
                 self.add_log(f"|-miss|{side_id}a: {pkmn.nickname}|{peer_side_id}a: {target.nickname}")
+                clear_lock_on()
                 return False
 
-        if accuracy is not None and accuracy > 0:
+        if target.is_protected:
+            clear_lock_on()
+            return False
+
+        if accuracy is not None and accuracy > 0 and not consume_lock_on:
             if not calculate_hit_gen2(
                 accuracy,
                 pkmn.stat_stages["accuracy"],
-                target.stat_stages["evasion"],
+                target_evasion_stage,
             ):
                 self.add_log(f"|-miss|{side_id}a: {pkmn.nickname}|{peer_side_id}a: {target.nickname}")
+                clear_lock_on()
                 return False
 
         is_crit = determine_critical_gen2(crit_stage=1 if move.high_crit else 0)
@@ -823,10 +1413,12 @@ class BattleEngineGen2:
             is_crit,
             weather=self.weather,
             power_override=power_override,
+            defender_types_override=target_types_override,
         )
 
         if mult == 0:
             self.add_log(f"|-immune|{peer_side_id}a: {target.nickname}")
+            clear_lock_on()
             return False
 
         if move_key == "falseswipe" and damage >= target.current_hp:
@@ -844,10 +1436,12 @@ class BattleEngineGen2:
                 pkmn.charging_move_index = None
                 pkmn.charging_turns = 0
                 pkmn.charging_move_name = None
+            clear_lock_on()
             return False
 
+        hit_substitute = target.substitute_hp > 0
         self._apply_direct_damage(side_id, pkmn, target, move, damage)
-        self._apply_post_damage_effects(side_id, pkmn, target, move, move_key, damage, is_crit)
+        self._apply_post_damage_effects(side_id, pkmn, target, move, move_key, damage, is_crit, hit_substitute=hit_substitute)
 
         if move_key == "rage":
             pkmn.rage_active = True
@@ -865,9 +1459,10 @@ class BattleEngineGen2:
             pkmn.charging_turns = 0
             pkmn.charging_move_name = None
 
-        if move_key in GEN2_RECHARGE_MOVES:
+        if move_key in GEN2_RECHARGE_MOVES and not hit_substitute:
             pkmn.must_recharge = True
 
+        clear_lock_on()
         return True
 
     def _apply_post_damage_effects(
@@ -879,10 +1474,15 @@ class BattleEngineGen2:
         move_key: str,
         damage: int,
         is_crit: bool,
+        *,
+        hit_substitute: bool = False,
     ) -> None:
         peer_side_id = "p2" if side_id == "p1" else "p1"
-        if damage > 0 and target.current_hp > 0:
-            if move_key in GEN2_CONFUSION_MOVES and target.current_hp > 0:
+        if damage <= 0:
+            return
+
+        if not hit_substitute and target.current_hp > 0:
+            if move_key in GEN2_CONFUSION_MOVES:
                 if move.effect_chance is None or random.random() < (move.effect_chance / 100):
                     target.is_confused = True
                     target.confusion_turns = random.randint(2, 5)
@@ -906,26 +1506,55 @@ class BattleEngineGen2:
                 if target.status_condition is None and random.random() < ((move.effect_chance or 0) / 100):
                     self._apply_major_status(target, peer_side_id, "psn", move.name)
 
+            if move_key in GEN2_SPECIAL_DEF_DROP_MOVES:
+                if target.status_condition is None and random.random() < ((move.effect_chance or 0) / 100):
+                    self._apply_stat_stage(target, peer_side_id, "spd", -1, move.name)
+            if move_key in GEN2_ATTACK_DROP_ON_HIT_MOVES:
+                if random.random() < ((move.effect_chance or 0) / 100):
+                    self._apply_stat_stage(target, peer_side_id, "atk", -1, move.name)
+            if move_key in GEN2_SPEED_DROP_ON_HIT_MOVES:
+                if random.random() < ((move.effect_chance or 0) / 100):
+                    self._apply_stat_stage(target, peer_side_id, "spe", -1, move.name)
+            if move_key in GEN2_DEFENSE_DROP_ON_HIT_MOVES:
+                if random.random() < ((move.effect_chance or 0) / 100):
+                    self._apply_stat_stage(target, peer_side_id, "def", -1, move.name)
+            if move_key in GEN2_ACCURACY_DROP_ON_HIT_MOVES:
+                if random.random() < ((move.effect_chance or 0) / 100):
+                    self._apply_stat_stage(target, peer_side_id, "accuracy", -1, move.name)
             if move_key == "mudslap":
                 self._apply_stat_stage(target, peer_side_id, "accuracy", -1, move.name)
 
-            if move_key in GEN2_DRAIN_MOVES:
-                heal = max(1, damage // 2)
-                pkmn.current_hp = min(pkmn.max_hp, pkmn.current_hp + heal)
-                self.add_log(f"|-heal|{side_id}a: {pkmn.nickname}|{self._condition(pkmn)}|[from] move: {move.name}")
+            if move_key in GEN2_TRI_STATUS_MOVES:
+                if random.random() < ((move.effect_chance or 0) / 100):
+                    status_choice = random.choice(["brn", "frz", "par"])
+                    self._apply_major_status(target, peer_side_id, status_choice, move.name)
 
-            if move_key in GEN2_RECOIL_MOVES:
-                recoil = max(1, damage // 4)
-                pkmn.current_hp = max(0, pkmn.current_hp - recoil)
-                self.add_log(f"|-damage|{side_id}a: {pkmn.nickname}|{self._condition(pkmn)}|[from] recoil")
-                if pkmn.current_hp <= 0:
-                    self.add_log(f"|faint|{side_id}a: {pkmn.nickname}")
-                    self.force_switch_player = self.sides[side_id].player_id
+            if move_key in GEN2_PARALYZE_ON_HIT_MOVES:
+                if target.status_condition is None and random.random() < ((move.effect_chance or 0) / 100):
+                    self._apply_major_status(target, peer_side_id, "par", move.name)
 
-            if move_key in GEN2_TRAP_MOVES:
-                target.is_trapped = True
-                target.trap_turns = random.randint(2, 5)
-                self.add_log(f"|-activate|{peer_side_id}a: {target.nickname}|move: {move.name}")
+        if move_key in GEN2_ATTACK_RAISE_ON_HIT_MOVES and random.random() < ((move.effect_chance or 0) / 100):
+            self._apply_stat_stage(pkmn, side_id, "atk", 1, move.name)
+        if move_key in GEN2_DEFENSE_RAISE_ON_HIT_MOVES and random.random() < ((move.effect_chance or 0) / 100):
+            self._apply_stat_stage(pkmn, side_id, "def", 1, move.name)
+
+        if move_key in GEN2_DRAIN_MOVES:
+            heal = max(1, damage // 2)
+            pkmn.current_hp = min(pkmn.max_hp, pkmn.current_hp + heal)
+            self.add_log(f"|-heal|{side_id}a: {pkmn.nickname}|{self._condition(pkmn)}|[from] move: {move.name}")
+
+        if move_key in GEN2_RECOIL_MOVES:
+            recoil = 1 if hit_substitute else max(1, damage // 4)
+            pkmn.current_hp = max(0, pkmn.current_hp - recoil)
+            self.add_log(f"|-damage|{side_id}a: {pkmn.nickname}|{self._condition(pkmn)}|[from] recoil")
+            if pkmn.current_hp <= 0:
+                self.add_log(f"|faint|{side_id}a: {pkmn.nickname}")
+                self.force_switch_players.add(self.sides[side_id].player_id)
+
+        if not hit_substitute and move_key in GEN2_TRAP_MOVES:
+            target.is_trapped = True
+            target.trap_turns = random.randint(2, 5)
+            self.add_log(f"|-activate|{peer_side_id}a: {target.nickname}|move: {move.name}")
 
     def submit_action(self, player_id: str, action: dict[str, Any]) -> None:
         if self.sides["p1"].player_id == player_id:
@@ -935,14 +1564,15 @@ class BattleEngineGen2:
         else:
             return
 
-        if self.force_switch_player == player_id:
-            if action["type"] == "switch":
-                self._switch_in(side_id, action["index"])
-                self.force_switch_player = None
+        if player_id in self.force_switch_players:
+            if action["type"] != "switch":
                 return
+            self._switch_in(side_id, action["index"])
+            self.force_switch_players.discard(player_id)
+            return
 
         pkmn = self.sides[side_id].active_pokemon
-        if action.get("type") == "switch" and pkmn and pkmn.is_trapped:
+        if action.get("type") == "switch" and pkmn and (pkmn.is_trapped or pkmn.mean_looked or pkmn.spider_webbed):
             self.add_log(f"|cant|{side_id}a: {pkmn.nickname}|trap")
             return
 
@@ -954,14 +1584,22 @@ class BattleEngineGen2:
     def _resolve_turn(self) -> None:
         self.turn += 1
         self.add_log(f"|turn|{self.turn}")
+        self.skip_remaining_actions = False
 
         actions = []
         for side_id, action in self.pending_actions.items():
             pkmn = self.sides[side_id].active_pokemon
             priority = 0
-            if action["type"] == "move":
+            if action["type"] == "switch":
+                priority = 6
+            elif action["type"] == "move":
                 move = pkmn.moves[action["move_index"]]
                 priority = move.priority
+                if _normalize_move_name(move.name) in GEN2_PURSUIT_MOVES:
+                    peer_side_id = "p2" if side_id == "p1" else "p1"
+                    peer_action = self.pending_actions.get(peer_side_id)
+                    if peer_action and peer_action.get("type") == "switch":
+                        priority = 7
 
             speed = pkmn.get_modified_stat("spe")
             actions.append(
@@ -978,6 +1616,8 @@ class BattleEngineGen2:
 
         for act in actions:
             if self.finished:
+                break
+            if self.skip_remaining_actions:
                 break
             self._execute_action(act["side_id"], act["action"])
             self._check_win_condition()
@@ -1041,6 +1681,11 @@ class BattleEngineGen2:
                 pkmn.confusion_turns = 0
                 self.add_log(f"|-end|{slot_tag}: {pkmn.nickname}|confusion")
 
+        if pkmn.attracted_to_side == ("p2" if side_id == "p1" else "p1"):
+            if random.random() < 0.5:
+                self.add_log(f"|cant|{slot_tag}: {pkmn.nickname}|attract")
+                return False
+
         if pkmn.must_recharge:
             self.add_log(f"|cant|{slot_tag}: {pkmn.nickname}|recharge")
             pkmn.must_recharge = False
@@ -1068,7 +1713,7 @@ class BattleEngineGen2:
                 self.add_log(f"|-damage|{slot_tag}: {pkmn.nickname}|{self._condition(pkmn)}|[from] {from_effect}")
                 if pkmn.current_hp <= 0:
                     self.add_log(f"|faint|{slot_tag}: {pkmn.nickname}")
-                    self.force_switch_player = side.player_id
+                    self.force_switch_players.add(side.player_id)
 
             if pkmn.leech_seeded and pkmn.current_hp > 0 and pkmn.status_condition != "frz":
                 drain = max(1, math.floor(pkmn.max_hp / 8))
@@ -1076,7 +1721,7 @@ class BattleEngineGen2:
                 self.add_log(f"|-damage|{slot_tag}: {pkmn.nickname}|{self._condition(pkmn)}|[from] move: Leech Seed")
                 if pkmn.current_hp <= 0:
                     self.add_log(f"|faint|{slot_tag}: {pkmn.nickname}")
-                    self.force_switch_player = side.player_id
+                    self.force_switch_players.add(side.player_id)
 
                 source_side_id = pkmn.leech_seed_source_side
                 if source_side_id and source_side_id in self.sides:
@@ -1085,6 +1730,34 @@ class BattleEngineGen2:
                     if source_pkmn and source_pkmn.current_hp > 0:
                         source_pkmn.current_hp = min(source_pkmn.max_hp, source_pkmn.current_hp + drain)
                         self.add_log(f"|-heal|{source_side_id}a: {source_pkmn.nickname}|{self._condition(source_pkmn)}|[from] move: Leech Seed")
+
+            if pkmn.nightmare_active:
+                if pkmn.status_condition == "slp" and pkmn.current_hp > 0:
+                    nightmare_damage = max(1, math.floor(pkmn.max_hp / 4))
+                    pkmn.current_hp = max(0, pkmn.current_hp - nightmare_damage)
+                    self.add_log(f"|-damage|{slot_tag}: {pkmn.nickname}|{self._condition(pkmn)}|[from] move: Nightmare")
+                    if pkmn.current_hp <= 0:
+                        self.add_log(f"|faint|{slot_tag}: {pkmn.nickname}")
+                        self.force_switch_players.add(side.player_id)
+                else:
+                    pkmn.nightmare_active = False
+
+            if pkmn.curse_active and pkmn.current_hp > 0:
+                curse_damage = max(1, math.floor(pkmn.max_hp / 4))
+                pkmn.current_hp = max(0, pkmn.current_hp - curse_damage)
+                self.add_log(f"|-damage|{slot_tag}: {pkmn.nickname}|{self._condition(pkmn)}|[from] move: Curse")
+                if pkmn.current_hp <= 0:
+                    self.add_log(f"|faint|{slot_tag}: {pkmn.nickname}")
+                    self.force_switch_players.add(side.player_id)
+
+            if pkmn.perish_song_turns is not None and pkmn.current_hp > 0:
+                pkmn.perish_song_turns -= 1
+                self.add_log(f"|-start|{slot_tag}: {pkmn.nickname}|perish{max(0, pkmn.perish_song_turns)}")
+                if pkmn.perish_song_turns <= 0:
+                    pkmn.current_hp = 0
+                    self.add_log(f"|faint|{slot_tag}: {pkmn.nickname}")
+                    self.force_switch_players.add(side.player_id)
+                    pkmn.perish_song_turns = None
 
             if pkmn.item_data and not pkmn.consumed_item:
                 item = pkmn.item_data
@@ -1110,7 +1783,7 @@ class BattleEngineGen2:
                 self.add_log(f"|-damage|{slot_tag}: {pkmn.nickname}|{self._condition(pkmn)}|[from] move: binding")
                 if pkmn.current_hp <= 0:
                     self.add_log(f"|faint|{slot_tag}: {pkmn.nickname}")
-                    self.force_switch_player = side.player_id
+                    self.force_switch_players.add(side.player_id)
                 pkmn.trap_turns -= 1
                 if pkmn.trap_turns <= 0:
                     pkmn.is_trapped = False
@@ -1134,9 +1807,47 @@ class BattleEngineGen2:
                     self.add_log(f"|-damage|{slot_tag}: {pkmn.nickname}|{self._condition(pkmn)}|[from] Sandstorm")
                     if pkmn.current_hp <= 0:
                         self.add_log(f"|faint|{slot_tag}: {pkmn.nickname}")
-                        self.force_switch_player = side.player_id
+                        self.force_switch_players.add(side.player_id)
+
+            if pkmn.is_protected:
+                pkmn.is_protected = False
+            if pkmn.endure_active:
+                pkmn.endure_active = False
 
         self._apply_weather_damage_and_timers()
+
+        for side_id, side in self.sides.items():
+            if side.future_sight_turns <= 0:
+                continue
+            side.future_sight_turns -= 1
+            if side.future_sight_turns == 0:
+                target = side.active_pokemon
+                source_side = self.sides.get(side.future_sight_source_side or "")
+                attacker = source_side.active_pokemon if source_side and source_side.active_pokemon else target
+                if target and target.current_hp > 0 and attacker and side.future_sight_damage > 0:
+                    fake_move = BattleMoveGen2(
+                        move_id=0,
+                        name="Future Sight",
+                        type="psychic",
+                        power=side.future_sight_damage,
+                        accuracy=100,
+                        pp=1,
+                        max_pp=1,
+                        priority=0,
+                        damage_class="special",
+                    )
+                    self._apply_direct_damage(
+                        "p2" if side_id == "p1" else "p1",
+                        attacker,
+                        target,
+                        fake_move,
+                        side.future_sight_damage,
+                        damage_class="special",
+                        ignore_endure=True,
+                        trigger_destiny_bond=False,
+                    )
+                side.future_sight_damage = 0
+                side.future_sight_source_side = None
 
     def _execute_action(self, side_id: str, action: dict[str, Any]) -> None:
         pkmn = self.sides[side_id].active_pokemon

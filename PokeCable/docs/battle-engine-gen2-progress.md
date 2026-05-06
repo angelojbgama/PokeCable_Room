@@ -5,6 +5,7 @@
 - Gen 2 está isolada em arquivos próprios e sem retrocompatibilidade dentro da engine de batalha.
 - Suíte específica da Gen 2 passando.
 - Batalha real 6v6 com saves de Gold / Silver / Crystal validada.
+- Escopo atual da Gen 2 concluído no código e nos testes.
 
 ## O Que Foi Feito
 
@@ -17,21 +18,21 @@
 - Tratamento de status majoritários e voláteis usados na engine atual.
 - Implementação de Hyper Beam com recharge.
 - Implementação de efeitos comuns usados pelos saves reais: Thunder Wave, Toxic, Poison Powder, Rest, Reflect, Light Screen, Agility, Swords Dance, Confuse Ray, drain, recoil, trap e screens.
-- Expansão da cobertura para Fly, Disable, Encore, Leech Seed, Bide, Counter, Mirror Coat, Rollout, Fury Cutter, Metronome, Mimic, Mirror Move, Transform, Conversion e weather.
-- Cobertura de testes para type chart, comportamento básico da engine e mecânicas principais.
+- Expansão da cobertura para Fly, Disable, Encore, Leech Seed, Bide, Counter, Mirror Coat, Rollout, Fury Cutter, Metronome, Mimic, Mirror Move, Transform, Conversion, weather, Protect / Detect, Endure, Future Sight, Pursuit, Spikes, Pain Split, Heal Bell, Attract, Swagger / Charm, Belly Drum, Foresight, Lock On / Mind Reader, Dream Eater, Substitute, Selfdestruct / Explosion e Baton Pass.
+- Cobertura de testes para type chart, comportamento básico da engine, mecânicas principais e interações reais de batalha.
 - Adição de teste de integração com saves reais de Gen 2, usando batalha 6v6 até a exaustão.
 
 ## O Que Foi Validado
 
 - `python3 -m pytest -q tests/test_gen2_types.py tests/test_gen2_battle_engine.py`
 - `python3 -m pytest -q tests/test_gen2_types.py tests/test_gen2_battle_engine.py tests/test_gen2_mechanics.py tests/test_gen2_real_save_battle.py`
-- Resultado: `18 passed`
+- Resultado: `27 passed`
 - `python3 -m py_compile` nos arquivos alterados da Gen 2 e nas suítes de teste
 
 ## O Que Falta
 
-- Extensões futuras de fidelidade para famílias de movimentos mais raras ou mais complexas, como Protect / Detect, Spikes, Pain Split, Heal Bell, Future Sight, Pursuit, Endure, Present, Attract, Swagger / Charm, Belly Drum e outros edge cases raros da Gen 2.
-- Novos testes devem ser adicionados sempre que esses casos forem implementados.
+- Somente novas regressões ou quirks que apareçam em traces futuros de save real.
+- Novos testes devem ser adicionados sempre que um caso novo aparecer.
 
 ## Observações
 

@@ -60,6 +60,57 @@ def choose_best_move(engine: BattleEngineGen2, side_id: str, attacker: PokemonGe
         if not move.get("disabled")
     }
 
+    def estimate_power(move: BattleMoveGen2) -> int:
+        move_key = move.name.lower().replace("-", "").replace(" ", "")
+        if move.damage_class == "status":
+            return 0
+        if move_key == "lowkick":
+            weight = getattr(defender, "weight", 50.0)
+            if weight < 10:
+                return 20
+            if weight < 25:
+                return 40
+            if weight < 50:
+                return 60
+            if weight < 100:
+                return 80
+            if weight < 200:
+                return 100
+            return 120
+        if move_key in {"return", "frustration"}:
+            happiness = max(0, min(255, getattr(attacker, "happiness", 70)))
+            if move_key == "frustration":
+                happiness = 255 - happiness
+            return max(1, happiness // 2)
+        if move_key in {"flail", "reversal"}:
+            if attacker.max_hp <= 0:
+                return 20
+            ratio = attacker.current_hp / attacker.max_hp
+            if ratio >= 0.6875:
+                return 20
+            if ratio >= 0.354:
+                return 40
+            if ratio >= 0.208:
+                return 80
+            if ratio >= 0.104:
+                return 100
+            if ratio >= 0.042:
+                return 150
+            return 200
+        if move_key == "snore":
+            return 40 if attacker.status_condition == "slp" else 0
+        if move_key == "dreameater":
+            return move.power if defender.status_condition == "slp" else 0
+        if move_key == "futuresight":
+            if engine.sides["p2" if side_id == "p1" else "p1"].future_sight_turns > 0:
+                return 0
+            return 80
+        if move_key == "present":
+            return 80
+        if move_key in {"selfdestruct", "explosion"}:
+            return move.power or 200
+        return int(move.power or 0)
+
     best_idx = 0
     best_damage = -1
     for idx, move in enumerate(attacker.moves):
@@ -67,9 +118,10 @@ def choose_best_move(engine: BattleEngineGen2, side_id: str, attacker: PokemonGe
             continue
         if move.pp <= 0 and move.move_id not in enabled_ids:
             continue
-        if move.damage_class == "status" or move.power <= 0:
+        power = estimate_power(move)
+        if power <= 0:
             continue
-        damage, _ = calculate_damage_gen2(attacker, defender, move, is_critical=False, random_factor=255)
+        damage, _ = calculate_damage_gen2(attacker, defender, move, is_critical=False, random_factor=255, power_override=power)
         if damage > best_damage:
             best_damage = damage
             best_idx = idx
@@ -79,7 +131,7 @@ def choose_best_move(engine: BattleEngineGen2, side_id: str, attacker: PokemonGe
 def ensure_switch_if_needed(engine: BattleEngineGen2, side_id: str) -> None:
     side = engine.sides[side_id]
     active = side.active_pokemon
-    if active is not None and active.current_hp > 0 and engine.force_switch_player != side.player_id:
+    if active is not None and active.current_hp > 0 and side.player_id not in engine.force_switch_players:
         return
 
     alive_indices = [index for index, pokemon in enumerate(side.team) if pokemon.current_hp > 0]
@@ -87,7 +139,7 @@ def ensure_switch_if_needed(engine: BattleEngineGen2, side_id: str) -> None:
         return
 
     next_index = alive_indices[0]
-    if engine.force_switch_player == side.player_id:
+    if side.player_id in engine.force_switch_players:
         engine.submit_action(side.player_id, {"type": "switch", "index": next_index})
     else:
         engine._switch_in(side_id, next_index)

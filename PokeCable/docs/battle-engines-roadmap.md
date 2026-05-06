@@ -21,4 +21,4 @@ Cross-generation normalization belongs to save conversion and compatibility code
 
 - Finish Gen 1 edge-case fidelity.
 - Keep Gen 2 battle coverage aligned with real-save regressions and future edge cases.
-- Keep Gen 3 battle execution native to Gen 3 data only.
+- Keep Gen 3 battle execution native to Gen 3 data only and expand real-save coverage as new regressions appear, starting from the current `Detect` / `Endure` / `Substitute` / `Whirlpool` / `Focus Punch` coverage.

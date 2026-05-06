@@ -19,12 +19,17 @@ def calculate_damage_gen2(
     *,
     power_override: int | None = None,
     weather: str | None = None,
+    defender_types_override: list[str] | None = None,
+    defender_def_override: int | None = None,
+    allow_stab: bool = True,
+    allow_type_effectiveness: bool = True,
 ) -> tuple[int, float]:
     move_type = move.type
-    type_multiplier = get_type_multiplier_gen2(move_type, defender.types)
+    defender_types = defender.types if defender_types_override is None else defender_types_override
+    type_multiplier = get_type_multiplier_gen2(move_type, defender_types) if allow_type_effectiveness else 1.0
     effective_power = move.power if power_override is None else power_override
 
-    if type_multiplier > 0:
+    if allow_type_effectiveness and type_multiplier > 0:
         move_name_lower = move.name.lower().replace("-", "").replace(" ", "")
         if move_name_lower in ["horndrill", "fissure", "guillotine", "sheercold"]:
             return defender.current_hp, type_multiplier
@@ -45,10 +50,13 @@ def calculate_damage_gen2(
 
     if is_critical:
         a = attacker.stats.spa if is_special else attacker.stats.atk
-        d = defender.stats.spd if is_special else defender.stats.defen
+        d = defender_def_override if defender_def_override is not None else (defender.stats.spd if is_special else defender.stats.defen)
     else:
         a = attacker.get_modified_stat("spa") if is_special else attacker.get_modified_stat("atk")
-        d = defender.get_modified_stat("spd") if is_special else defender.get_modified_stat("def")
+        if defender_def_override is not None:
+            d = defender_def_override
+        else:
+            d = defender.get_modified_stat("spd") if is_special else defender.get_modified_stat("def")
 
     if d <= 0:
         d = 1
@@ -70,7 +78,7 @@ def calculate_damage_gen2(
         elif move_type == "water":
             v = math.floor(v * 0.5)
 
-    if move_type in attacker.types:
+    if allow_stab and move_type in attacker.types:
         v = math.floor(v * 1.5)
 
     v = math.floor(v * type_multiplier)
@@ -79,6 +87,9 @@ def calculate_damage_gen2(
         random_factor = random.randint(217, 255)
     v = math.floor(v * random_factor / 255)
 
-    if type_multiplier > 0 and v <= 0:
+    if allow_type_effectiveness and type_multiplier == 0:
+        return 0, type_multiplier
+
+    if v <= 0:
         v = 1
     return int(v), type_multiplier

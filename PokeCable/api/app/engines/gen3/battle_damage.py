@@ -51,6 +51,36 @@ def get_dynamic_power(attacker: BattlePokemon, defender: BattlePokemon, move: Ba
         if ratio >= 2: return 150
         return 200
 
+    if name == "magnitude":
+        roll = random.random()
+        if roll < 0.05:
+            return 10
+        if roll < 0.15:
+            return 30
+        if roll < 0.35:
+            return 50
+        if roll < 0.65:
+            return 70
+        if roll < 0.85:
+            return 90
+        if roll < 0.95:
+            return 110
+        return 150
+
+    if name == "rollout":
+        stage = max(0, min(4, getattr(attacker, "rollout_turns", 0)))
+        return min(480, 30 * (2 ** stage))
+
+    if name == "furycutter":
+        stage = max(0, min(4, getattr(attacker, "fury_cutter_hits", 0)))
+        return min(160, 10 * (2 ** stage))
+
+    if name == "spitup":
+        stockpiles = max(0, int(getattr(attacker, "stockpile_count", 0)))
+        if stockpiles <= 0:
+            return 0
+        return 100 * stockpiles
+
     if name in ["eruption", "waterspout"]:
         p = math.floor(150 * attacker.current_hp / attacker.max_hp)
         return max(1, p)
@@ -76,7 +106,7 @@ def get_dynamic_power(attacker: BattlePokemon, defender: BattlePokemon, move: Ba
     if name == "weatherball" and weather != "none":
         return 100
 
-    return move.power
+    return int(move.power or 0)
 
 def calculate_damage_gen1(
     attacker: BattlePokemon, 
@@ -151,7 +181,8 @@ def calculate_damage(
     defender_semi_invulnerable: str | None = None,
     defending_side: Any = None,
     random_factor: int | None = None,
-    generation: int = 3
+    generation: int = 3,
+    power_override: int | None = None,
 ) -> tuple[int, float]:
     """
     Calcula o dano de um golpe usando a formula da geracao correspondente.
@@ -174,6 +205,14 @@ def calculate_damage(
         elif weather == "hail": move_type = "ice"
 
     type_multiplier = get_type_multiplier(move_type, defender.types)
+    if (
+        type_multiplier == 0
+        and getattr(defender, "foresight_active", False)
+        and move_type in {"normal", "fighting"}
+        and "ghost" in defender.types
+    ):
+        non_ghost_types = [type_name for type_name in defender.types if type_name != "ghost"]
+        type_multiplier = get_type_multiplier(move_type, non_ghost_types)
     ability_multiplier = apply_ability_immunities(move, defender, type_multiplier)
     if ability_multiplier is not None:
         type_multiplier = ability_multiplier
@@ -193,7 +232,7 @@ def calculate_damage(
             dmg = math.floor(attacker.level * (random.randint(0, 100) + 50) / 100)
             return max(1, dmg), type_multiplier
 
-    move_power = get_dynamic_power(attacker, defender, move, weather)
+    move_power = power_override if power_override is not None else get_dynamic_power(attacker, defender, move, weather)
     if move_power <= 0 and move.damage_class != "status": return 0, type_multiplier
     if move.damage_class == "status": return 0, type_multiplier
     

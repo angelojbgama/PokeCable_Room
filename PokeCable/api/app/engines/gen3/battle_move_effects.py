@@ -1,11 +1,17 @@
 from __future__ import annotations
 import math
 import random
+from copy import deepcopy
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .battle_pokemon import BattlePokemon, BattleMove
     from .battle_engine_core import CustomBattleEngine
+
+from ...data.move_combat_data import get_move_combat_data
+from .battle_damage import calculate_damage
+from .battle_types import TYPE_CHART, get_type_multiplier
+from .battle_pokemon import BattleMove
 
 def get_hit_count(move: BattleMove) -> int:
     """
@@ -29,6 +35,25 @@ def get_hit_count(move: BattleMove) -> int:
         
     return 1
 
+
+def _build_move_from_id(move_id: int) -> BattleMove | None:
+    data = get_move_combat_data(int(move_id))
+    if not data:
+        return None
+    return BattleMove(
+        move_id=int(move_id),
+        name=str(data["name"]),
+        type=str(data["type"]),
+        power=int(data["power"]) if data.get("power") is not None else 0,
+        accuracy=int(data["accuracy"]) if data.get("accuracy") is not None else 100,
+        pp=int(data["pp"]),
+        max_pp=int(data["pp"]),
+        priority=int(data.get("priority") or 0),
+        damage_class=str(data["damage_class"]),
+        effect=str(data.get("effect") or ""),
+        effect_chance=data.get("effect_chance"),
+    )
+
 def apply_move_effects(
     engine: CustomBattleEngine, 
     attacker: BattlePokemon, 
@@ -41,9 +66,531 @@ def apply_move_effects(
     """
     Analisa o efeito do golpe e aplica as consequencias secundarias na engine.
     """
-    effect = move.effect.lower()
+    effect = move.effect.lower().replace("’", "'")
     move_name_norm = move.name.lower().replace("-", "").replace(" ", "")
     peer_side_id = "p2" if side_id == "p1" else "p1"
+    attacker_slot_idx = next(
+        (i for i, p_idx in enumerate(engine.sides[side_id].active_indices) if engine.sides[side_id].team[p_idx] == attacker),
+        0,
+    )
+
+    # 0. Efeitos de defesa e setup que nao dependem de acertar um alvo
+    if move_name_norm in {"protect", "detect"}:
+        # A Gen 3 reduz a chance de sucesso em usos consecutivos; mantemos uma
+        # aproximacao simples e deterministica o bastante para o jogo base.
+        success_chance = 1.0 if attacker.consecutive_protects == 0 else (1 / (2 ** attacker.consecutive_protects))
+        if random.random() <= success_chance:
+            attacker.is_protected = True
+            attacker.consecutive_protects += 1
+            engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|{move.name}")
+        else:
+            attacker.consecutive_protects = 0
+            engine.add_log("|-fail|")
+        return
+
+    if move_name_norm == "endure":
+        attacker.endure_active = True
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Endure")
+        return
+
+    if move_name_norm == "substitute":
+        if attacker.substitute_hp > 0:
+            engine.add_log("|-fail|")
+            return
+        substitute_hp = max(1, attacker.max_hp // 4)
+        if attacker.current_hp <= substitute_hp:
+            engine.add_log("|-fail|")
+            return
+        attacker.current_hp -= substitute_hp
+        attacker.substitute_hp = substitute_hp
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Substitute")
+        engine.add_log(f"|-start|{side_id}a: {attacker.nickname}|Substitute")
+        return
+
+    if move_name_norm == "recover":
+        if attacker.current_hp >= attacker.max_hp:
+            engine.add_log("|-fail|")
+            return
+        heal_amount = max(1, math.floor(attacker.max_hp / 2))
+        attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal_amount)
+        engine.add_log(f"|-heal|{side_id}a: {attacker.nickname}|{engine._condition(attacker)}|[from] move: Recover")
+        return
+
+    if move_name_norm == "refresh":
+        if attacker.status_condition not in {"brn", "par", "psn", "tox"}:
+            engine.add_log("|-fail|")
+            return
+        old_status = attacker.status_condition
+        attacker.status_condition = None
+        attacker.toxic_turns = 0
+        engine.add_log(f"|-curestatus|{side_id}a: {attacker.nickname}|{old_status}|[from] move: Refresh")
+        return
+
+    if move_name_norm in {"healbell", "aromatherapy"}:
+        cured_any = False
+        for ally in engine.sides[side_id].team:
+            if ally.current_hp <= 0:
+                continue
+            if ally.status_condition in {"brn", "par", "psn", "tox"}:
+                old_status = ally.status_condition
+                ally.status_condition = None
+                ally.toxic_turns = 0
+                engine.add_log(f"|-curestatus|{side_id}a: {ally.nickname}|{old_status}|[from] move: {move.name}")
+                cured_any = True
+        if not cured_any:
+            engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|{move.name}")
+        return
+
+    if move_name_norm == "spikes":
+        side = engine.sides[peer_side_id]
+        if side.spikes_layers >= 3:
+            engine.add_log("|-fail|")
+            return
+        side.spikes_layers += 1
+        engine.add_log(f"|-sidestart|{peer_side_id}: {side.player_name}|move: Spikes")
+        return
+
+    if move_name_norm == "painsplit":
+        if defender is None or defender.current_hp <= 0:
+            engine.add_log("|-fail|")
+            return
+        avg_hp = math.floor((attacker.current_hp + defender.current_hp) / 2)
+        attacker.current_hp = min(attacker.max_hp, avg_hp)
+        defender.current_hp = min(defender.max_hp, avg_hp)
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Pain Split")
+        engine.add_log(f"|-heal|{side_id}a: {attacker.nickname}|{engine._condition(attacker)}|[from] move: Pain Split")
+        engine.add_log(f"|-damage|{peer_side_id}a: {defender.nickname}|{engine._condition(defender)}|[from] move: Pain Split")
+        return
+
+    if move_name_norm == "psychup":
+        attacker.stat_stages = defender.stat_stages.copy()
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Psych Up")
+        return
+
+    if move_name_norm == "attract":
+        if attacker.gender is None or defender.gender is None or attacker.gender == defender.gender:
+            engine.add_log("|-fail|")
+            return
+        if defender.attracted_to_side is not None:
+            engine.add_log("|-fail|")
+            return
+        defender.attracted_to_side = side_id
+        engine.add_log(f"|-start|{peer_side_id}a: {defender.nickname}|move: Attract")
+        return
+
+    if move_name_norm == "foresight":
+        if defender.foresight_active:
+            engine.add_log("|-fail|")
+            return
+        defender.foresight_active = True
+        defender.stat_stages["evasion"] = 0
+        engine.add_log(f"|-start|{peer_side_id}a: {defender.nickname}|move: Foresight")
+        return
+
+    if move_name_norm == "disable":
+        if defender.last_move_id is None or defender.disable_turns > 0 or defender.disable_move_id is not None:
+            engine.add_log("|-fail|")
+            return
+        disabled_move = next((m for m in defender.moves if m.move_id == defender.last_move_id), None)
+        if disabled_move is None:
+            engine.add_log("|-fail|")
+            return
+        disabled_name = disabled_move.name.lower().replace("-", "").replace(" ", "")
+        if disabled_name in {"struggle", "metronome", "mimic", "mirrormove"}:
+            engine.add_log("|-fail|")
+            return
+        defender.disable_move_id = defender.last_move_id
+        defender.disable_turns = random.randint(1, 8)
+        engine.add_log(f"|-activate|{peer_side_id}a: {defender.nickname}|move: Disable|[of] {disabled_move.name}")
+        return
+
+    if move_name_norm == "encore":
+        if defender.last_move_id is None or defender.encore_turns > 0:
+            engine.add_log("|-fail|")
+            return
+        encore_move_index = next((i for i, m in enumerate(defender.moves) if m.move_id == defender.last_move_id), None)
+        if encore_move_index is None:
+            engine.add_log("|-fail|")
+            return
+        target_move = defender.moves[encore_move_index]
+        target_name = target_move.name.lower().replace("-", "").replace(" ", "")
+        if target_name in {"struggle", "metronome", "mimic", "mirrormove"}:
+            engine.add_log("|-fail|")
+            return
+        defender.encore_move_index = encore_move_index
+        defender.encore_turns = random.randint(2, 6)
+        engine.add_log(f"|-activate|{peer_side_id}a: {defender.nickname}|move: Encore")
+        return
+
+    if move_name_norm == "leechseed":
+        if defender.substitute_hp > 0 or defender.leech_seed_recipient is not None:
+            engine.add_log("|-fail|")
+            return
+        if "grass" in defender.types:
+            engine.add_log("|-fail|")
+            return
+        defender.leech_seed_recipient = side_id
+        engine.add_log(f"|-start|{peer_side_id}a: {defender.nickname}|move: Leech Seed")
+        return
+
+    if move_name_norm == "mimic":
+        if defender.last_move_id is None:
+            engine.add_log("|-fail|")
+            return
+        copied_move = _build_move_from_id(defender.last_move_id)
+        if copied_move is None:
+            engine.add_log("|-fail|")
+            return
+        copied_name = copied_move.name.lower().replace("-", "").replace(" ", "")
+        if copied_name in {"struggle", "metronome", "mimic", "mirrormove"}:
+            engine.add_log("|-fail|")
+            return
+        attacker.moves[move_index] = copied_move
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Mimic")
+        return
+
+    if move_name_norm == "spite":
+        if defender.last_move_id is None:
+            engine.add_log("|-fail|")
+            return
+        target_move_index = next((i for i, m in enumerate(defender.moves) if m.move_id == defender.last_move_id), None)
+        if target_move_index is None:
+            engine.add_log("|-fail|")
+            return
+        target_move = defender.moves[target_move_index]
+        if target_move.pp <= 0:
+            engine.add_log("|-fail|")
+            return
+        target_move.pp = max(0, target_move.pp - 4)
+        engine.add_log(f"|-activate|{peer_side_id}a: {defender.nickname}|move: Spite")
+        return
+
+    if move_name_norm == "futuresight":
+        peer_side = engine.sides[peer_side_id]
+        if peer_side.future_sight_turns > 0:
+            engine.add_log("|-fail|")
+            return
+        future_damage, _ = calculate_damage(
+            attacker,
+            defender,
+            move,
+            False,
+            weather=engine.weather,
+            defender_semi_invulnerable=defender.semi_invulnerable,
+            defending_side=peer_side,
+            random_factor=random.randint(85, 100),
+        )
+        peer_side.future_sight_turns = 2
+        peer_side.future_sight_damage = max(0, future_damage)
+        peer_side.future_sight_source_side = side_id
+        engine.add_log(f"|-start|{peer_side_id}a: {defender.nickname}|move: Future Sight")
+        return
+
+    if move_name_norm == "helpinghand":
+        if engine.format != "doubles":
+            engine.add_log("|-fail|")
+            return
+        side = engine.sides[side_id]
+        partner_slot_idx = next(
+            (i for i, p_idx in enumerate(side.active_indices) if i != attacker_slot_idx and side.team[p_idx].current_hp > 0),
+            None,
+        )
+        if partner_slot_idx is None:
+            engine.add_log("|-fail|")
+            return
+        partner = side.team[side.active_indices[partner_slot_idx]]
+        partner.helping_hand_turns = 1
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Helping Hand")
+        return
+
+    if move_name_norm == "followme":
+        if engine.format != "doubles":
+            engine.add_log("|-fail|")
+            return
+        attacker.follow_me_turns = 1
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Follow Me")
+        return
+
+    if move_name_norm == "snatch":
+        if engine.format != "doubles":
+            engine.add_log("|-fail|")
+            return
+        attacker.snatch_turns = 1
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Snatch")
+        return
+
+    if move_name_norm == "stockpile":
+        if attacker.stockpile_count >= 3:
+            engine.add_log("|-fail|")
+            return
+        attacker.stockpile_count += 1
+        _apply_stat_boost(engine, attacker, side_id, "def", 1)
+        _apply_stat_boost(engine, attacker, side_id, "spd", 1)
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Stockpile")
+        return
+
+    if move_name_norm == "swallow":
+        if attacker.stockpile_count <= 0:
+            engine.add_log("|-fail|")
+            return
+        stockpiles = max(1, min(3, attacker.stockpile_count))
+        heal_ratio = {1: 0.25, 2: 0.5, 3: 1.0}[stockpiles]
+        heal = max(1, math.floor(attacker.max_hp * heal_ratio))
+        attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
+        attacker.stockpile_count = 0
+        engine.add_log(f"|-heal|{side_id}a: {attacker.nickname}|{engine._condition(attacker)}|[from] move: Swallow")
+        return
+
+    if move_name_norm == "spitup":
+        if attacker.stockpile_count <= 0:
+            engine.add_log("|-fail|")
+            return
+        attacker.stockpile_count = 0
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Spit Up")
+        return
+
+    if move_name_norm == "wish":
+        side = engine.sides[side_id]
+        side.wish_turns[attacker_slot_idx] = 2
+        side.wish_amounts[attacker_slot_idx] = max(1, math.floor(attacker.max_hp / 2))
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Wish")
+        return
+
+    if move_name_norm == "yawn":
+        if defender.status_condition is not None or defender.yawn_turns > 0:
+            engine.add_log("|-fail|")
+            return
+        defender.yawn_turns = 2
+        engine.add_log(f"|-start|{peer_side_id}a: {defender.nickname}|move: Yawn")
+        return
+
+    if move_name_norm == "ingrain":
+        if attacker.ingrain:
+            engine.add_log("|-fail|")
+            return
+        attacker.ingrain = True
+        engine.add_log(f"|-start|{side_id}a: {attacker.nickname}|move: Ingrain")
+        return
+
+    if move_name_norm == "meanlook":
+        if defender.trapped_by_side is not None or defender.ingrain:
+            engine.add_log("|-fail|")
+            return
+        defender.trapped_by_side = side_id
+        engine.add_log(f"|-start|{peer_side_id}a: {defender.nickname}|move: Mean Look")
+        return
+
+    if move_name_norm in {"lockon", "mindreader"}:
+        attacker.lock_on_turns = 1
+        engine.add_log(f"|-start|{side_id}a: {attacker.nickname}|move: {move.name}")
+        return
+
+    if move_name_norm == "nightmare":
+        if defender.status_condition != "slp" or defender.nightmare_active:
+            engine.add_log("|-fail|")
+            return
+        defender.nightmare_active = True
+        engine.add_log(f"|-start|{peer_side_id}a: {defender.nickname}|move: Nightmare")
+        return
+
+    if move_name_norm == "torment":
+        if defender.torment_turns > 0 or defender.last_move_id is None:
+            engine.add_log("|-fail|")
+            return
+        defender.torment_turns = random.randint(2, 5)
+        engine.add_log(f"|-start|{peer_side_id}a: {defender.nickname}|move: Torment")
+        return
+
+    if move_name_norm == "roleplay":
+        if not defender.ability:
+            engine.add_log("|-fail|")
+            return
+        attacker.ability = defender.ability
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Role Play")
+        return
+
+    if move_name_norm == "skillswap":
+        attacker.ability, defender.ability = defender.ability, attacker.ability
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Skill Swap")
+        return
+
+    if move_name_norm == "conversion":
+        candidate_types = list(dict.fromkeys(move.type for move in attacker.moves if move.type))
+        if not candidate_types:
+            engine.add_log("|-fail|")
+            return
+        attacker.types = [random.choice(candidate_types)]
+        engine.add_log(f"|-start|{side_id}a: {attacker.nickname}|move: Conversion")
+        return
+
+    if move_name_norm == "conversion2":
+        last_move_type = defender.last_damage_move_type
+        if not last_move_type:
+            engine.add_log("|-fail|")
+            return
+        candidate_types = [
+            type_name
+            for type_name in TYPE_CHART.keys()
+            if get_type_multiplier(type_name, [last_move_type]) <= 0.5
+        ]
+        if not candidate_types:
+            engine.add_log("|-fail|")
+            return
+        attacker.types = [random.choice(candidate_types)]
+        engine.add_log(f"|-start|{side_id}a: {attacker.nickname}|move: Conversion 2")
+        return
+
+    if move_name_norm == "curse":
+        if "ghost" in attacker.types:
+            if defender.curse_active:
+                engine.add_log("|-fail|")
+                return
+            attacker.current_hp = max(1, attacker.current_hp - max(1, math.floor(attacker.max_hp / 2)))
+            defender.curse_active = True
+            engine.add_log(f"|-start|{peer_side_id}a: {defender.nickname}|move: Curse")
+            return
+        _apply_stat_boost(engine, attacker, side_id, "atk", 1)
+        _apply_stat_boost(engine, attacker, side_id, "def", 1)
+        _apply_stat_drop(engine, attacker, side_id, "spe", 1)
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Curse")
+        return
+
+    if move_name_norm == "bellydrum":
+        if attacker.current_hp <= max(1, attacker.max_hp // 2):
+            engine.add_log("|-fail|")
+            return
+        attacker.current_hp = max(1, attacker.current_hp - max(1, attacker.max_hp // 2))
+        attacker.stat_stages["atk"] = 6
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Belly Drum")
+        engine.add_log(f"|-boost|{side_id}a: {attacker.nickname}|atk|6")
+        return
+
+    if move_name_norm == "transform":
+        attacker.types = list(defender.types)
+        attacker.ability = defender.ability
+        attacker.stats = deepcopy(defender.stats)
+        attacker.stat_stages = defender.stat_stages.copy()
+        attacker.moves = deepcopy(defender.moves)
+        engine.add_log(f"|-transform|{side_id}a: {attacker.nickname}|{peer_side_id}a: {defender.nickname}")
+        return
+
+    if move_name_norm == "uproar":
+        if attacker.uproar_turns <= 0:
+            attacker.uproar_turns = random.randint(2, 5)
+            attacker.locked_move_index = move_index
+        engine.add_log(f"|-start|{side_id}a: {attacker.nickname}|move: Uproar")
+        return
+
+    if move_name_norm in {"growth", "calmmind", "bulkup", "dragondance", "meditate", "harden", "amnesia", "agility", "defensecurl", "cosmicpower"}:
+        if move_name_norm == "growth":
+            _apply_stat_boost(engine, attacker, side_id, "atk", 1)
+            _apply_stat_boost(engine, attacker, side_id, "spa", 1)
+        elif move_name_norm == "calmmind":
+            _apply_stat_boost(engine, attacker, side_id, "spa", 1)
+            _apply_stat_boost(engine, attacker, side_id, "spd", 1)
+        elif move_name_norm == "bulkup":
+            _apply_stat_boost(engine, attacker, side_id, "atk", 1)
+            _apply_stat_boost(engine, attacker, side_id, "def", 1)
+        elif move_name_norm == "dragondance":
+            _apply_stat_boost(engine, attacker, side_id, "atk", 1)
+            _apply_stat_boost(engine, attacker, side_id, "spe", 1)
+        elif move_name_norm == "meditate":
+            _apply_stat_boost(engine, attacker, side_id, "atk", 1)
+        elif move_name_norm == "harden":
+            _apply_stat_boost(engine, attacker, side_id, "def", 1)
+        elif move_name_norm == "amnesia":
+            _apply_stat_boost(engine, attacker, side_id, "spd", 2)
+        elif move_name_norm == "agility":
+            _apply_stat_boost(engine, attacker, side_id, "spe", 2)
+        elif move_name_norm == "defensecurl":
+            _apply_stat_boost(engine, attacker, side_id, "def", 1)
+        elif move_name_norm == "cosmicpower":
+            _apply_stat_boost(engine, attacker, side_id, "def", 1)
+            _apply_stat_boost(engine, attacker, side_id, "spd", 1)
+        engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|{move.name}")
+        return
+
+    if "user's attack and special attack by one stage" in effect:
+        _apply_stat_boost(engine, attacker, side_id, "atk", 1)
+        _apply_stat_boost(engine, attacker, side_id, "spa", 1)
+        return
+    if "user's special attack and special defense by one stage" in effect:
+        _apply_stat_boost(engine, attacker, side_id, "spa", 1)
+        _apply_stat_boost(engine, attacker, side_id, "spd", 1)
+        return
+    if "user's attack and defense by one stage" in effect:
+        _apply_stat_boost(engine, attacker, side_id, "atk", 1)
+        _apply_stat_boost(engine, attacker, side_id, "def", 1)
+        return
+    if "user's attack and speed by one stage" in effect:
+        _apply_stat_boost(engine, attacker, side_id, "atk", 1)
+        _apply_stat_boost(engine, attacker, side_id, "spe", 1)
+        return
+    if "user's attack by two stages" in effect:
+        _apply_stat_boost(engine, attacker, side_id, "atk", 2)
+        return
+    if "user's defense by two stages" in effect:
+        _apply_stat_boost(engine, attacker, side_id, "def", 2)
+        return
+    if "user's defense by one stage" in effect:
+        _apply_stat_boost(engine, attacker, side_id, "def", 1)
+        return
+    if "user's special attack by one stage" in effect:
+        _apply_stat_boost(engine, attacker, side_id, "spa", 1)
+        return
+    if "user's special defense by one stage" in effect:
+        _apply_stat_boost(engine, attacker, side_id, "spd", 1)
+        return
+    if "user's speed by two stages" in effect:
+        _apply_stat_boost(engine, attacker, side_id, "spe", 2)
+        return
+    if "user's speed by one stage" in effect:
+        _apply_stat_boost(engine, attacker, side_id, "spe", 1)
+        return
+    if "all of the user's stats by one stage" in effect:
+        for stat_name in ("atk", "def", "spa", "spd", "spe"):
+            _apply_stat_boost(engine, attacker, side_id, stat_name, 1)
+        return
+    if "target's attack by two stages" in effect:
+        _apply_stat_drop(engine, defender, peer_side_id, "atk", 2)
+        return
+    if "target's attack by one stage" in effect:
+        _apply_stat_drop(engine, defender, peer_side_id, "atk", 1)
+        return
+    if "target's defense by two stages" in effect:
+        _apply_stat_drop(engine, defender, peer_side_id, "def", 2)
+        return
+    if "target's defense by one stage" in effect:
+        _apply_stat_drop(engine, defender, peer_side_id, "def", 1)
+        return
+    if "target's special attack by two stages" in effect:
+        _apply_stat_drop(engine, defender, peer_side_id, "spa", 2)
+        return
+    if "target's special attack by one stage" in effect:
+        _apply_stat_drop(engine, defender, peer_side_id, "spa", 1)
+        return
+    if "target's special defense by two stages" in effect:
+        _apply_stat_drop(engine, defender, peer_side_id, "spd", 2)
+        return
+    if "target's special defense by one stage" in effect:
+        _apply_stat_drop(engine, defender, peer_side_id, "spd", 1)
+        return
+    if "target's speed by two stages" in effect:
+        _apply_stat_drop(engine, defender, peer_side_id, "spe", 2)
+        return
+    if "target's speed by one stage" in effect:
+        _apply_stat_drop(engine, defender, peer_side_id, "spe", 1)
+        return
+    if "target's accuracy by one stage" in effect:
+        _apply_stat_drop(engine, defender, peer_side_id, "accuracy", 1)
+        return
+    if "target's evasion by one stage" in effect:
+        _apply_stat_drop(engine, defender, peer_side_id, "evasion", 1)
+        return
+    if "all of the target's stats by one stage" in effect:
+        for stat_name in ("atk", "def", "spa", "spd", "spe"):
+            _apply_stat_drop(engine, defender, peer_side_id, stat_name, 1)
+        return
 
     # Task 8.4: Bide (ID 117 ou 20 em testes)
     if move.move_id == 117 or move.move_id == 20:
@@ -70,27 +617,46 @@ def apply_move_effects(
                 engine.add_log("|-fail|")
         return
 
-    # 0. Efeitos Secundarios baseados em Chance (ex: Thunderbolt 10% Paralyze)
-    if move.effect_chance and defender.current_hp > 0 and damage > 0:
-        if random.random() < (move.effect_chance / 100.0):
+    # 0. Efeitos Secundarios e status puros (ex: Thunderbolt, Thunder Wave)
+    if defender.current_hp > 0 and (damage > 0 or move.damage_class == "status"):
+        apply_status = False
+        apply_volatile = False
+
+        if move.effect_chance:
+            chance = move.effect_chance / 100.0
+            apply_status = random.random() < chance
+            apply_volatile = random.random() < chance
+        elif move.damage_class == "status":
+            apply_status = True
+            apply_volatile = True
+
+        if apply_status:
             if "paralyze" in effect:
                 engine.set_status(defender, "par", peer_side_id, attacker)
             elif "burn" in effect:
                 engine.set_status(defender, "brn", peer_side_id, attacker)
             elif "freeze" in effect:
                 engine.set_status(defender, "frz", peer_side_id, attacker)
+            elif move_name_norm == "toxic":
+                engine.set_status(defender, "tox", peer_side_id, attacker)
             elif "poison" in effect:
                 engine.set_status(defender, "psn", peer_side_id, attacker)
             elif "sleep" in effect:
                 engine.set_status(defender, "slp", peer_side_id, attacker)
 
         # Task 7.1: Efeitos Volateis baseados em Chance
-        if random.random() < (move.effect_chance / 100.0):
+        if apply_volatile:
             if "confusion" in effect and defender.confusion_turns == 0:
                 defender.confusion_turns = random.randint(2, 5)
                 engine.add_log(f"|-start|{peer_side_id}a: {defender.nickname}|confusion")
             elif "flinch" in effect:
                 defender.is_flinching = True
+
+    if move_name_norm in {"whirlpool", "firespin", "wrap", "clamp", "sandtomb"} and damage > 0 and defender.current_hp > 0:
+        defender.trapped_by_side = side_id
+        defender.partial_trap_name = move.name
+        defender.partial_trap_turns = random.randint(2, 5)
+        engine.add_log(f"|-start|{peer_side_id}a: {defender.nickname}|move: {move.name}")
 
     # 1. Recoil (Dano de recuo)
     if "user receives" in effect and "damage" in effect:
@@ -117,6 +683,32 @@ def apply_move_effects(
             attacker.locked_move_index = move_index
             engine.add_log(f"|-start|{side_id}a: {attacker.nickname}|move: {move.name}")
 
+    if move_name_norm == "focuspunch":
+        if attacker.last_damage_taken > 0:
+            engine.add_log("|-fail|")
+            return
+
+    if move_name_norm == "furycutter":
+        if damage > 0:
+            attacker.fury_cutter_hits = min(4, attacker.fury_cutter_hits + 1)
+        else:
+            attacker.fury_cutter_hits = 0
+
+    if move_name_norm == "rollout":
+        if damage > 0:
+            attacker.rollout_turns = min(4, attacker.rollout_turns + 1)
+        else:
+            attacker.rollout_turns = 0
+
+    if move_name_norm == "rapidspin" and damage > 0:
+        attacker.partial_trap_turns = 0
+        attacker.partial_trap_name = None
+        attacker.trapped_by_side = None
+        engine.sides[side_id].spikes_layers = 0
+        if attacker.leech_seed_recipient is not None:
+            attacker.leech_seed_recipient = None
+        engine.add_log(f"|-clearnegativeboost|{side_id}a: {attacker.nickname}")
+
     # 2. Draining (Dreno de HP)
     if "recovers half the damage" in effect or "hp is restored by half" in effect:
         drain_amount = max(1, math.floor(damage / 2))
@@ -138,6 +730,14 @@ def apply_move_effects(
             _apply_stat_boost(engine, attacker, side_id, "spe", 2)
         elif "raises user's attack" in effect:
             _apply_stat_boost(engine, attacker, side_id, "atk", 1)
+        elif move_name_norm == "swagger":
+            _apply_stat_boost(engine, defender, peer_side_id, "atk", 2)
+            if defender.confusion_turns == 0:
+                defender.confusion_turns = random.randint(2, 5)
+                engine.add_log(f"|-start|{peer_side_id}a: {defender.nickname}|confusion")
+        elif move_name_norm == "taunt":
+            defender.taunt_turns = 3
+            engine.add_log(f"|-singlemove|{side_id}a: {attacker.nickname}|Taunt")
         
         # Task 8.1: Side Effects
         if "reflect" in move_name_norm:
@@ -172,7 +772,9 @@ def apply_move_effects(
                     "substitute_hp": attacker.substitute_hp,
                     "confusion_turns": attacker.confusion_turns,
                     "leech_seed_recipient": attacker.leech_seed_recipient,
-                    "perish_song_turns": attacker.perish_song_turns
+                    "perish_song_turns": attacker.perish_song_turns,
+                    "stockpile_count": attacker.stockpile_count,
+                    "ingrain": attacker.ingrain,
                 }
                 engine.add_log(f"|move|{side_id}{chr(97 + slot_idx)}: {attacker.nickname}|Baton Pass|{side_id}{chr(97 + slot_idx)}")
             else: engine.add_log("|-fail|")

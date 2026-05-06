@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import math
 from dataclasses import dataclass, field
 from typing import Any
@@ -70,9 +71,14 @@ class BattlePokemon:
     # Task 8.6: Felicidade e Retrocompatibilidade
     happiness: int = 70 # Padrao gen 3
     source_generation: int = 3 # 1, 2 ou 3
-    
+    gender: str | None = None
+    original_types: list[str] = field(default_factory=list)
+    original_ability: str | None = None
+    original_stats: BattleStats | None = None
+
     held_item_id: int | None = None
     moves: list[BattleMove] = field(default_factory=list)
+    original_moves: list[BattleMove] = field(default_factory=list)
     status_condition: str | None = None # burn, sleep, etc.
     status_turns: int = 0
     stat_stages: dict[str, int] = field(default_factory=lambda: {
@@ -96,6 +102,11 @@ class BattlePokemon:
     # Task 8.8: Bloqueio e Recarga
     must_recharge: bool = False
     rage_turns: int = 0 # Para Outrage, Thrash, Petal Dance
+    fury_cutter_hits: int = 0
+    rollout_turns: int = 0
+    stockpile_count: int = 0
+    uproar_turns: int = 0
+    lock_on_turns: int = 0
 
     # Task 7.6.B: Trapping (Mean Look, Fire Spin, etc.)
     trapped_by_side: str | None = None
@@ -104,9 +115,15 @@ class BattlePokemon:
     
     # Task 7.11: Leech Seed
     leech_seed_recipient: str | None = None # side_id que recebe a cura
-    
+    nightmare_active: bool = False
+    yawn_turns: int = 0
+    ingrain: bool = False
+    torment_turns: int = 0
+
     # Task 7.10: Substitute
     substitute_hp: int = 0
+    endure_active: bool = False
+    toxic_turns: int = 0
 
     # Task 8.2: Disrupcoes (Taunt, Disable, Encore)
     taunt_turns: int = 0
@@ -114,8 +131,15 @@ class BattlePokemon:
     disable_turns: int = 0
     encore_move_index: int | None = None
     encore_turns: int = 0
+    attracted_to_side: str | None = None
     last_move_id: int | None = None
-
+    curse_active: bool = False
+    foresight_active: bool = False
+    helping_hand_turns: int = 0
+    follow_me_turns: int = 0
+    snatch_turns: int = 0
+    last_damage_move_type: str | None = None
+    
     # Task 8.3: Instakill / Sacrificio
     destiny_bond: bool = False
     perish_song_turns: int | None = None # None = sem efeito, 0-3 turns
@@ -287,12 +311,16 @@ class BattlePokemon:
         elif canonical.get("held_item_id"):
             held_item_id = int(canonical["held_item_id"])
 
+        metadata = canonical.get("metadata") or {}
+        gender = canonical.get("gender") or metadata.get("gender")
+
         return cls(
             national_id=national_id,
             name=canonical.get("species_name") or base_data.get("name") or "Pokemon",
             nickname=canonical.get("nickname") or canonical.get("species_name") or "Pokemon",
             level=level,
-            types=base_data["types"],
+            types=list(base_data["types"]),
+            original_types=list(base_data["types"]),
             base_stats=base,
             ivs=ivs,
             evs=evs,
@@ -303,7 +331,11 @@ class BattlePokemon:
             stats=stats,
             held_item_id=held_item_id,
             moves=battle_moves,
+            original_moves=deepcopy(battle_moves),
+            original_ability=ability_name or "none",
+            original_stats=deepcopy(stats),
             happiness=int(canonical.get("happiness", 70)),
             source_generation=source_gen,
-            weight=base_data.get("weight", 50.0)
+            weight=base_data.get("weight", 50.0),
+            gender=gender,
         )

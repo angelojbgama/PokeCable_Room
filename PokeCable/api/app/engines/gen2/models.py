@@ -69,6 +69,7 @@ class PokemonGen2:
     last_move_name: str | None = None
     last_damage_taken: int = 0
     last_damage_class: str = ""
+    last_damage_move_type: str = ""
     disable_move_id: int | None = None
     disable_turns: int = 0
     encore_move_id: int | None = None
@@ -81,6 +82,23 @@ class PokemonGen2:
     rage_active: bool = False
     rollout_turns: int = 0
     fury_cutter_turns: int = 0
+    is_protected: bool = False
+    protect_chain: int = 0
+    endure_active: bool = False
+    destiny_bond: bool = False
+    perish_song_turns: int | None = None
+    mean_looked: bool = False
+    mean_look_source_side: str | None = None
+    spider_webbed: bool = False
+    spider_web_source_side: str | None = None
+    attracted_to_side: str | None = None
+    nightmare_active: bool = False
+    foresight_active: bool = False
+    lock_on_active: bool = False
+    mind_reader_active: bool = False
+    mist_active: bool = False
+    curse_active: bool = False
+    curse_source_side: str | None = None
     stat_stages: dict[str, int] = field(
         default_factory=lambda: {
             "atk": 0,
@@ -105,6 +123,9 @@ class PokemonGen2:
     held_item_id: int | None = None
     consumed_item: bool = False
     source_generation: int = 2
+    gender: str | None = None
+    happiness: int = 70
+    weight: float = 50.0
 
     @property
     def item_data(self) -> dict[str, Any] | None:
@@ -154,6 +175,7 @@ class PokemonGen2:
         self.semi_invulnerable = None
         self.last_damage_taken = 0
         self.last_damage_class = ""
+        self.last_damage_move_type = ""
         self.disable_move_id = None
         self.disable_turns = 0
         self.encore_move_id = None
@@ -175,6 +197,23 @@ class PokemonGen2:
         self.substitute_hp = 0
         self.leech_seeded = False
         self.leech_seed_source_side = None
+        self.is_protected = False
+        self.protect_chain = 0
+        self.endure_active = False
+        self.destiny_bond = False
+        self.perish_song_turns = None
+        self.mean_looked = False
+        self.mean_look_source_side = None
+        self.spider_webbed = False
+        self.spider_web_source_side = None
+        self.attracted_to_side = None
+        self.nightmare_active = False
+        self.foresight_active = False
+        self.lock_on_active = False
+        self.mind_reader_active = False
+        self.mist_active = False
+        self.curse_active = False
+        self.curse_source_side = None
 
     @classmethod
     def from_canonical(cls, canonical: dict[str, Any]) -> "PokemonGen2":
@@ -249,6 +288,10 @@ class PokemonGen2:
             held_item_id = int(canonical["held_item"].get("item_id") or 0)
         elif canonical.get("held_item_id"):
             held_item_id = int(canonical["held_item_id"])
+        metadata = dict(canonical.get("metadata") or {})
+        gender = canonical.get("gender") or metadata.get("gender")
+        happiness = int(canonical.get("happiness") or metadata.get("happiness") or metadata.get("friendship") or 70)
+        weight = float(canonical.get("weight") or metadata.get("weight") or 50.0)
 
         return cls(
             national_id=national_id,
@@ -265,4 +308,7 @@ class PokemonGen2:
             status_condition=canonical.get("status_condition"),
             held_item_id=held_item_id,
             source_generation=source_gen,
+            gender=gender,
+            happiness=max(0, min(255, happiness)),
+            weight=max(0.1, weight),
         )

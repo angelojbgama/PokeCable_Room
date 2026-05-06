@@ -18,10 +18,11 @@
 - Drain, recoil, screens and common status move effects used by the current battle flow.
 - Charge-turn families for Fly, Dig, Razor Wind, Solar Beam, Sky Attack and Skull Bash.
 - Leech Seed, Disable, Encore, Counter, Mirror Coat, Bide, Metronome, Mimic, Mirror Move, Transform and Conversion.
+- Protect / Detect, Endure, Future Sight, Pursuit, Spikes, Pain Split, Heal Bell, Attract, Swagger / Charm, Belly Drum, Foresight, Lock On / Mind Reader, Dream Eater, Substitute, Selfdestruct / Explosion and Baton Pass support used by the current battle flow.
 - Rollout, Fury Cutter and weather-based damage / healing interactions.
 - Real-save 6v6 battle coverage for Gold / Silver / Crystal saves.
 
 ## Remaining Work
 
-- Extend coverage for rarer edge families if they show up in future save data or battle traces: Protect / Detect, Spikes, Pain Split, Heal Bell, Future Sight, Pursuit, Endure, Present, Attract, Swagger / Charm, Belly Drum and other very uncommon Gen 2 interactions.
-- Add regression tests whenever a new Gen 2 move family is implemented.
+- Keep adding regression tests whenever a new Gen 2 move family or trace exposes a new quirk.
+- Preserve generation isolation and keep any future normalization outside the battle engine.

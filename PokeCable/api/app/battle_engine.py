@@ -163,10 +163,17 @@ class BattleEngineRouter(BattleEngineAdapter):
             engine.logs = []
             engine.add_log(f"|choice|{client_id}|{action}")
             parsed_action = {}
+            slot_idx = 0
+            extra_tokens = cmd[2:]
+            for token in extra_tokens:
+                if token.startswith("slot="):
+                    slot_idx = max(0, int(token.split("=", 1)[1]) - 1)
+                elif token.isdigit() and len(cmd) >= 3:
+                    slot_idx = max(0, int(token) - 1)
             if cmd[0] == "move":
-                parsed_action = {"type": "move", "move_index": int(cmd[1]) - 1}
+                parsed_action = {"type": "move", "move_index": int(cmd[1]) - 1, "slot": slot_idx}
             elif cmd[0] == "switch":
-                parsed_action = {"type": "switch", "index": int(cmd[1]) - 1}
+                parsed_action = {"type": "switch", "index": int(cmd[1]) - 1, "slot": slot_idx}
             else:
                 parsed_action = {"type": "pass"}
 

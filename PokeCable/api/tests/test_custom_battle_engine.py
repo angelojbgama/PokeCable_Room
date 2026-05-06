@@ -100,7 +100,7 @@ def test_weather_auto_activation():
     engine = setup_engine(p1, p2)
     # _switch_in e chamado no start_battle
     assert engine.weather == "rain"
-    assert engine.weather_turns > 100 # Permanente
+    assert engine.weather_turns == -1 # Permanente
 
 def test_spikes_damage():
     p1 = create_mock_pokemon()

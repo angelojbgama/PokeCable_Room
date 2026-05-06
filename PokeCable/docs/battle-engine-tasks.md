@@ -21,11 +21,13 @@ Battle normalization for saves stays in the conversion layer, not inside the bat
 
 - Gen 1: concluded and validated; keep only maintenance and future regressions if new mechanics are added.
 - Gen 2: concluded for the current scope and validated with real saves; keep the engine isolated and extend coverage only when new Gen 2 edge cases are added.
-- Gen 3: keep the battle path pure Gen 3, keep the conversion logic outside the engine, and add coverage.
+- Gen 3: keep the battle path pure Gen 3, keep the conversion logic outside the engine, and keep expanding real-save coverage beyond the current regression suite and the synthetic edge-case suite. The current engine now covers the core singles move families, the doubles request/redirection path, and the current Pressure / Foresight / Spikes regressions.
 
 ## Test Files
 
 - [api/tests/test_gen1_battle_engine.py](../api/tests/test_gen1_battle_engine.py)
 - [api/tests/test_gen2_battle_engine.py](../api/tests/test_gen2_battle_engine.py)
 - [api/tests/test_custom_battle_engine.py](../api/tests/test_custom_battle_engine.py)
+- [api/tests/test_gen3_mechanics.py](../api/tests/test_gen3_mechanics.py)
+- [api/tests/test_gen3_real_save_battle.py](../api/tests/test_gen3_real_save_battle.py)
 - [api/tests/test_battles.py](../api/tests/test_battles.py)

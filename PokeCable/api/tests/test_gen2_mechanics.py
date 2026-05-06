@@ -315,3 +315,144 @@ def test_gen2_sunny_day_sets_weather(monkeypatch: pytest.MonkeyPatch) -> None:
     run_turn(engine, {"type": "move", "move_index": 0}, {"type": "pass"})
 
     assert engine.weather == "sun"
+
+
+def test_gen2_protect_blocks_regular_damage(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_deterministic_battle(monkeypatch)
+
+    p1 = create_mock_pokemon_gen2(name="Alpha", moves=[make_move(182)], hp=250, spe=120)
+    p2 = create_mock_pokemon_gen2(name="Beta", moves=[make_move(33)], hp=250, spe=80)
+    engine = make_engine(p1, p2)
+    engine.start_battle()
+
+    run_turn(engine, {"type": "move", "move_index": 0}, {"type": "move", "move_index": 0})
+
+    assert p1.current_hp == p1.max_hp
+    assert any("|move|p1a: alpha|Protect|" in log or "protect" in log.lower() for log in engine.logs)
+
+
+def test_gen2_explosion_faints_user_even_through_protect(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_deterministic_battle(monkeypatch)
+
+    p1 = create_mock_pokemon_gen2(name="Alpha", moves=[make_move(182)], hp=250, spe=120)
+    p2 = create_mock_pokemon_gen2(name="Beta", moves=[make_move(153)], hp=250, spe=80)
+    engine = make_engine(p1, p2)
+    engine.start_battle()
+
+    run_turn(engine, {"type": "move", "move_index": 0}, {"type": "move", "move_index": 0})
+
+    assert p1.current_hp == p1.max_hp
+    assert p2.current_hp == 0
+
+
+def test_gen2_foresight_allows_normal_moves_to_hit_ghost(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_deterministic_battle(monkeypatch)
+
+    p1 = create_mock_pokemon_gen2(name="Alpha", moves=[make_move(193), make_move(33)], hp=250, spe=120)
+    p2 = create_mock_pokemon_gen2(name="Beta", types=["ghost"], moves=[make_move(33)], hp=250, spe=80)
+    engine = make_engine(p1, p2)
+    engine.start_battle()
+
+    run_turn(engine, {"type": "move", "move_index": 0}, {"type": "pass"})
+    run_turn(engine, {"type": "move", "move_index": 1}, {"type": "pass"})
+
+    assert p2.current_hp < p2.max_hp
+
+
+def test_gen2_lock_on_bypasses_accuracy(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_deterministic_battle(monkeypatch)
+    monkeypatch.setattr(gen2_engine_mod, "calculate_hit_gen2", lambda *args, **kwargs: False)
+
+    p1 = create_mock_pokemon_gen2(name="Alpha", moves=[make_move(199), make_move(85)], hp=250, spe=120)
+    p2 = create_mock_pokemon_gen2(name="Beta", types=["water"], moves=[make_move(33)], hp=250, spe=80)
+    engine = make_engine(p1, p2)
+    engine.start_battle()
+
+    run_turn(engine, {"type": "move", "move_index": 0}, {"type": "pass"})
+    run_turn(engine, {"type": "move", "move_index": 1}, {"type": "pass"})
+
+    assert p2.current_hp < p2.max_hp
+
+
+def test_gen2_substitute_records_damage_for_counter(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_deterministic_battle(monkeypatch)
+
+    p1 = create_mock_pokemon_gen2(name="Alpha", moves=[make_move(164), make_move(68)], hp=250, spe=120)
+    p2 = create_mock_pokemon_gen2(name="Beta", moves=[make_move(33)], hp=250, spe=80)
+    engine = make_engine(p1, p2)
+    engine.start_battle()
+
+    run_turn(engine, {"type": "move", "move_index": 0}, {"type": "move", "move_index": 0})
+    damage_to_substitute = p1.last_damage_taken
+
+    run_turn(engine, {"type": "move", "move_index": 1}, {"type": "pass"})
+
+    assert damage_to_substitute > 0
+    assert p2.current_hp < p2.max_hp
+
+
+def test_gen2_future_sight_delivers_after_delay(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_deterministic_battle(monkeypatch)
+
+    p1 = create_mock_pokemon_gen2(name="Alpha", moves=[make_move(248)], hp=250, spe=120)
+    p2 = create_mock_pokemon_gen2(name="Beta", moves=[make_move(33)], hp=250, spe=80)
+    engine = make_engine(p1, p2)
+    engine.start_battle()
+
+    run_turn(engine, {"type": "move", "move_index": 0}, {"type": "pass"})
+    assert engine.sides["p2"].future_sight_turns == 2
+
+    run_turn(engine, {"type": "pass"}, {"type": "pass"})
+    assert engine.sides["p2"].future_sight_turns == 1
+
+    run_turn(engine, {"type": "pass"}, {"type": "pass"})
+    assert p2.current_hp < p2.max_hp
+
+
+def test_gen2_snore_requires_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_deterministic_battle(monkeypatch)
+
+    p1 = create_mock_pokemon_gen2(name="Alpha", moves=[make_move(173)], hp=250, spe=120)
+    p2 = create_mock_pokemon_gen2(name="Beta", moves=[make_move(33)], hp=250, spe=80)
+    engine = make_engine(p1, p2)
+    engine.start_battle()
+
+    run_turn(engine, {"type": "move", "move_index": 0}, {"type": "pass"})
+
+    assert p2.current_hp == p2.max_hp
+
+
+def test_gen2_dream_eater_requires_sleep_and_heals_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_deterministic_battle(monkeypatch)
+
+    p1 = create_mock_pokemon_gen2(name="Alpha", moves=[make_move(138)], hp=250, spe=120)
+    p1.current_hp = 100
+    p2 = create_mock_pokemon_gen2(name="Beta", moves=[make_move(33)], hp=250, spe=80)
+    p2.status_condition = "slp"
+    p2.status_turns = 2
+    engine = make_engine(p1, p2)
+    engine.start_battle()
+
+    run_turn(engine, {"type": "move", "move_index": 0}, {"type": "pass"})
+
+    assert p2.current_hp < p2.max_hp
+    assert p1.current_hp > 100
+
+
+def test_gen2_pursuit_hits_switching_target(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_deterministic_battle(monkeypatch)
+
+    p1 = create_mock_pokemon_gen2(name="Alpha", moves=[make_move(228)], hp=250, spe=120)
+    p2 = create_mock_pokemon_gen2(name="Beta", moves=[make_move(33)], hp=250, spe=80)
+    p3 = create_mock_pokemon_gen2(name="Gamma", moves=[make_move(33)], hp=250, spe=60)
+    engine = BattleEngineGen2(
+        "gen2-test",
+        BattleSideGen2("p1", "Red", [p1]),
+        BattleSideGen2("p2", "Blue", [p2, p3]),
+    )
+    engine.start_battle()
+
+    run_turn(engine, {"type": "move", "move_index": 0}, {"type": "switch", "index": 1})
+
+    assert p2.current_hp < p2.max_hp
+    assert engine.sides["p2"].active_index == 1

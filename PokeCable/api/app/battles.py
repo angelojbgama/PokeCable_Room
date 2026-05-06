@@ -54,7 +54,7 @@ class BattleManager:
         room_name: str,
         password: str,
         client_id: str,
-        player_name: str,
+        player_name: str = "Treinador",
         generation: int,
         game: str,
         format_id: str | None = None,
@@ -96,7 +96,7 @@ class BattleManager:
         room_name: str,
         password: str,
         client_id: str,
-        player_name: str,
+        player_name: str = "Treinador",
         generation: int,
         game: str,
     ) -> tuple[BattleRoom, PlayerSlot]:
