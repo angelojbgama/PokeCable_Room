@@ -19,9 +19,9 @@ Battle normalization for saves stays in the conversion layer, not inside the bat
 
 ## What Still Needs Work
 
-- Gen 1: concluded and validated; keep only maintenance and future regressions if new mechanics are added.
-- Gen 2: concluded for the current scope and validated with real saves; keep the engine isolated and extend coverage only when new Gen 2 edge cases are added.
-- Gen 3: keep the battle path pure Gen 3, keep the conversion logic outside the engine, and keep expanding real-save coverage beyond the current regression suite and the synthetic edge-case suite. The current engine now covers the core singles move families, the doubles request/redirection path, and the current Pressure / Foresight / Spikes regressions.
+- Gen 1: concluded and validated; keep only maintenance and future regressions if new mechanics are added. The exhaustive validation matrix lives in `docs/battle-validation/gen1-matrix.txt`.
+- Gen 2: concluded for the current scope and validated with real saves; keep the engine isolated and extend coverage only when new Gen 2 edge cases are added. The exhaustive validation matrix lives in `docs/battle-validation/gen2-matrix.txt`.
+- Gen 3: concluded and validated with real saves. Keep the battle path pure Gen 3 and keep conversion logic outside the engine; extend only through future regressions if new Gen 3 edge cases are discovered. The current engine covers the core singles move families, the doubles request/redirection path, weather suppression and Forecast, Mist/Haze field flow, Soundproof sound-move blocking, low-HP ability boosts, and the current Pressure / Foresight / Spikes / Heal Bell / Lightning Rod / Perish Song / Counter / Mirror Coat / Bide / Triple Kick regressions. The singles and doubles validation matrices live in `docs/battle-validation/gen3-matrix.txt` and `docs/battle-validation/gen3-doubles-matrix.txt`, and the focused source-tracking / power-progression reports live in `docs/battle-validation/gen3-counter-mirrorcoat-bide.txt` and `docs/battle-validation/gen3-triple-kick.txt`. These baseline reports are regenerated without internal `DEBUG` noise.
 
 ## Test Files
 

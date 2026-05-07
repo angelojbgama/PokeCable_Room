@@ -36,6 +36,7 @@ def create_mock_pokemon(
     name: str = "Mew",
     nickname: str | None = None,
     level: int = 50,
+    national_id: int = 151,
     hp: int = 200,
     types: list[str] | None = None,
     gender: str | None = None,
@@ -51,7 +52,7 @@ def create_mock_pokemon(
     if moves is None:
         moves = [make_move(33)]
     return BattlePokemon(
-        national_id=151,
+        national_id=national_id,
         name=name,
         nickname=nickname or name,
         level=level,
@@ -460,3 +461,142 @@ def test_gen3_doubles_snatch_steals_self_target_boost(monkeypatch: pytest.Monkey
     assert snatcher.stat_stages["atk"] == 2
     assert setup_user.stat_stages["atk"] == 0
     assert any("snatch" in log.lower() for log in engine.logs)
+
+
+def test_gen3_mist_double_team_and_haze_manage_stat_stages(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_deterministic_battle(monkeypatch)
+
+    p1 = create_mock_pokemon(name="Buffer", moves=[make_move(54), make_move(104), make_move(114)], spe=120)
+    p2 = create_mock_pokemon(name="Debuffer", moves=[make_move(45)], spe=80)
+    engine = setup_engine(p1, p2)
+
+    run_turn(engine, {"type": "move", "move_index": 0}, {"type": "move", "move_index": 0})
+    assert engine.sides["p1"].mist_turns == 4
+    assert p1.stat_stages["atk"] == 0
+
+    run_turn(engine, {"type": "move", "move_index": 1}, {"type": "pass"})
+    assert p1.stat_stages["evasion"] == 1
+
+    p1.stat_stages["atk"] = 2
+    p1.stat_stages["evasion"] = 2
+    p2.stat_stages["atk"] = 2
+    run_turn(engine, {"type": "move", "move_index": 2}, {"type": "pass"})
+    assert p1.stat_stages["atk"] == 0
+    assert p1.stat_stages["evasion"] == 0
+    assert p2.stat_stages["atk"] == 0
+
+
+def test_gen3_swift_does_not_hit_semi_invulnerable_target(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_deterministic_battle(monkeypatch)
+
+    p1 = create_mock_pokemon(name="SwiftUser", moves=[make_move(129)], atk=140, spa=140, spe=120)
+    p2 = create_mock_pokemon(name="Flyer", moves=[make_move(19)], hp=240, spe=80)
+    engine = setup_engine(p1, p2)
+
+    run_turn(engine, {"type": "pass"}, {"type": "move", "move_index": 0})
+    assert p2.semi_invulnerable == "fly"
+
+    run_turn(engine, {"type": "move", "move_index": 0}, {"type": "pass"})
+    assert p2.current_hp == p2.max_hp
+
+
+def test_gen3_air_lock_suppresses_weather_dependent_healing(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_deterministic_battle(monkeypatch)
+
+    p1 = create_mock_pokemon(name="WeatherMon", moves=[make_move(240), make_move(234)], hp=200, spe=120)
+    p2 = create_mock_pokemon(name="Rayquaza", moves=[make_move(33)], ability="air-lock", hp=200, spe=80)
+    p1.current_hp = 100
+    engine = setup_engine(p1, p2)
+
+    run_turn(engine, {"type": "move", "move_index": 0}, {"type": "pass"})
+    assert engine.weather == "rain"
+    assert engine._effective_weather() == "none"
+
+    run_turn(engine, {"type": "move", "move_index": 1}, {"type": "pass"})
+    assert p1.current_hp == 200
+
+
+def test_gen3_forecast_reverts_when_weather_is_suppressed(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_deterministic_battle(monkeypatch)
+
+    castform = create_mock_pokemon(
+        name="Castform",
+        national_id=351,
+        ability="forecast",
+        types=["normal"],
+        moves=[make_move(240)],
+        hp=180,
+    )
+    dummy = create_mock_pokemon(name="Dummy", moves=[make_move(33)], hp=180, spe=70)
+    rayquaza = create_mock_pokemon(
+        name="Rayquaza",
+        national_id=384,
+        ability="air-lock",
+        moves=[make_move(33)],
+        hp=200,
+        spe=80,
+    )
+    engine = CustomBattleEngine(
+        "gen3-forecast-suppression",
+        BattleSide("p1", "Player 1", [castform]),
+        BattleSide("p2", "Player 2", [dummy, rayquaza]),
+    )
+    engine.start_battle()
+
+    engine.set_weather("rain", -1)
+    assert castform.types == ["water"]
+
+    engine._switch_in("p2", 1, 0)
+
+    assert engine._effective_weather() == "none"
+    assert castform.types == ["normal"]
+    assert any(p.ability == "air-lock" for p in engine.sides["p2"].active_list)
+
+
+def test_gen3_soundproof_blocks_sound_moves_and_uproar_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_deterministic_battle(monkeypatch)
+
+    singer = create_mock_pokemon(name="Singer", moves=[make_move(45)], spe=120)
+    target = create_mock_pokemon(name="SoundproofMon", moves=[make_move(33)], ability="soundproof", hp=200, spe=80)
+    engine = setup_engine(singer, target)
+
+    target.stat_stages["atk"] = 0
+    run_turn(engine, {"type": "move", "move_index": 0}, {"type": "pass"})
+    assert target.stat_stages["atk"] == 0
+
+    singer.uproar_turns = 2
+    assert engine.set_status(target, "slp", "p2", source=singer) is True
+    assert target.status_condition == "slp"
+
+
+def test_gen3_swarm_boosts_bug_damage_at_low_hp(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_deterministic_battle(monkeypatch)
+
+    full_attacker = create_mock_pokemon(
+        name="SwarmUser",
+        moves=[make_move(210)],
+        ability="swarm",
+        atk=160,
+        hp=220,
+        spe=120,
+    )
+    full_target = create_mock_pokemon(name="Target", moves=[make_move(33)], hp=260, spe=80)
+    full_engine = setup_engine(full_attacker, full_target)
+    run_turn(full_engine, {"type": "move", "move_index": 0}, {"type": "pass"})
+    normal_damage = full_target.max_hp - full_target.current_hp
+
+    boosted_attacker = create_mock_pokemon(
+        name="SwarmUser",
+        moves=[make_move(210)],
+        ability="swarm",
+        atk=160,
+        hp=220,
+        spe=120,
+    )
+    boosted_target = create_mock_pokemon(name="Target", moves=[make_move(33)], hp=260, spe=80)
+    boosted_attacker.current_hp = 1
+    boosted_engine = setup_engine(boosted_attacker, boosted_target)
+    run_turn(boosted_engine, {"type": "move", "move_index": 0}, {"type": "pass"})
+    boosted_damage = boosted_target.max_hp - boosted_target.current_hp
+
+    assert boosted_damage > normal_damage

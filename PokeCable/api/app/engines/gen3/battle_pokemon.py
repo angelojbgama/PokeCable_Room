@@ -98,6 +98,7 @@ class BattlePokemon:
     locked_move_index: int | None = None # -1 para Struggle, 0-3 para moves normais
     semi_invulnerable: str | None = None # "fly", "dig", "dive", "bounce"
     is_charging: bool = False # Para Solar Beam, etc.
+    first_turn_on_field: bool = True
     
     # Task 8.8: Bloqueio e Recarga
     must_recharge: bool = False
@@ -107,6 +108,8 @@ class BattlePokemon:
     stockpile_count: int = 0
     uproar_turns: int = 0
     lock_on_turns: int = 0
+    focus_energy: bool = False
+    truant_counter: int = 0
 
     # Task 7.6.B: Trapping (Mean Look, Fire Spin, etc.)
     trapped_by_side: str | None = None
@@ -139,6 +142,8 @@ class BattlePokemon:
     follow_me_turns: int = 0
     snatch_turns: int = 0
     last_damage_move_type: str | None = None
+    last_damage_source_side: str | None = None
+    last_damage_source_slot: int | None = None
     
     # Task 8.3: Instakill / Sacrificio
     destiny_bond: bool = False
@@ -147,8 +152,11 @@ class BattlePokemon:
     # Task 8.4: Counters e Absorções
     last_damage_taken: int = 0
     last_damage_class: str | None = None # physical ou special
+    bide_target_side: str | None = None
+    bide_target_slot: int | None = None
     bide_turns: int | None = None # None = sem efeito, 2 = carregando, 1 = carregando, 0 = liberando
     bide_damage: int = 0
+    damage_taken_this_turn: int = 0
     
     @property
     def item_data(self) -> dict[str, Any] | None:
@@ -223,6 +231,26 @@ class BattlePokemon:
         diff = new_val - current
         self.stat_stages[stat_name] = new_val
         return diff
+
+    def apply_forecast(self, weather: str) -> bool:
+        """Atualiza a forma de Castform em funcao do clima real da batalha."""
+        if self.national_id != 351 or self.ability != "forecast":
+            return False
+
+        if weather == "rain":
+            new_types = ["water"]
+        elif weather == "sun":
+            new_types = ["fire"]
+        elif weather == "hail":
+            new_types = ["ice"]
+        else:
+            new_types = list(self.original_types)
+
+        if self.types == new_types:
+            return False
+
+        self.types = new_types
+        return True
     
     @classmethod
     def from_canonical(cls, canonical: dict[str, Any]) -> BattlePokemon:

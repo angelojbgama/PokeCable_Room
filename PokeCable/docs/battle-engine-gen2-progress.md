@@ -21,12 +21,16 @@
 - Expansão da cobertura para Fly, Disable, Encore, Leech Seed, Bide, Counter, Mirror Coat, Rollout, Fury Cutter, Metronome, Mimic, Mirror Move, Transform, Conversion, weather, Protect / Detect, Endure, Future Sight, Pursuit, Spikes, Pain Split, Heal Bell, Attract, Swagger / Charm, Belly Drum, Foresight, Lock On / Mind Reader, Dream Eater, Substitute, Selfdestruct / Explosion e Baton Pass.
 - Cobertura de testes para type chart, comportamento básico da engine, mecânicas principais e interações reais de batalha.
 - Adição de teste de integração com saves reais de Gen 2, usando batalha 6v6 até a exaustão.
+- Adição de uma matriz exaustiva de validação com saves reais, cobrindo todos os Pokémon e movimentos disponíveis nas equipes de Gold e Silver, com relatório em `docs/battle-validation/gen2-matrix.txt`.
 
 ## O Que Foi Validado
 
 - `python3 -m pytest -q tests/test_gen2_types.py tests/test_gen2_battle_engine.py`
 - `python3 -m pytest -q tests/test_gen2_types.py tests/test_gen2_battle_engine.py tests/test_gen2_mechanics.py tests/test_gen2_real_save_battle.py`
 - Resultado: `27 passed`
+- `python3 -m pytest -q tests/test_gen2_validation_matrix.py`
+- Resultado: `1 passed`
+- Relatório da matriz: `pass=288 fail=0 total=288`
 - `python3 -m py_compile` nos arquivos alterados da Gen 2 e nas suítes de teste
 
 ## O Que Falta

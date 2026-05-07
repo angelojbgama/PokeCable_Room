@@ -79,11 +79,19 @@ CRIT_CHANCE_STAGES: dict[int, float] = {
     4: 1/2
 }
 
-def determine_critical(crit_stage: int, generation: int = 3, base_speed: int = 0) -> bool:
+def determine_critical(
+    crit_stage: int,
+    generation: int = 3,
+    base_speed: int = 0,
+    defender_ability: str | None = None,
+) -> bool:
     """
     Determina se um golpe sera critico.
     Na Gen 1, baseia-se na Base Speed. Na Gen 2+, baseia-se em estagios.
     """
+    if generation >= 2 and defender_ability in {"battle-armor", "shell-armor"}:
+        return False
+
     if generation >= 2:
         stage = max(0, min(4, crit_stage))
         chance = CRIT_CHANCE_STAGES[stage]
@@ -103,7 +111,11 @@ def calculate_hit(
     target_eva_stage: int,
     user_level: int = 1,
     target_level: int = 1,
-    is_ohko: bool = False
+    is_ohko: bool = False,
+    attacker_ability: str | None = None,
+    target_ability: str | None = None,
+    weather: str = "none",
+    move_damage_class: str | None = None,
 ) -> bool:
     """
     Verifica se um golpe acertou baseado no RNG.
@@ -123,5 +135,12 @@ def calculate_hit(
         stage_diff = user_acc_stage - target_eva_stage
         stage_diff = max(-6, min(6, stage_diff))
         chance = move_accuracy * ACCURACY_EVASION_STAGE_MODIFIERS[stage_diff]
+
+        if attacker_ability == "compound-eyes":
+            chance = chance * 1.3
+        if attacker_ability == "hustle" and move_damage_class == "physical":
+            chance = chance * 0.8
+        if target_ability == "sand-veil" and weather == "sandstorm":
+            chance = chance * 0.8
     
     return random.randint(1, 100) <= chance

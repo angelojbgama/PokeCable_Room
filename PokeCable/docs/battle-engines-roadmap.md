@@ -19,6 +19,6 @@ Cross-generation normalization belongs to save conversion and compatibility code
 
 ## Focus
 
-- Finish Gen 1 edge-case fidelity.
-- Keep Gen 2 battle coverage aligned with real-save regressions and future edge cases.
-- Keep Gen 3 battle execution native to Gen 3 data only and expand real-save coverage as new regressions appear, starting from the current `Detect` / `Endure` / `Substitute` / `Whirlpool` / `Focus Punch` coverage.
+- Finish Gen 1 edge-case fidelity and keep the exhaustive validation matrix aligned with new regressions.
+- Keep Gen 2 battle coverage aligned with real-save regressions and future edge cases, with the matrix report as the current baseline.
+- Keep Gen 3 battle execution native to Gen 3 data only and treat the current engine as validated; extend only through future real-save regressions if new edge cases appear. The validation matrices now provide the baseline report data in `docs/battle-validation/`, and the Gen 3 baselines are regenerated without internal engine debug noise.

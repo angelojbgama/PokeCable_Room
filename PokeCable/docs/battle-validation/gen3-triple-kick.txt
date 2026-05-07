@@ -1,0 +1,13 @@
+# Gen 3 Triple Kick validation
+source_a: Pokémon - FireRed Version.sav
+source_b: Pokémon - FireRed Version.sav
+
+PASS | Triple Kick ramp | attacker=236/236 ok defender=165/204 ok damages=[7, 13, 19] logs=|turn|1; |move|p1a: MEWTWO|Triple Kick|p2a; |damage|p2a: BLASTOISE|197/204; |damage|p2a: BLASTOISE|184/204; |damage|p2a: BLASTOISE|165/204; |-hitcount|p2a: BLASTOISE|3
+    |turn|1
+    |move|p1a: MEWTWO|Triple Kick|p2a
+    |damage|p2a: BLASTOISE|197/204
+    |damage|p2a: BLASTOISE|184/204
+    |damage|p2a: BLASTOISE|165/204
+    |-hitcount|p2a: BLASTOISE|3
+
+summary: pass=1 fail=0 total=1

@@ -1,0 +1,34 @@
+# Gen 3 source tracking validation
+source_a: Pokémon - Emerald Version.sav
+source_b: Pokémon - Emerald Version.sav
+
+PASS | Counter source | counter | p1a=212/266 ok p1b=311/311 ok p2a=54/270 ok p2b=271/271 ok logs=|turn|2; |move|p1a: AGGRON|counter|p2b; |move|p1a: AGGRON|Counter|p2a; |-supereffective|; |damage|p2a: MIGHTYENA|54/270
+    |-unboost|p1a: AGGRON|def|1
+    |turn|2
+    |move|p1a: AGGRON|counter|p2b
+    |move|p1a: AGGRON|Counter|p2a
+    |-supereffective|
+    |damage|p2a: MIGHTYENA|54/270
+PASS | Counter follow-me | counter-follow | p1a=266/266 ok p1b=247/311 ok p2a=14/270 ok p2b=271/271 ok logs=|turn|2; |move|p1b: MILOTIC|counter|p2a; |move|p1b: MILOTIC|Counter|p2a; |-supereffective|; |damage|p2a: MIGHTYENA|14/270
+    |-unboost|p1a: MILOTIC|def|1
+    |turn|2
+    |move|p1b: MILOTIC|counter|p2a
+    |move|p1b: MILOTIC|Counter|p2a
+    |-supereffective|
+    |damage|p2a: MIGHTYENA|14/270
+PASS | Mirror Coat source | mirror | p1a=182/311 ok p1b=266/266 ok p2a=142/271 ok p2b=270/270 ok logs=|turn|2; |move|p1a: MILOTIC|mirror-coat|p2b; |move|p1a: MILOTIC|Mirror Coat|p2a; |-resisted|; |damage|p2a: GARDEVOIR|142/271
+    |-unboost|p1a: MILOTIC|spd|1
+    |turn|2
+    |move|p1a: MILOTIC|mirror-coat|p2b
+    |move|p1a: MILOTIC|Mirror Coat|p2a
+    |-resisted|
+    |damage|p2a: GARDEVOIR|142/271
+PASS | Bide source | bide | p1a=247/311 ok p1b=266/266 ok p2a=142/270 ok p2b=271/271 ok logs=|message|MILOTIC is storing energy!; |turn|3; |move|p1a: MILOTIC|bide|p1a; |move|p1a: MILOTIC|Bide|p2a; |damage|p2a: MIGHTYENA|142/270
+    |move|p1a: MILOTIC|Bide|p1a|[still]
+    |message|MILOTIC is storing energy!
+    |turn|3
+    |move|p1a: MILOTIC|bide|p1a
+    |move|p1a: MILOTIC|Bide|p2a
+    |damage|p2a: MIGHTYENA|142/270
+
+summary: pass=4 fail=0 total=4

@@ -12,7 +12,9 @@ if TYPE_CHECKING:
 
 from .battle_utils import determine_critical, calculate_hit
 from .battle_damage import calculate_damage
+from .battle_ability_effects import blocks_soundproof, is_status_immune, is_volatile_immune, is_weather_suppressed
 from .battle_move_effects import apply_move_effects, get_hit_count, _apply_stat_drop
+from .battle_move_properties import move_is_high_critical, normalize_move_name
 from ...data.move_combat_data import MOVE_COMBAT_DATA, get_move_combat_data
 from .battle_pokemon import BattleMove
 
@@ -105,6 +107,16 @@ DOUBLE_ONLY_MOVES = {
     "snatch",
 }
 
+NEVER_MISS_MOVES = {
+    "swift",
+    "feintattack",
+    "vitalthrow",
+    "shadowpunch",
+    "aerialace",
+    "magicalleaf",
+    "shockwave",
+}
+
 SNATCH_BANNED_MOVES = {
     "snatch",
     "followme",
@@ -116,7 +128,7 @@ SNATCH_BANNED_MOVES = {
 
 
 def _normalize_move_name(value: str) -> str:
-    return value.lower().replace("-", "").replace(" ", "")
+    return normalize_move_name(value)
 
 
 def _move_target_mode(move: BattleMove, attacker: BattlePokemon | None = None) -> str:
@@ -176,6 +188,7 @@ class BattleSide:
     reflect_turns: int = 0
     light_screen_turns: int = 0
     safeguard_turns: int = 0
+    mist_turns: int = 0
     future_sight_turns: int = 0
     future_sight_damage: int = 0
     future_sight_source_side: str | None = None
@@ -247,7 +260,12 @@ class CustomBattleEngine:
         side = self.sides[side_id]
         if side.safeguard_turns > 0:
             return False
-        if status == "slp" and any(p.uproar_turns > 0 for battle_side in self.sides.values() for p in battle_side.active_list):
+        if status == "slp":
+            if any(p.uproar_turns > 0 for battle_side in self.sides.values() for p in battle_side.active_list):
+                if target.ability != "soundproof":
+                    return False
+
+        if is_status_immune(target.ability, status):
             return False
 
         # Imunidades de Tipo
@@ -297,6 +315,7 @@ class CustomBattleEngine:
         
         self.add_log(f"|-weather|{weather}")
         self.add_log(f"|message|{msg}")
+        self._update_weather_forms()
 
     def _slot_tag(self, side_id: str, slot_idx: int) -> str:
         return f"{side_id}{chr(97 + slot_idx)}"
@@ -308,6 +327,17 @@ class CustomBattleEngine:
                 return slot_idx
         return None
 
+    def _pokemon_at_slot(self, side_id: str, slot_idx: int | None) -> BattlePokemon | None:
+        if slot_idx is None:
+            return None
+        side = self.sides.get(side_id)
+        if side is None or slot_idx < 0 or slot_idx >= len(side.active_indices):
+            return None
+        pokemon_index = side.active_indices[slot_idx]
+        if pokemon_index < 0 or pokemon_index >= len(side.team):
+            return None
+        return side.team[pokemon_index]
+
     def _partner_active(self, side_id: str, slot_idx: int) -> tuple[int, BattlePokemon] | None:
         if self.format != "doubles":
             return None
@@ -318,6 +348,43 @@ class CustomBattleEngine:
             partner = side.team[p_idx]
             if partner.current_hp > 0:
                 return partner_slot_idx, partner
+        return None
+
+    def _weather_suppressed(self) -> bool:
+        for side in self.sides.values():
+            for pkmn in side.active_list:
+                if pkmn.current_hp > 0 and is_weather_suppressed(pkmn.ability):
+                    return True
+        return False
+
+    def _effective_weather(self) -> str:
+        return "none" if self._weather_suppressed() else self.weather
+
+    def _update_weather_forms(self) -> None:
+        for side in self.sides.values():
+            for pkmn in side.active_list:
+                if pkmn.current_hp <= 0:
+                    continue
+                if pkmn.ability == "forecast":
+                    pkmn.apply_forecast(self._effective_weather())
+
+    def _switch_blocked_by_abilities(self, side_id: str, pokemon: BattlePokemon) -> str | None:
+        peer_side_id = "p2" if side_id == "p1" else "p1"
+        peer_side = self.sides[peer_side_id]
+
+        if any(p.current_hp > 0 and p.ability == "shadow-tag" for p in peer_side.active_list):
+            return "shadow-tag"
+
+        if (
+            any(p.current_hp > 0 and p.ability == "arena-trap" for p in peer_side.active_list)
+            and "flying" not in pokemon.types
+            and pokemon.ability != "levitate"
+        ):
+            return "arena-trap"
+
+        if any(p.current_hp > 0 and p.ability == "magnet-pull" for p in peer_side.active_list) and "steel" in pokemon.types:
+            return "magnet-pull"
+
         return None
 
     def submit_action(self, player_id: str, action: dict[str, Any]) -> bool:
@@ -342,7 +409,7 @@ class CustomBattleEngine:
                 or pkmn.rage_turns > 0
                 or pkmn.ingrain
             ):
-                self.add_log(f"DEBUG: {pkmn.nickname} esta preso e nao pode trocar!")
+                logger.debug("Battle %s: %s esta preso e nao pode trocar!", self.battle_id, pkmn.nickname)
                 return False
 
         # Task 7.2: Locked Moves
@@ -364,7 +431,7 @@ class CustomBattleEngine:
              if action["type"] == "move" and action["move_index"] != -1:
                  m_obj = pkmn.moves[action["move_index"]]
                  if m_obj.move_id != pkmn.last_move_id:
-                     self.add_log(f"DEBUG: {pkmn.nickname} esta travado pelo Choice Band!")
+                     logger.debug("Battle %s: %s esta travado pelo Choice Band!", self.battle_id, pkmn.nickname)
                      return False
 
         # Task 7.12: Encore
@@ -382,14 +449,23 @@ class CustomBattleEngine:
         if action["type"] == "switch":
             idx = action["index"]
             if idx < 0 or idx >= len(side.team) or side.team[idx].current_hp <= 0 or idx in side.active_indices:
-                self.add_log(f"DEBUG: Tentativa invalida de troca. Indice {idx} invalido ou pokemon indisponivel.")
+                logger.debug(
+                    "Battle %s: tentativa invalida de troca. Indice %s invalido ou pokemon indisponivel.",
+                    self.battle_id,
+                    idx,
+                )
                 return False
+            if (side_id, slot_idx) not in self.force_switch_slots:
+                blocked_by = self._switch_blocked_by_abilities(side_id, side.team[idx])
+                if blocked_by is not None:
+                    self.add_log(f"|cant|{slot_tag}: {pkmn.nickname}|{blocked_by}")
+                    return False
 
         # Validacao Basica de Movimento
         if action["type"] == "move":
             move_idx = action["move_index"]
             if move_idx != -1 and (move_idx < 0 or move_idx >= len(pkmn.moves)):
-                self.add_log(f"DEBUG: Indice de golpe invalido para {side_id}: {move_idx}")
+                logger.debug("Battle %s: indice de golpe invalido para %s: %s", self.battle_id, side_id, move_idx)
                 return False
             if move_idx != -1:
                 move_obj = pkmn.moves[move_idx]
@@ -407,7 +483,7 @@ class CustomBattleEngine:
                 self._switch_in(side_id, action["index"], slot_idx, baton_pass_data=baton_data)
                 if (side_id, slot_idx) in self.force_switch_slots:
                     self.force_switch_slots.remove((side_id, slot_idx))
-                self.add_log(f"DEBUG: Troca de {side_id}:{slot_idx} resolvida.")
+                logger.debug("Battle %s: troca de %s:%s resolvida.", self.battle_id, side_id, slot_idx)
             return True
             
         self.pending_actions[(side_id, slot_idx)] = action
@@ -436,11 +512,11 @@ class CustomBattleEngine:
                 pkmn.is_flinching = False
                 pkmn.destiny_bond = False
                 pkmn.endure_active = False
-                pkmn.last_damage_taken = 0
-                pkmn.last_damage_class = None
+                pkmn.damage_taken_this_turn = 0
 
         # 1. Preparar lista de acoes ordenadas por prioridade e speed
         actions = []
+        effective_weather = self._effective_weather()
         for (side_id, slot_idx), action in self.pending_actions.items():
             side = self.sides[side_id]
             pkmn = side.team[side.active_indices[slot_idx]]
@@ -464,9 +540,9 @@ class CustomBattleEngine:
                             if peer_side_key == peer_side_id
                         ):
                             priority = max(priority, 11)
-            
+
             # Speed com modificadores (simplificado: so stage e para/brn)
-            speed = pkmn.get_modified_stat("spe", self.weather)
+            speed = pkmn.get_modified_stat("spe", effective_weather)
             
             actions.append({
                 "side_id": side_id,
@@ -524,8 +600,13 @@ class CustomBattleEngine:
         if slot_idx >= len(side.active_indices):
             side.active_indices.extend([-1] * (slot_idx - len(side.active_indices) + 1))
         old_pkmn_idx = side.active_indices[slot_idx]
-        if 0 <= old_pkmn_idx < len(side.team):
+        if 0 <= old_pkmn_idx < len(side.team) and old_pkmn_idx != index:
             old_pkmn = side.team[old_pkmn_idx]
+            if old_pkmn.ability == "natural-cure" and old_pkmn.status_condition is not None:
+                old_pkmn.status_condition = None
+                old_pkmn.status_turns = 0
+                old_pkmn.toxic_turns = 0
+                self.add_log(f"|-curestatus|{side_id}{chr(97 + slot_idx)}: {old_pkmn.nickname}|[from] ability: Natural Cure")
             old_pkmn.stat_stages = {k: 0 for k in old_pkmn.stat_stages}
             if old_pkmn.original_stats is not None:
                 old_pkmn.stats = deepcopy(old_pkmn.original_stats)
@@ -554,6 +635,8 @@ class CustomBattleEngine:
             old_pkmn.stockpile_count = 0
             old_pkmn.uproar_turns = 0
             old_pkmn.lock_on_turns = 0
+            old_pkmn.focus_energy = False
+            old_pkmn.truant_counter = 0
             old_pkmn.locked_move_index = None
             old_pkmn.toxic_turns = 0
             old_pkmn.attracted_to_side = None
@@ -563,6 +646,13 @@ class CustomBattleEngine:
             old_pkmn.follow_me_turns = 0
             old_pkmn.snatch_turns = 0
             old_pkmn.last_damage_move_type = None
+            old_pkmn.last_damage_taken = 0
+            old_pkmn.last_damage_class = None
+            old_pkmn.last_damage_source_side = None
+            old_pkmn.last_damage_source_slot = None
+            old_pkmn.bide_target_side = None
+            old_pkmn.bide_target_slot = None
+            old_pkmn.damage_taken_this_turn = 0
 
         for p_idx in self.sides[peer_side_id].active_indices:
             p = self.sides[peer_side_id].team[p_idx]
@@ -587,17 +677,20 @@ class CustomBattleEngine:
             pkmn.rage_turns = baton_pass_data.get("rage_turns", 0)
             pkmn.stockpile_count = baton_pass_data.get("stockpile_count", 0)
             pkmn.ingrain = baton_pass_data.get("ingrain", False)
-        
+
         # Limpeza redundante de seguranca
         pkmn.partial_trap_turns = 0; pkmn.partial_trap_name = None; pkmn.trapped_by_side = None
         pkmn.destiny_bond = False; pkmn.must_recharge = False
-        
+        pkmn.truant_counter = 0
+        pkmn.first_turn_on_field = True
+
         self.add_log(f"|switch|{slot_tag}: {pkmn.nickname}|{pkmn.name}, L{pkmn.level}|{self._condition(pkmn)}")
         
         if side.spikes_layers > 0 and "flying" not in pkmn.types and pkmn.ability != "levitate":
             spikes_fraction = {1: 1 / 8, 2: 1 / 6, 3: 1 / 4}.get(side.spikes_layers, 0)
             damage = max(1, math.floor(pkmn.max_hp * spikes_fraction))
             pkmn.current_hp = max(0, pkmn.current_hp - damage)
+            pkmn.damage_taken_this_turn = max(pkmn.damage_taken_this_turn, damage)
             self.add_log(f"|-damage|{slot_tag}: {pkmn.nickname}|{self._condition(pkmn)}|[from] Spikes")
             if pkmn.current_hp <= 0: self.add_log(f"|faint|{slot_tag}: {pkmn.nickname}"); return
 
@@ -631,6 +724,7 @@ class CustomBattleEngine:
         
         # Check items on entry (ex: White Herb)
         self._check_and_use_items("entry")
+        self._update_weather_forms()
 
     def _execute_action(self, side_id: str, action: dict[str, Any], slot_idx: int):
         side = self.sides[side_id]
@@ -644,16 +738,37 @@ class CustomBattleEngine:
             self._switch_in(side_id, action["index"], slot_idx)
             return
 
-        if not self._can_pokemon_move(side_id, pkmn, slot_idx): return
-
         if action["type"] == "move":
             move_index = action.get("move_index", 0)
             is_struggle = (move_index == -1)
             move = STRUGGLE if is_struggle else pkmn.moves[move_index]
             pp_move = move
             move_power_override: int | None = None
+            battle_weather = self._effective_weather()
             move_name_lower = move.name.lower()
             move_name_norm = move_name_lower.replace("-", "").replace(" ", "")
+            command_move_name_norm = move_name_norm
+
+            if not self._can_pokemon_move(side_id, pkmn, slot_idx, move_name_norm):
+                return
+
+            if command_move_name_norm == "sleeptalk":
+                if pkmn.status_condition != "slp":
+                    self.add_log("|-fail|")
+                    return
+                eligible_indices = [
+                    idx
+                    for idx, candidate in enumerate(pkmn.moves)
+                    if idx != move_index and normalize_move_name(candidate.name) not in {"sleeptalk", "struggle"} and int(candidate.pp or 0) > 0
+                ]
+                if not eligible_indices:
+                    self.add_log("|-fail|")
+                    return
+                chosen_index = random.choice(eligible_indices)
+                move_index = chosen_index
+                move = pkmn.moves[chosen_index]
+                move_name_lower = move.name.lower()
+                move_name_norm = move_name_lower.replace("-", "").replace(" ", "")
 
             if move_name_norm == "metronome":
                 metronome_move = self._random_metronome_move()
@@ -675,7 +790,7 @@ class CustomBattleEngine:
 
             # Multi-turn moves
             if "solar-beam" in move_name_lower:
-                if not pkmn.is_charging and self.weather != "sun":
+                if not pkmn.is_charging and battle_weather != "sun":
                     pkmn.is_charging = True
                     pkmn.locked_move_index = move_index
                     self.add_log(f"|move|{slot_tag}: {pkmn.nickname}|{move.name}|[still]")
@@ -684,9 +799,6 @@ class CustomBattleEngine:
                 else:
                     pkmn.is_charging = False
                     pkmn.locked_move_index = None
-                    original_power = move.power
-                    if self.weather in ["rain", "sandstorm", "hail"]:
-                        move.power = original_power // 2
                     pass 
             elif move_name_norm in {"razorwind", "skullbash", "skyattack"}:
                 if not pkmn.is_charging:
@@ -714,6 +826,10 @@ class CustomBattleEngine:
                 else:
                     pkmn.semi_invulnerable = None
                     pkmn.locked_move_index = None
+
+            if move_name_norm == "fakeout" and not pkmn.first_turn_on_field:
+                self.add_log("|-fail|")
+                return
 
             if not is_struggle:
                 if pp_move.pp > 0:
@@ -762,11 +878,37 @@ class CustomBattleEngine:
                 self.add_log("|-notarget|")
                 return
 
+            if self.format == "doubles" and target_mode == "foe" and move.type == "electric" and targets:
+                current_target_side_id, current_target_slot_idx, current_target = targets[0]
+                if current_target.ability != "lightning-rod":
+                    lightning_rod_candidates = [
+                        (
+                            target_pkmn.get_modified_stat("spe", battle_weather),
+                            t_slot_idx,
+                            target_pkmn,
+                        )
+                        for t_slot_idx, p_idx in enumerate(self.sides[current_target_side_id].active_indices)
+                        if (
+                            (target_pkmn := self.sides[current_target_side_id].team[p_idx]).current_hp > 0
+                            and target_pkmn.ability == "lightning-rod"
+                        )
+                    ]
+                    if lightning_rod_candidates:
+                        _, current_target_slot_idx, current_target = max(lightning_rod_candidates, key=lambda item: (item[0], -item[1]))
+                        targets[0] = (current_target_side_id, current_target_slot_idx, current_target)
+
             pressure_targets = [
                 (t_side_id, t_slot_idx, target)
                 for t_side_id, t_slot_idx, target in targets
                 if t_side_id != side_id and target.ability == "pressure"
             ]
+            if command_move_name_norm == "perishsong":
+                pressure_targets = [
+                    (t_side_id, t_slot_idx, target)
+                    for t_side_id, t_side in self.sides.items()
+                    for t_slot_idx, p_idx in enumerate(t_side.active_indices)
+                    if t_side_id != side_id and (target := t_side.team[p_idx]).current_hp > 0 and target.ability == "pressure"
+                ]
             if pressure_targets and not is_struggle:
                 for p_side_id, p_slot_idx, pressure_target in pressure_targets:
                     self.add_log(f"|-ability|{self._slot_tag(p_side_id, p_slot_idx)}: {pressure_target.nickname}|Pressure")
@@ -775,8 +917,27 @@ class CustomBattleEngine:
             t_side_id, t_slot_idx, first_target = targets[0]
             t_slot_tag = f"{t_side_id}{chr(97 + t_slot_idx)}"
             self.add_log(f"|move|{slot_tag}: {pkmn.nickname}|{move.name}|{t_slot_tag}")
-            pkmn.last_move_id = pp_move.move_id if move_name_norm == "metronome" else move.move_id
+            pkmn.last_move_id = pp_move.move_id if command_move_name_norm in {"metronome", "sleeptalk"} else move.move_id
             helping_hand_consumed = pkmn.helping_hand_turns > 0
+
+            if move_name_norm in {"selfdestruct", "explosion"}:
+                damp_target = next(
+                    (
+                        (p_side_id, p_slot_idx, pressure_target)
+                        for p_side_id, side in self.sides.items()
+                        for p_slot_idx, p_idx in enumerate(side.active_indices)
+                        if (pressure_target := side.team[p_idx]).current_hp > 0 and pressure_target.ability == "damp"
+                    ),
+                    None,
+                )
+                if damp_target is not None:
+                    damp_side_id, damp_slot_idx, damp_pkmn = damp_target
+                    self.add_log(f"|-ability|{self._slot_tag(damp_side_id, damp_slot_idx)}: {damp_pkmn.nickname}|Damp")
+                    self.add_log("|-fail|")
+                    return
+                if pkmn.current_hp > 0:
+                    pkmn.current_hp = 0
+                    self.add_log(f"|faint|{slot_tag}: {pkmn.nickname}")
 
             if move_name_norm == "present":
                 present_roll = random.random()
@@ -817,21 +978,36 @@ class CustomBattleEngine:
                     if move_name_norm == "rollout":
                         pkmn.rollout_turns = 0
                     self.add_log(f"|-activate|{t_slot_tag}: {target.nickname}|move: Protect")
+                    if move_name_norm == "triplekick":
+                        break
                     continue
                 if target.semi_invulnerable:
                     can_hit = pkmn.lock_on_turns > 0
                     if target.semi_invulnerable == "dig" and move_name_lower in ["earthquake", "magnitude"]: can_hit = True
+                    if target.semi_invulnerable == "dive" and move_name_lower in ["surf"]: can_hit = True
                     if target.semi_invulnerable in {"fly", "sky-attack"} and move_name_lower in ["gust", "twister", "thunder", "sky-uppercut"]: can_hit = True
-                    if move_name_lower == "swift": can_hit = True
                     if not can_hit:
                         if move_name_norm == "furycutter":
                             pkmn.fury_cutter_hits = 0
                         if move_name_norm == "rollout":
                             pkmn.rollout_turns = 0
                         self.add_log(f"|-miss|{slot_tag}: {pkmn.nickname}|{t_slot_tag}: {target.nickname}")
+                        if move_name_norm == "triplekick":
+                            break
                         continue
 
+                if target.ability == "soundproof" and blocks_soundproof(move):
+                    if move_name_norm == "furycutter":
+                        pkmn.fury_cutter_hits = 0
+                    if move_name_norm == "rollout":
+                        pkmn.rollout_turns = 0
+                    self.add_log("|-fail|")
+                    continue
+
                 if "roar" in move_name_lower or "whirlwind" in move_name_lower:
+                    if target.ability == "suction-cups":
+                        self.add_log("|-fail|")
+                        continue
                     t_side = self.sides[t_side_id]
                     available_indices = [i for i, p in enumerate(t_side.team) if p.current_hp > 0 and i not in t_side.active_indices]
                     if available_indices:
@@ -843,22 +1019,46 @@ class CustomBattleEngine:
                         self.add_log("|-fail|")
                         continue
 
-                accuracy_override = calculate_hit(
-                    move.accuracy,
-                    pkmn.stat_stages["accuracy"],
-                    0 if getattr(target, "foresight_active", False) else target.stat_stages["evasion"],
-                    pkmn.level,
-                    target.level,
-                    move_name_lower in ["horn-drill", "fissure", "guillotine", "sheer-cold"],
-                )
+                if move_name_norm == "snore" and pkmn.status_condition != "slp":
+                    self.add_log("|-fail|")
+                    return
+                if move_name_norm == "dreameater" and target.status_condition != "slp":
+                    self.add_log("|-fail|")
+                    continue
+
+                if move_name_norm in NEVER_MISS_MOVES:
+                    accuracy_override = True
+                else:
+                    accuracy_override = calculate_hit(
+                        move.accuracy,
+                        pkmn.stat_stages["accuracy"],
+                        0 if getattr(target, "foresight_active", False) else target.stat_stages["evasion"],
+                        pkmn.level,
+                        target.level,
+                        move_name_lower in ["horn-drill", "fissure", "guillotine", "sheer-cold"],
+                        attacker_ability=pkmn.ability,
+                        target_ability=target.ability,
+                        weather=battle_weather,
+                        move_damage_class=move.damage_class,
+                    )
                 if pkmn.lock_on_turns > 0:
                     accuracy_override = True
                 if not accuracy_override:
-                    if self.weather == "rain" and move_name_lower in ["thunder", "hurricane"]:
+                    if battle_weather == "rain" and move_name_lower in ["thunder", "hurricane"]:
                         accuracy_override = True
                     if move_name_lower in ["thunder", "hurricane"]:
-                        acc = 100 if self.weather == "rain" else (50 if self.weather == "sun" else move.accuracy)
-                        if calculate_hit(acc, pkmn.stat_stages["accuracy"], target.stat_stages["evasion"], pkmn.level, target.level):
+                        acc = 100 if battle_weather == "rain" else (50 if battle_weather == "sun" else move.accuracy)
+                        if calculate_hit(
+                            acc,
+                            pkmn.stat_stages["accuracy"],
+                            target.stat_stages["evasion"],
+                            pkmn.level,
+                            target.level,
+                            attacker_ability=pkmn.ability,
+                            target_ability=target.ability,
+                            weather=battle_weather,
+                            move_damage_class=move.damage_class,
+                        ):
                             accuracy_override = True
 
                 if not accuracy_override:
@@ -867,10 +1067,58 @@ class CustomBattleEngine:
                     if move_name_norm == "rollout":
                         pkmn.rollout_turns = 0
                     self.add_log(f"|-miss|{slot_tag}: {pkmn.nickname}|{t_slot_tag}: {target.nickname}")
+                    if move_name_norm == "triplekick":
+                        break
                     continue
 
-                if move_name_norm == "focuspunch" and pkmn.last_damage_taken > 0:
+                if move_name_norm == "focuspunch" and pkmn.damage_taken_this_turn > 0:
                     self.add_log("|-fail|")
+                    return
+
+                if move_name_norm in {"counter", "mirrorcoat"}:
+                    source_side_id = pkmn.last_damage_source_side
+                    source_slot_idx = pkmn.last_damage_source_slot
+                    if (
+                        pkmn.last_damage_taken <= 0
+                        or source_side_id is None
+                        or source_slot_idx is None
+                    ):
+                        self.add_log("|-fail|")
+                        return
+                    source_target = self._pokemon_at_slot(source_side_id, source_slot_idx)
+                    if source_target is None or source_target.current_hp <= 0 or source_side_id == side_id:
+                        self.add_log("|-fail|")
+                        return
+                    target_to_hit = source_target
+                    target_side_id = source_side_id
+                    target_slot_idx = source_slot_idx
+                    if self.format == "doubles":
+                        follow_me_target = next(
+                            (
+                                (idx, pokemon)
+                                for idx, p_idx in enumerate(self.sides[source_side_id].active_indices)
+                                if (pokemon := self.sides[source_side_id].team[p_idx]).current_hp > 0 and pokemon.follow_me_turns > 0
+                            ),
+                            None,
+                        )
+                        if follow_me_target is not None and follow_me_target[1] is not source_target:
+                            target_slot_idx, target_to_hit = follow_me_target
+                    dmg = pkmn.last_damage_taken * 2
+                    reactive_name = "Counter" if move_name_norm == "counter" else "Mirror Coat"
+                    damage_class = "physical" if move_name_norm == "counter" else "special"
+                    self.add_log(f"|move|{slot_tag}: {pkmn.nickname}|{reactive_name}|{target_side_id}{chr(97 + target_slot_idx)}")
+                    from .battle_move_effects import _apply_reactive_damage
+                    _apply_reactive_damage(
+                        self,
+                        side_id,
+                        slot_idx,
+                        target_side_id,
+                        target_slot_idx,
+                        target_to_hit,
+                        move,
+                        dmg,
+                        damage_class,
+                    )
                     return
 
                 if move_name_norm == "pursuit":
@@ -900,16 +1148,25 @@ class CustomBattleEngine:
                     for h in range(num_hits):
                         if target.current_hp <= 0: break
                         hits_landed += 1
-                        is_crit = determine_critical(0)
+                        crit_stage = 0
+                        if pkmn.focus_energy:
+                            crit_stage += 2
+                        if move_is_high_critical(move):
+                            crit_stage += 1
+                        is_crit = determine_critical(crit_stage, defender_ability=target.ability)
+                        hit_power_override = move_power_override
+                        if move_name_norm == "triplekick":
+                            hit_power_override = 10 * (h + 1)
                         damage, multiplier = calculate_damage(
                             pkmn,
                             target,
                             move,
                             is_crit,
-                            self.weather,
+                            battle_weather,
                             target.semi_invulnerable,
                             defending_side=self.sides[t_side_id],
-                            power_override=move_power_override,
+                            attacking_side=self.sides[side_id],
+                            power_override=hit_power_override,
                         )
                         if damage > 0 and helping_hand_consumed and move.damage_class != "status":
                             damage = max(1, math.floor(damage * 1.5))
@@ -926,8 +1183,13 @@ class CustomBattleEngine:
                             target.last_damage_taken = damage
                             target.last_damage_class = move.damage_class
                             target.last_damage_move_type = move.type
+                            target.last_damage_source_side = side_id
+                            target.last_damage_source_slot = slot_idx
+                            target.damage_taken_this_turn = max(target.damage_taken_this_turn, damage)
                             if target.bide_turns is not None and target.bide_turns > 0:
                                 target.bide_damage += damage
+                                target.bide_target_side = side_id
+                                target.bide_target_slot = slot_idx
                             
                         if is_crit: self.add_log("|-crit|")
                         if h == 0:
@@ -935,6 +1197,8 @@ class CustomBattleEngine:
                             elif 0 < multiplier < 1: self.add_log("|-resisted|")
                             elif multiplier == 0: self.add_log("|-immune|")
                         self.add_log(f"|damage|{t_slot_tag}: {target.nickname}|{self._condition(target)}")
+                        if move_name_norm == "triplekick" and multiplier == 0:
+                            break
                         if target.current_hp <= 0:
                             self.add_log(f"|faint|{t_slot_tag}: {target.nickname}")
                             if target.destiny_bond:
@@ -942,6 +1206,8 @@ class CustomBattleEngine:
                                 self.add_log(f"|-activate|{t_slot_tag}: {target.nickname}|move: Destiny Bond")
                                 self.add_log(f"|faint|{slot_tag}: {pkmn.nickname}")
                         total_damage += damage
+                        if move_name_norm == "triplekick" and damage <= 0:
+                            break
                     
                     if num_hits > 1:
                         self.add_log(f"|-hitcount|{t_slot_tag}: {target.nickname}|{hits_landed}")
@@ -981,10 +1247,7 @@ class CustomBattleEngine:
             if helping_hand_consumed:
                 pkmn.helping_hand_turns = 0
 
-            if "solar-beam" in move_name_lower:
-                 move.power = original_power
-
-    def _can_pokemon_move(self, side_id: str, pkmn: BattlePokemon, slot_idx: int) -> bool:
+    def _can_pokemon_move(self, side_id: str, pkmn: BattlePokemon, slot_idx: int, move_name_norm: str | None = None) -> bool:
         slot_tag = f"{side_id}{chr(97 + slot_idx)}"
         
         if pkmn.must_recharge:
@@ -993,20 +1256,39 @@ class CustomBattleEngine:
             return False
 
         if pkmn.is_flinching:
-            self.add_log(f"|cant|{slot_tag}: {pkmn.nickname}|flinch")
+            if pkmn.ability == "inner-focus":
+                pkmn.is_flinching = False
+            else:
+                self.add_log(f"|cant|{slot_tag}: {pkmn.nickname}|flinch")
+                return False
+
+        if pkmn.ability == "truant" and pkmn.truant_counter:
+            self.add_log(f"|cant|{slot_tag}: {pkmn.nickname}|truant")
             return False
+
+        sleep_usable = move_name_norm in {"snore", "sleeptalk"}
         if pkmn.status_condition == "slp":
-            if any(p.uproar_turns > 0 for battle_side in self.sides.values() for p in battle_side.active_list):
+            uproar_active = any(p.uproar_turns > 0 for battle_side in self.sides.values() for p in battle_side.active_list)
+            if uproar_active and pkmn.ability != "soundproof":
                 pkmn.status_condition = None
                 pkmn.status_turns = 0
                 self.add_log(f"|-curestatus|{slot_tag}: {pkmn.nickname}|slp")
             elif pkmn.status_turns > 0:
-                pkmn.status_turns -= 1
-                self.add_log(f"|cant|{slot_tag}: {pkmn.nickname}|slp")
-                return False
+                to_sub = 2 if pkmn.ability == "early-bird" else 1
+                pkmn.status_turns = max(0, pkmn.status_turns - to_sub)
+                if pkmn.status_turns > 0:
+                    if sleep_usable:
+                        return True
+                    self.add_log(f"|cant|{slot_tag}: {pkmn.nickname}|slp")
+                    return False
+                pkmn.status_condition = None
+                self.add_log(f"|-curestatus|{slot_tag}: {pkmn.nickname}|slp")
+                if sleep_usable:
+                    return False
             else:
                 pkmn.status_condition = None
                 self.add_log(f"|-curestatus|{slot_tag}: {pkmn.nickname}|slp")
+
         if pkmn.status_condition == "frz":
             if random.random() < 0.2:
                 pkmn.status_condition = None
@@ -1014,10 +1296,11 @@ class CustomBattleEngine:
             else:
                 self.add_log(f"|cant|{slot_tag}: {pkmn.nickname}|frz")
                 return False
+
         if pkmn.status_condition == "par" and random.random() < 0.25:
             self.add_log(f"|cant|{slot_tag}: {pkmn.nickname}|par")
             return False
-            
+
         if pkmn.confusion_turns > 0:
             pkmn.confusion_turns -= 1
             if pkmn.confusion_turns == 0:
@@ -1061,27 +1344,30 @@ class CustomBattleEngine:
                     if s.team[p_idx].current_hp <= 0:
                         if s.has_available_pokemon(exclude_active=True):
                             self.force_switch_slots.add((s_id, i))
-                            self.add_log(f"DEBUG: {s_id}:{i} precisa trocar o Pokemon desmaiado.")
 
     def _process_end_turn_effects(self):
         if self.weather != "none":
-            self.weather_turns -= 1
-            if self.weather_turns == 0:
-                self.add_log("|-weather|none")
-                self.weather = "none"
-            else:
+            battle_weather = self._effective_weather()
+            if not self._weather_suppressed():
                 for side_id, side in self.sides.items():
                     for slot_idx, pkmn_idx in enumerate(side.active_indices):
                         p = side.team[pkmn_idx]
-                        if p.current_hp <= 0: continue
-                        if self.weather == "sandstorm" and "rock" not in p.types and "ground" not in p.types and "steel" not in p.types:
+                        if p.current_hp <= 0:
+                            continue
+                        if battle_weather == "sandstorm" and "rock" not in p.types and "ground" not in p.types and "steel" not in p.types:
                             dmg = math.floor(p.max_hp / 16)
                             p.current_hp = max(0, p.current_hp - dmg)
                             self.add_log(f"|-damage|{side_id}{chr(97+slot_idx)}: {p.nickname}|{self._condition(p)}|[from] Sandstorm")
-                        elif self.weather == "hail" and "ice" not in p.types:
+                        elif battle_weather == "hail" and "ice" not in p.types:
                             dmg = math.floor(p.max_hp / 16)
                             p.current_hp = max(0, p.current_hp - dmg)
                             self.add_log(f"|-damage|{side_id}{chr(97+slot_idx)}: {p.nickname}|{self._condition(p)}|[from] Hail")
+            if self.weather_turns > 0:
+                self.weather_turns -= 1
+                if self.weather_turns == 0:
+                    self.add_log("|-weather|none")
+                    self.weather = "none"
+                    self._update_weather_forms()
 
         self._check_and_use_items("end")
 
@@ -1144,6 +1430,12 @@ class CustomBattleEngine:
                     if pkmn.current_hp < pkmn.max_hp:
                         pkmn.current_hp = min(pkmn.max_hp, pkmn.current_hp + heal)
                         self.add_log(f"|-heal|{slot_tag}: {pkmn.nickname}|{self._condition(pkmn)}|[from] move: Ingrain")
+
+                if pkmn.ability == "rain-dish" and self._effective_weather() == "rain" and pkmn.current_hp > 0:
+                    heal = max(1, math.floor(pkmn.max_hp / 16))
+                    if pkmn.current_hp < pkmn.max_hp:
+                        pkmn.current_hp = min(pkmn.max_hp, pkmn.current_hp + heal)
+                        self.add_log(f"|-heal|{slot_tag}: {pkmn.nickname}|{self._condition(pkmn)}|[from] ability: Rain Dish")
 
                 if pkmn.status_condition == "tox":
                     toxic_turns = pkmn.toxic_turns if pkmn.toxic_turns > 0 else 1
@@ -1234,7 +1526,7 @@ class CustomBattleEngine:
                     if pkmn.modify_stage("spe", 1) > 0:
                         self.add_log(f"|-ability|{slot_tag}: {pkmn.nickname}|Speed Boost")
                         self.add_log(f"|-boost|{slot_tag}: {pkmn.nickname}|spe|1")
-                
+
                 if pkmn.ability == "shed-skin" and pkmn.status_condition:
                     if random.random() < 0.33:
                         old_status = pkmn.status_condition
@@ -1242,6 +1534,9 @@ class CustomBattleEngine:
                         pkmn.toxic_turns = 0
                         self.add_log(f"|-ability|{slot_tag}: {pkmn.nickname}|Shed Skin")
                         self.add_log(f"|-curestatus|{slot_tag}: {pkmn.nickname}|{old_status}")
+
+                if pkmn.ability == "truant":
+                    pkmn.truant_counter ^= 1
 
             if side.reflect_turns > 0:
                 side.reflect_turns -= 1
@@ -1257,6 +1552,11 @@ class CustomBattleEngine:
                 side.safeguard_turns -= 1
                 if side.safeguard_turns == 0:
                     self.add_log(f"|-sideend|{side_id}: {side.player_name}|move: Safeguard")
+
+            if side.mist_turns > 0:
+                side.mist_turns -= 1
+                if side.mist_turns == 0:
+                    self.add_log(f"|-sideend|{side_id}: {side.player_name}|move: Mist")
 
         for side_id, side in self.sides.items():
             for slot_idx, pkmn_idx in enumerate(side.active_indices):
@@ -1279,6 +1579,8 @@ class CustomBattleEngine:
                         if pkmn.confusion_turns == 0:
                             pkmn.confusion_turns = random.randint(2, 5)
                             self.add_log(f"|-start|{slot_tag}: {pkmn.nickname}|confusion")
+
+                pkmn.first_turn_on_field = False
 
     def _check_and_use_items(self, timing: str):
         for side_id, side in self.sides.items():
@@ -1369,7 +1671,12 @@ class CustomBattleEngine:
                 for idx, move in enumerate(active.moves):
                     disabled = False
 
-                    if active.must_recharge or (active.status_condition == "slp" and not uproar_active) or active.status_condition == "frz":
+                    sleep_locked = active.status_condition == "slp" and not (uproar_active and active.ability != "soundproof")
+                    move_name_norm = _normalize_move_name(move.name)
+
+                    if active.must_recharge or active.status_condition == "frz":
+                        disabled = True
+                    elif active.ability == "truant" and active.truant_counter:
                         disabled = True
                     elif active.locked_move_index is not None:
                         disabled = idx != active.locked_move_index
@@ -1381,6 +1688,9 @@ class CustomBattleEngine:
                             or (active.disable_turns > 0 and active.disable_move_id == move.move_id)
                             or (active.taunt_turns > 0 and move.damage_class == "status" and move.move_id != -1)
                             or (active.torment_turns > 0 and active.last_move_id == move.move_id)
+                            or (move_name_norm in {"snore", "sleeptalk"} and active.status_condition != "slp")
+                            or (sleep_locked and move_name_norm not in {"snore", "sleeptalk"})
+                            or (move_name_norm == "fakeout" and not active.first_turn_on_field)
                         )
 
                     move_name_norm = _normalize_move_name(move.name)

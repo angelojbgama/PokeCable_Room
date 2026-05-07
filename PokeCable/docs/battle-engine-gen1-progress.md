@@ -21,12 +21,16 @@
 - Cobertura de testes para dano, status, immunidades, efeitos de turno e mecânicas especiais.
 - Adição de um teste de integração com saves reais de Gen 1, usando Yellow e Red, com batalha 6v6 até a exaustão.
 - Normalização de PP no harness do teste real para forçar `Struggle` e manter a execução determinística.
+- Adição de uma matriz exaustiva de validação com saves reais, cobrindo todos os Pokémon e movimentos disponíveis nas equipes de Yellow e Red, com relatório em `docs/battle-validation/gen1-matrix.txt`.
 
 ## O Que Foi Validado
 
 - `python3 -m pytest -q tests/test_gen1_battle_engine.py`
 - `python3 -m pytest -q tests/test_gen1_battle_engine.py tests/test_gen1_real_save_battle.py`
 - Resultado: `37 passed`
+- `python3 -m pytest -q tests/test_gen1_validation_matrix.py`
+- Resultado: `1 passed`
+- Relatório da matriz: `pass=288 fail=0 total=288`
 - `python3 -m py_compile` nos arquivos alterados da Gen 1 e nas duas suítes de teste
 
 ## O Que Falta

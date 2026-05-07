@@ -179,6 +179,7 @@ def calculate_damage(
     is_critical: bool = False,
     weather: str = "none",
     defender_semi_invulnerable: str | None = None,
+    attacking_side: Any = None,
     defending_side: Any = None,
     random_factor: int | None = None,
     generation: int = 3,
@@ -286,10 +287,23 @@ def calculate_damage(
         item = attacker.item_data
         if item and item.get("effect_type") == "boost_stat" and item.get("stat") == "atk":
             a = math.floor(a * item.get("value", 1.5))
+    elif attacking_side is not None and attacker.ability in {"plus", "minus"}:
+        partner = next((p for p in getattr(attacking_side, "active_list", []) if p is not attacker and p.current_hp > 0), None)
+        if partner is not None and partner.ability in {"plus", "minus"}:
+            a = math.floor(a * 1.5)
 
     # 2. Formula Base de Dano (Gen 3)
     level_factor = math.floor(2 * attacker.level / 5 + 2)
     if d <= 0: d = 1
+    if attacker.current_hp > 0 and attacker.current_hp * 3 <= attacker.max_hp:
+        if attacker.ability == "overgrow" and move_type == "grass":
+            move_power = math.floor(move_power * 1.5)
+        elif attacker.ability == "blaze" and move_type == "fire":
+            move_power = math.floor(move_power * 1.5)
+        elif attacker.ability == "torrent" and move_type == "water":
+            move_power = math.floor(move_power * 1.5)
+        elif attacker.ability == "swarm" and move_type == "bug":
+            move_power = math.floor(move_power * 1.5)
     if move_name_lower == "facade" and attacker.status_condition: move_power *= 2
     
     v = math.floor(math.floor(level_factor * move_power * a / d) / 50) + 2
