@@ -42,6 +42,7 @@ const battleTeamPreviewEl = document.querySelector("#battleTeamPreview");
 const battleActionsEl = document.querySelector("#battleActions");
 const battleInventoryPreviewEl = document.querySelector("#battleInventoryPreview");
 const selectedBattleItemStatusEl = document.querySelector("#selectedBattleItemStatus");
+const battleSceneEl = document.querySelector("#battleScene");
 const setupStatusEl = document.querySelector("#setupStatus");
 const setupSelectedSummaryEl = document.querySelector("#setupSelectedSummary");
 const setupSelectionDetailEl = document.querySelector("#setupSelectionDetail");
@@ -130,6 +131,10 @@ if (!tradeFlowModule) {
 const battleFlowModule = window.POKECABLE_BATTLE_FLOW;
 if (!battleFlowModule) {
   console.error("POKECABLE_BATTLE_FLOW nao foi carregado. Verifique PokeCable/frontend/battle-flow.js.");
+}
+const battleSceneModule = window.POKECABLE_BATTLE_SCENE;
+if (!battleSceneModule) {
+  console.error("POKECABLE_BATTLE_SCENE nao foi carregado. Verifique PokeCable/frontend/battle-scene.js.");
 }
 const wsClientModule = window.POKECABLE_WS_CLIENT;
 if (!wsClientModule) {
@@ -690,6 +695,10 @@ const battleFlowController = battleFlowModule?.createBattleFlowController({
   setBattleStatus,
   log,
   battleLog,
+  battleScene: battleSceneModule?.createBattleSceneController({
+    element: battleSceneEl,
+    getGeneration: () => loadedSave?.generation || 1
+  }),
   elements: {
     battleLogEl,
     battleActionsEl,
@@ -702,6 +711,10 @@ const battleFlowController = battleFlowModule?.createBattleFlowController({
     selectedBattleItemStatusEl,
     battleTeamPreviewEl
   }
+});
+
+battleSceneEl?.addEventListener("pokecable:battle-action", (event) => {
+  battleFlowController?.submitBattleAction(event.detail?.action);
 });
 
 battleInventoryPreviewEl?.addEventListener("click", (event) => {

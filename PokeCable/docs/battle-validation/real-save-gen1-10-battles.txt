@@ -1,0 +1,1397 @@
+# Real Save Battle Validation Gen 1
+source: local .sav files parsed by pokecable_room parsers
+reference: pret disassemblies available under reference/pret when cloned
+battle_count: 10
+turn_limit: 250
+
+## Battle 1
+generation: 1
+p1_save: Pokémon - Red Version.sav
+p2_save: Pokémon - Blue Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 30
+winner_id: None
+p1_team:
+  1. CHARIZARD/Charizard L100 HP 0/359 types=fire,flying ability=none item=none moves=[flamethrower, slash, fly, dragon-rage]
+  2. PIDGEOT/Pidgeot L100 HP 0/369 types=normal,flying ability=none item=none moves=[wing-attack, fly, sky-attack, razor-wind]
+  3. NIDOKING/Nidoking L100 HP 0/365 types=poison,ground ability=none item=none moves=[earthquake, rock-slide, ice-beam, take-down]
+  4. GENGAR/Gengar L100 HP 0/323 types=ghost,poison ability=none item=none moves=[lick, hypnosis, dream-eater, thunderbolt]
+  5. SEADRA/Seadra L100 HP 0/313 types=water ability=none item=none moves=[blizzard, surf, substitute, rest]
+  6. PINSIR/Pinsir L100 HP 0/333 types=bug ability=none item=none moves=[bind, cut, hyper-beam, strength]
+p2_team:
+  1. FEAROW/Fearow L100 HP 0/333 types=normal,flying ability=none item=none moves=[sky-attack, fly, razor-wind, drill-peck]
+  2. BLASTOISE/Blastoise L100 HP 0/361 types=water ability=none item=none moves=[hydro-pump, water-gun, bite, surf]
+  3. NINETALES/Ninetales L100 HP 0/349 types=fire ability=none item=none moves=[flamethrower, fire-spin, swift, double-team]
+  4. MACHAMP/Machamp L100 HP 0/383 types=fighting ability=none item=none moves=[fissure, rock-slide, seismic-toss, mega-punch]
+  5. EXEGGUTOR/Exeggutor L100 HP 0/393 types=grass,psychic ability=none item=none moves=[hyper-beam, poison-powder, solar-beam, sleep-powder]
+  6. RHYDON/Rhydon L100 HP 171/413 types=ground,rock ability=none item=none moves=[ice-beam, mega-kick, dig, thunderbolt]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Charizard, L100
+  |poke|p1|Pidgeot, L100
+  |poke|p1|Nidoking, L100
+  |poke|p1|Gengar, L100
+  |poke|p1|Seadra, L100
+  |poke|p1|Pinsir, L100
+  |player|p2|Mattia?
+  |poke|p2|Fearow, L100
+  |poke|p2|Blastoise, L100
+  |poke|p2|Ninetales, L100
+  |poke|p2|Machamp, L100
+  |poke|p2|Exeggutor, L100
+  |poke|p2|Rhydon, L100
+  |start|
+  |switch|p1a: CHARIZARD|Charizard, L100|359/359
+  |switch|p2a: FEAROW|Fearow, L100|333/333
+  |turn|1
+  |-start|p2a: FEAROW|move: sky-attack
+  |-damage|p2a: FEAROW|173/333
+  |turn|2
+  |-activate|p2a: FEAROW|move: sky-attack
+  |-crit|
+  |-damage|p1a: CHARIZARD|35/359
+  |-damage|p2a: FEAROW|33/333
+  |turn|3
+  |-start|p2a: FEAROW|move: sky-attack
+  |-damage|p2a: FEAROW|0/333
+  |faint|p2a: FEAROW
+  |switch|p2a: BLASTOISE|Blastoise, L100|361/361
+  |turn|4
+  |-damage|p2a: BLASTOISE|304/361
+  |-damage|p1a: CHARIZARD|0/359
+  |faint|p1a: CHARIZARD
+  |switch|p1a: PIDGEOT|Pidgeot, L100|369/369
+  |turn|5
+  |-start|p1a: PIDGEOT|move: sky-attack
+  |-miss|p2a: BLASTOISE|p1a: PIDGEOT
+  |turn|6
+  |-activate|p1a: PIDGEOT|move: sky-attack
+  |-damage|p2a: BLASTOISE|163/361
+  |cant|p2a: BLASTOISE|flinch
+  |turn|7
+  |-start|p1a: PIDGEOT|move: sky-attack
+  |-damage|p1a: PIDGEOT|223/369
+  |turn|8
+  |-activate|p1a: PIDGEOT|move: sky-attack
+  |-damage|p2a: BLASTOISE|25/361
+  |-damage|p1a: PIDGEOT|69/369
+  |turn|9
+  |-start|p1a: PIDGEOT|move: sky-attack
+  |-damage|p1a: PIDGEOT|0/369
+  |faint|p1a: PIDGEOT
+  |switch|p1a: NIDOKING|Nidoking, L100|365/365
+  |turn|10
+  |-crit|
+  |-damage|p2a: BLASTOISE|0/361
+  |faint|p2a: BLASTOISE
+  |switch|p2a: NINETALES|Ninetales, L100|349/349
+  |turn|11
+  |-damage|p1a: NIDOKING|270/365
+  |-damage|p2a: NINETALES|39/349
+  |turn|12
+  |-damage|p1a: NIDOKING|175/365
+  |-damage|p2a: NINETALES|0/349
+  |faint|p2a: NINETALES
+  |switch|p2a: MACHAMP|Machamp, L100|383/383
+  |turn|13
+  |-damage|p2a: MACHAMP|246/383
+  |-miss|p2a: MACHAMP|p1a: NIDOKING
+  |turn|14
+  |-damage|p2a: MACHAMP|100/383
+  |-damage|p1a: NIDOKING|0/365
+  |faint|p1a: NIDOKING
+  |switch|p1a: GENGAR|Gengar, L100|323/323
+  |turn|15
+  |-fail|
+  |-miss|p2a: MACHAMP|p1a: GENGAR
+  |turn|16
+  |-fail|
+  |-miss|p2a: MACHAMP|p1a: GENGAR
+  |turn|17
+  |-fail|
+  |-miss|p2a: MACHAMP|p1a: GENGAR
+  |turn|18
+  |-fail|
+  |-damage|p1a: GENGAR|220/323
+  |turn|19
+  |-fail|
+  |-miss|p2a: MACHAMP|p1a: GENGAR
+  |turn|20
+  |-fail|
+  |-damage|p1a: GENGAR|127/323
+  |turn|21
+  |-fail|
+  |-crit|
+  |-damage|p1a: GENGAR|0/323
+  |faint|p1a: GENGAR
+  |switch|p1a: SEADRA|Seadra, L100|313/313
+  |turn|22
+  |-damage|p2a: MACHAMP|0/383
+  |faint|p2a: MACHAMP
+  |switch|p2a: EXEGGUTOR|Exeggutor, L100|393/393
+  |turn|23
+  |-damage|p2a: EXEGGUTOR|258/393
+  |-start|p2a: EXEGGUTOR|move: solar-beam
+  |turn|24
+  |-damage|p2a: EXEGGUTOR|115/393
+  |-activate|p2a: EXEGGUTOR|move: solar-beam
+  |-damage|p1a: SEADRA|0/313
+  |faint|p1a: SEADRA
+  |switch|p1a: PINSIR|Pinsir, L100|333/333
+  |turn|25
+  |-damage|p2a: EXEGGUTOR|0/393
+  |faint|p2a: EXEGGUTOR
+  |switch|p2a: RHYDON|Rhydon, L100|413/413
+  |turn|26
+  |-damage|p2a: RHYDON|351/413
+  |-damage|p1a: PINSIR|217/333
+  |turn|27
+  |cant|p1a: PINSIR|recharge
+  |-damage|p1a: PINSIR|97/333
+  |turn|28
+  |-damage|p2a: RHYDON|288/413
+  |-miss|p2a: RHYDON|p1a: PINSIR
+  |turn|29
+  |cant|p1a: PINSIR|recharge
+  |-miss|p2a: RHYDON|p1a: PINSIR
+  |turn|30
+  |-crit|
+  |-damage|p2a: RHYDON|171/413
+  |-damage|p1a: PINSIR|0/333
+  |faint|p1a: PINSIR
+  |win|Mattia?
+
+## Battle 2
+generation: 1
+p1_save: Pokémon - Blue Version.sav
+p2_save: Pokémon - Yellow Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 19
+winner_id: None
+p1_team:
+  1. FEAROW/Fearow L100 HP 0/333 types=normal,flying ability=none item=none moves=[sky-attack, fly, razor-wind, drill-peck]
+  2. BLASTOISE/Blastoise L100 HP 0/361 types=water ability=none item=none moves=[hydro-pump, water-gun, bite, surf]
+  3. NINETALES/Ninetales L100 HP 0/349 types=fire ability=none item=none moves=[flamethrower, fire-spin, swift, double-team]
+  4. MACHAMP/Machamp L100 HP 383/383 types=fighting ability=none item=none moves=[fissure, rock-slide, seismic-toss, mega-punch]
+  5. EXEGGUTOR/Exeggutor L100 HP 393/393 types=grass,psychic ability=none item=none moves=[hyper-beam, poison-powder, solar-beam, sleep-powder]
+  6. RHYDON/Rhydon L100 HP 413/413 types=ground,rock ability=none item=none moves=[ice-beam, mega-kick, dig, thunderbolt]
+p2_team:
+  1. VICTREEBEL/Victreebel L100 HP 0/363 types=grass,poison ability=none item=none moves=[poison-powder, sleep-powder, stun-spore, substitute]
+  2. PIKACHU/Pikachu L100 HP 0/273 types=electric ability=none item=none moves=[thunder, slam, thunderbolt, agility]
+  3. SANDSLASH/Sandslash L100 HP 0/353 types=ground ability=none item=none moves=[slash, cut, poison-sting, swift]
+  4. PRIMEAPE/Primeape L100 HP 0/333 types=fighting ability=none item=none moves=[low-kick, leer, swift, karate-chop]
+  5. TENTACRUEL/Tentacruel L100 HP 0/363 types=water,poison ability=none item=none moves=[surf, blizzard, hydro-pump, hyper-beam]
+  6. RHYDON/Rhydon L100 HP 0/413 types=ground,rock ability=none item=none moves=[horn-attack, horn-drill, take-down, earthquake]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Fearow, L100
+  |poke|p1|Blastoise, L100
+  |poke|p1|Ninetales, L100
+  |poke|p1|Machamp, L100
+  |poke|p1|Exeggutor, L100
+  |poke|p1|Rhydon, L100
+  |player|p2|Mattia?
+  |poke|p2|Victreebel, L100
+  |poke|p2|Pikachu, L100
+  |poke|p2|Sandslash, L100
+  |poke|p2|Primeape, L100
+  |poke|p2|Tentacruel, L100
+  |poke|p2|Rhydon, L100
+  |start|
+  |switch|p1a: FEAROW|Fearow, L100|333/333
+  |switch|p2a: VICTREEBEL|Victreebel, L100|363/363
+  |turn|1
+  |-start|p1a: FEAROW|move: sky-attack
+  |turn|2
+  |-activate|p1a: FEAROW|move: sky-attack
+  |-damage|p2a: VICTREEBEL|0/363
+  |faint|p2a: VICTREEBEL
+  |switch|p2a: PIKACHU|Pikachu, L100|273/273
+  |turn|3
+  |-start|p1a: FEAROW|move: razor-wind
+  |-damage|p1a: FEAROW|104/333
+  |turn|4
+  |-activate|p1a: FEAROW|move: razor-wind
+  |-damage|p2a: PIKACHU|124/273
+  |-damage|p1a: FEAROW|0/333
+  |faint|p1a: FEAROW
+  |switch|p1a: BLASTOISE|Blastoise, L100|361/361
+  |turn|5
+  |-miss|p2a: PIKACHU|p1a: BLASTOISE
+  |-damage|p2a: PIKACHU|0/273
+  |faint|p2a: PIKACHU
+  |switch|p2a: SANDSLASH|Sandslash, L100|353/353
+  |turn|6
+  |-crit|
+  |-damage|p2a: SANDSLASH|0/353
+  |faint|p2a: SANDSLASH
+  |switch|p2a: PRIMEAPE|Primeape, L100|333/333
+  |turn|7
+  |-damage|p1a: BLASTOISE|266/361
+  |-damage|p2a: PRIMEAPE|171/333
+  |turn|8
+  |-damage|p1a: BLASTOISE|162/361
+  |-crit|
+  |-damage|p2a: PRIMEAPE|0/333
+  |faint|p2a: PRIMEAPE
+  |switch|p2a: TENTACRUEL|Tentacruel, L100|363/363
+  |turn|9
+  |-damage|p1a: BLASTOISE|67/361
+  |-damage|p2a: TENTACRUEL|296/363
+  |turn|10
+  |cant|p2a: TENTACRUEL|recharge
+  |-crit|
+  |-damage|p2a: TENTACRUEL|183/363
+  |turn|11
+  |-damage|p1a: BLASTOISE|0/361
+  |faint|p1a: BLASTOISE
+  |switch|p1a: NINETALES|Ninetales, L100|349/349
+  |turn|12
+  |-crit|
+  |-damage|p2a: TENTACRUEL|73/363
+  |-damage|p1a: NINETALES|88/349
+  |turn|13
+  |-damage|p2a: TENTACRUEL|20/363
+  |-damage|p1a: NINETALES|0/349
+  |faint|p1a: NINETALES
+  |switch|p1a: MACHAMP|Machamp, L100|383/383
+  |turn|14
+  |-miss|p2a: TENTACRUEL|p1a: MACHAMP
+  |-damage|p2a: TENTACRUEL|0/363
+  |faint|p2a: TENTACRUEL
+  |switch|p2a: RHYDON|Rhydon, L100|413/413
+  |turn|15
+  |-miss|p1a: MACHAMP|p2a: RHYDON
+  |-miss|p2a: RHYDON|p1a: MACHAMP
+  |turn|16
+  |-miss|p1a: MACHAMP|p2a: RHYDON
+  |-miss|p2a: RHYDON|p1a: MACHAMP
+  |turn|17
+  |-miss|p1a: MACHAMP|p2a: RHYDON
+  |-miss|p2a: RHYDON|p1a: MACHAMP
+  |turn|18
+  |-miss|p1a: MACHAMP|p2a: RHYDON
+  |-miss|p2a: RHYDON|p1a: MACHAMP
+  |turn|19
+  |-damage|p2a: RHYDON|0/413
+  |faint|p2a: RHYDON
+  |win|Mattia?
+
+## Battle 3
+generation: 1
+p1_save: Pokémon - Yellow Version.sav
+p2_save: Pokémon - Red Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 19
+winner_id: None
+p1_team:
+  1. PRIMEAPE/Primeape L100 HP 0/333 types=fighting ability=none item=none moves=[low-kick, leer, swift, karate-chop]
+  2. PIKACHU/Pikachu L100 HP 0/273 types=electric ability=none item=none moves=[thunder, slam, thunderbolt, agility]
+  3. SANDSLASH/Sandslash L100 HP 0/353 types=ground ability=none item=none moves=[slash, cut, poison-sting, swift]
+  4. VICTREEBEL/Victreebel L100 HP 0/363 types=grass,poison ability=none item=none moves=[poison-powder, sleep-powder, stun-spore, substitute]
+  5. TENTACRUEL/Tentacruel L100 HP 0/363 types=water,poison ability=none item=none moves=[surf, blizzard, hydro-pump, hyper-beam]
+  6. RHYDON/Rhydon L100 HP 0/413 types=ground,rock ability=none item=none moves=[horn-attack, horn-drill, take-down, earthquake]
+p2_team:
+  1. PINSIR/Pinsir L100 HP 0/333 types=bug ability=none item=none moves=[bind, cut, hyper-beam, strength]
+  2. CHARIZARD/Charizard L100 HP 0/359 types=fire,flying ability=none item=none moves=[flamethrower, slash, fly, dragon-rage]
+  3. PIDGEOT/Pidgeot L100 HP 0/369 types=normal,flying ability=none item=none moves=[wing-attack, fly, sky-attack, razor-wind]
+  4. NIDOKING/Nidoking L100 HP 365/365 types=poison,ground ability=none item=none moves=[earthquake, rock-slide, ice-beam, take-down]
+  5. GENGAR/Gengar L100 HP 323/323 types=ghost,poison ability=none item=none moves=[lick, hypnosis, dream-eater, thunderbolt]
+  6. SEADRA/Seadra L100 HP 313/313 types=water ability=none item=none moves=[blizzard, surf, substitute, rest]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Primeape, L100
+  |poke|p1|Pikachu, L100
+  |poke|p1|Sandslash, L100
+  |poke|p1|Victreebel, L100
+  |poke|p1|Tentacruel, L100
+  |poke|p1|Rhydon, L100
+  |player|p2|Mattia?
+  |poke|p2|Pinsir, L100
+  |poke|p2|Charizard, L100
+  |poke|p2|Pidgeot, L100
+  |poke|p2|Nidoking, L100
+  |poke|p2|Gengar, L100
+  |poke|p2|Seadra, L100
+  |start|
+  |switch|p1a: PRIMEAPE|Primeape, L100|333/333
+  |switch|p2a: PINSIR|Pinsir, L100|333/333
+  |turn|1
+  |-crit|
+  |-damage|p2a: PINSIR|239/333
+  |-damage|p1a: PRIMEAPE|145/333
+  |turn|2
+  |-damage|p2a: PINSIR|185/333
+  |cant|p2a: PINSIR|recharge
+  |turn|3
+  |-damage|p2a: PINSIR|132/333
+  |-miss|p2a: PINSIR|p1a: PRIMEAPE
+  |turn|4
+  |-damage|p2a: PINSIR|83/333
+  |-damage|p1a: PRIMEAPE|0/333
+  |faint|p1a: PRIMEAPE
+  |switch|p1a: PIKACHU|Pikachu, L100|273/273
+  |turn|5
+  |-miss|p1a: PIKACHU|p2a: PINSIR
+  |-damage|p1a: PIKACHU|42/273
+  |turn|6
+  |-crit|
+  |-damage|p2a: PINSIR|0/333
+  |faint|p2a: PINSIR
+  |switch|p2a: CHARIZARD|Charizard, L100|359/359
+  |turn|7
+  |-damage|p1a: PIKACHU|0/273
+  |faint|p1a: PIKACHU
+  |switch|p1a: SANDSLASH|Sandslash, L100|353/353
+  |turn|8
+  |-damage|p1a: SANDSLASH|189/353
+  |-crit|
+  |-damage|p2a: CHARIZARD|225/359
+  |turn|9
+  |-damage|p1a: SANDSLASH|12/353
+  |-crit|
+  |-damage|p2a: CHARIZARD|105/359
+  |turn|10
+  |-crit|
+  |-damage|p1a: SANDSLASH|0/353
+  |faint|p1a: SANDSLASH
+  |switch|p1a: VICTREEBEL|Victreebel, L100|363/363
+  |turn|11
+  |-damage|p1a: VICTREEBEL|135/363
+  |turn|12
+  |-crit|
+  |-damage|p1a: VICTREEBEL|0/363
+  |faint|p1a: VICTREEBEL
+  |switch|p1a: TENTACRUEL|Tentacruel, L100|363/363
+  |turn|13
+  |-damage|p1a: TENTACRUEL|294/363
+  |-crit|
+  |-damage|p2a: CHARIZARD|0/359
+  |faint|p2a: CHARIZARD
+  |switch|p2a: PIDGEOT|Pidgeot, L100|369/369
+  |turn|14
+  |-start|p2a: PIDGEOT|move: sky-attack
+  |-damage|p2a: PIDGEOT|193/369
+  |turn|15
+  |-activate|p2a: PIDGEOT|move: sky-attack
+  |-damage|p1a: TENTACRUEL|96/363
+  |-damage|p2a: PIDGEOT|3/369
+  |turn|16
+  |-start|p2a: PIDGEOT|move: sky-attack
+  |-miss|p1a: TENTACRUEL|p2a: PIDGEOT
+  |turn|17
+  |-activate|p2a: PIDGEOT|move: sky-attack
+  |-damage|p1a: TENTACRUEL|0/363
+  |faint|p1a: TENTACRUEL
+  |switch|p1a: RHYDON|Rhydon, L100|413/413
+  |turn|18
+  |-start|p2a: PIDGEOT|move: sky-attack
+  |-damage|p2a: PIDGEOT|0/369
+  |faint|p2a: PIDGEOT
+  |-damage|p1a: RHYDON|387/413|[from] recoil
+  |switch|p2a: NIDOKING|Nidoking, L100|365/365
+  |turn|19
+  |-crit|
+  |-damage|p1a: RHYDON|0/413
+  |faint|p1a: RHYDON
+  |win|Mattia?
+
+## Battle 4
+generation: 1
+p1_save: Pokémon - Red Version.sav
+p2_save: Pokémon - Yellow Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 53
+winner_id: None
+p1_team:
+  1. GENGAR/Gengar L100 HP 0/323 types=ghost,poison ability=none item=none moves=[lick, hypnosis, dream-eater, thunderbolt]
+  2. CHARIZARD/Charizard L100 HP 0/359 types=fire,flying ability=none item=none moves=[flamethrower, slash, fly, dragon-rage]
+  3. PIDGEOT/Pidgeot L100 HP 0/369 types=normal,flying ability=none item=none moves=[wing-attack, fly, sky-attack, razor-wind]
+  4. NIDOKING/Nidoking L100 HP 365/365 types=poison,ground ability=none item=none moves=[earthquake, rock-slide, ice-beam, take-down]
+  5. SEADRA/Seadra L100 HP 313/313 types=water ability=none item=none moves=[blizzard, surf, substitute, rest]
+  6. PINSIR/Pinsir L100 HP 333/333 types=bug ability=none item=none moves=[bind, cut, hyper-beam, strength]
+p2_team:
+  1. SANDSLASH/Sandslash L100 HP 0/353 types=ground ability=none item=none moves=[slash, cut, poison-sting, swift]
+  2. PIKACHU/Pikachu L100 HP 0/273 types=electric ability=none item=none moves=[thunder, slam, thunderbolt, agility]
+  3. PRIMEAPE/Primeape L100 HP 0/333 types=fighting ability=none item=none moves=[low-kick, leer, swift, karate-chop]
+  4. VICTREEBEL/Victreebel L100 HP 0/363 types=grass,poison ability=none item=none moves=[poison-powder, sleep-powder, stun-spore, substitute]
+  5. TENTACRUEL/Tentacruel L100 HP 0/363 types=water,poison ability=none item=none moves=[surf, blizzard, hydro-pump, hyper-beam]
+  6. RHYDON/Rhydon L100 HP 0/413 types=ground,rock ability=none item=none moves=[horn-attack, horn-drill, take-down, earthquake]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Gengar, L100
+  |poke|p1|Charizard, L100
+  |poke|p1|Pidgeot, L100
+  |poke|p1|Nidoking, L100
+  |poke|p1|Seadra, L100
+  |poke|p1|Pinsir, L100
+  |player|p2|Mattia?
+  |poke|p2|Sandslash, L100
+  |poke|p2|Pikachu, L100
+  |poke|p2|Primeape, L100
+  |poke|p2|Victreebel, L100
+  |poke|p2|Tentacruel, L100
+  |poke|p2|Rhydon, L100
+  |start|
+  |switch|p1a: GENGAR|Gengar, L100|323/323
+  |switch|p2a: SANDSLASH|Sandslash, L100|353/353
+  |turn|1
+  |-fail|
+  |turn|2
+  |-fail|
+  |turn|3
+  |-fail|
+  |turn|4
+  |-fail|
+  |turn|5
+  |-fail|
+  |turn|6
+  |-fail|
+  |turn|7
+  |-fail|
+  |turn|8
+  |-fail|
+  |turn|9
+  |-fail|
+  |turn|10
+  |-fail|
+  |turn|11
+  |-fail|
+  |turn|12
+  |-fail|
+  |turn|13
+  |-fail|
+  |turn|14
+  |-fail|
+  |turn|15
+  |-fail|
+  |turn|16
+  |-crit|
+  |-damage|p2a: SANDSLASH|303/353
+  |turn|17
+  |-damage|p2a: SANDSLASH|275/353
+  |turn|18
+  |-damage|p2a: SANDSLASH|250/353
+  |turn|19
+  |-damage|p2a: SANDSLASH|224/353
+  |-status|p2a: SANDSLASH|par|[from] move: lick
+  |turn|20
+  |-damage|p2a: SANDSLASH|197/353 PAR
+  |turn|21
+  |-damage|p2a: SANDSLASH|168/353 PAR
+  |cant|p2a: SANDSLASH|par
+  |turn|22
+  |-damage|p2a: SANDSLASH|141/353 PAR
+  |turn|23
+  |-damage|p2a: SANDSLASH|116/353 PAR
+  |turn|24
+  |-damage|p2a: SANDSLASH|87/353 PAR
+  |turn|25
+  |-damage|p2a: SANDSLASH|61/353 PAR
+  |turn|26
+  |-damage|p2a: SANDSLASH|33/353 PAR
+  |turn|27
+  |-damage|p2a: SANDSLASH|8/353 PAR
+  |turn|28
+  |-crit|
+  |-damage|p2a: SANDSLASH|0/353 PAR
+  |faint|p2a: SANDSLASH
+  |switch|p2a: PIKACHU|Pikachu, L100|273/273
+  |turn|29
+  |-damage|p2a: PIKACHU|209/273
+  |-damage|p1a: GENGAR|248/323
+  |turn|30
+  |-crit|
+  |-damage|p2a: PIKACHU|83/273
+  |-damage|p1a: GENGAR|176/323
+  |turn|31
+  |-damage|p2a: PIKACHU|17/273
+  |-miss|p2a: PIKACHU|p1a: GENGAR
+  |turn|32
+  |-damage|p2a: PIKACHU|0/273
+  |faint|p2a: PIKACHU
+  |switch|p2a: PRIMEAPE|Primeape, L100|333/333
+  |turn|33
+  |-damage|p2a: PRIMEAPE|214/333
+  |-immune|p1a: GENGAR
+  |turn|34
+  |-damage|p2a: PRIMEAPE|100/333
+  |-immune|p1a: GENGAR
+  |turn|35
+  |-damage|p2a: PRIMEAPE|0/333
+  |faint|p2a: PRIMEAPE
+  |switch|p2a: VICTREEBEL|Victreebel, L100|363/363
+  |turn|36
+  |-damage|p2a: VICTREEBEL|321/363
+  |turn|37
+  |-crit|
+  |-damage|p2a: VICTREEBEL|240/363
+  |turn|38
+  |-damage|p2a: VICTREEBEL|195/363
+  |turn|39
+  |-crit|
+  |-damage|p2a: VICTREEBEL|109/363
+  |turn|40
+  |-damage|p2a: VICTREEBEL|67/363
+  |turn|41
+  |-damage|p2a: VICTREEBEL|25/363
+  |-status|p2a: VICTREEBEL|par|[from] move: thunderbolt
+  |turn|42
+  |-damage|p2a: VICTREEBEL|0/363 PAR
+  |faint|p2a: VICTREEBEL
+  |switch|p2a: TENTACRUEL|Tentacruel, L100|363/363
+  |turn|43
+  |-damage|p2a: TENTACRUEL|171/363
+  |-miss|p2a: TENTACRUEL|p1a: GENGAR
+  |turn|44
+  |-damage|p2a: TENTACRUEL|135/363
+  |-damage|p1a: GENGAR|89/323
+  |turn|45
+  |-damage|p2a: TENTACRUEL|97/363
+  |-damage|p1a: GENGAR|0/323
+  |faint|p1a: GENGAR
+  |switch|p1a: CHARIZARD|Charizard, L100|359/359
+  |turn|46
+  |-miss|p2a: TENTACRUEL|p1a: CHARIZARD
+  |-damage|p2a: TENTACRUEL|34/363
+  |turn|47
+  |-damage|p2a: TENTACRUEL|0/363
+  |faint|p2a: TENTACRUEL
+  |switch|p2a: RHYDON|Rhydon, L100|413/413
+  |turn|48
+  |-crit|
+  |-damage|p2a: RHYDON|245/413
+  |-miss|p2a: RHYDON|p1a: CHARIZARD
+  |turn|49
+  |-damage|p2a: RHYDON|162/413
+  |-damage|p1a: CHARIZARD|0/359
+  |faint|p1a: CHARIZARD
+  |switch|p1a: PIDGEOT|Pidgeot, L100|369/369
+  |turn|50
+  |-start|p1a: PIDGEOT|move: sky-attack
+  |-miss|p2a: RHYDON|p1a: PIDGEOT
+  |turn|51
+  |-activate|p1a: PIDGEOT|move: sky-attack
+  |-damage|p2a: RHYDON|100/413
+  |cant|p2a: RHYDON|flinch
+  |turn|52
+  |-start|p1a: PIDGEOT|move: sky-attack
+  |-damage|p1a: PIDGEOT|0/369
+  |faint|p1a: PIDGEOT
+  |switch|p1a: NIDOKING|Nidoking, L100|365/365
+  |turn|53
+  |-damage|p2a: RHYDON|0/413
+  |faint|p2a: RHYDON
+  |win|Mattia?
+
+## Battle 5
+generation: 1
+p1_save: Pokémon - Blue Version.sav
+p2_save: Pokémon - Red Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 25
+winner_id: None
+p1_team:
+  1. EXEGGUTOR/Exeggutor L100 HP 0/393 types=grass,psychic ability=none item=none moves=[hyper-beam, poison-powder, solar-beam, sleep-powder]
+  2. BLASTOISE/Blastoise L100 HP 0/361 types=water ability=none item=none moves=[hydro-pump, water-gun, bite, surf]
+  3. FEAROW/Fearow L100 HP 0/333 types=normal,flying ability=none item=none moves=[sky-attack, fly, razor-wind, drill-peck]
+  4. NINETALES/Ninetales L100 HP 0/349 types=fire ability=none item=none moves=[flamethrower, fire-spin, swift, double-team]
+  5. MACHAMP/Machamp L100 HP 0/383 types=fighting ability=none item=none moves=[fissure, rock-slide, seismic-toss, mega-punch]
+  6. RHYDON/Rhydon L100 HP 0/413 types=ground,rock ability=none item=none moves=[ice-beam, mega-kick, dig, thunderbolt]
+p2_team:
+  1. GENGAR/Gengar L100 HP 0/323 types=ghost,poison ability=none item=none moves=[lick, hypnosis, dream-eater, thunderbolt]
+  2. CHARIZARD/Charizard L100 HP 0/359 types=fire,flying ability=none item=none moves=[flamethrower, slash, fly, dragon-rage]
+  3. PIDGEOT/Pidgeot L100 HP 0/369 types=normal,flying ability=none item=none moves=[wing-attack, fly, sky-attack, razor-wind]
+  4. NIDOKING/Nidoking L100 HP 0/365 types=poison,ground ability=none item=none moves=[earthquake, rock-slide, ice-beam, take-down]
+  5. SEADRA/Seadra L100 HP 313/313 types=water ability=none item=none moves=[blizzard, surf, substitute, rest]
+  6. PINSIR/Pinsir L100 HP 333/333 types=bug ability=none item=none moves=[bind, cut, hyper-beam, strength]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Exeggutor, L100
+  |poke|p1|Blastoise, L100
+  |poke|p1|Fearow, L100
+  |poke|p1|Ninetales, L100
+  |poke|p1|Machamp, L100
+  |poke|p1|Rhydon, L100
+  |player|p2|Mattia?
+  |poke|p2|Gengar, L100
+  |poke|p2|Charizard, L100
+  |poke|p2|Pidgeot, L100
+  |poke|p2|Nidoking, L100
+  |poke|p2|Seadra, L100
+  |poke|p2|Pinsir, L100
+  |start|
+  |switch|p1a: EXEGGUTOR|Exeggutor, L100|393/393
+  |switch|p2a: GENGAR|Gengar, L100|323/323
+  |turn|1
+  |-fail|
+  |-start|p1a: EXEGGUTOR|move: solar-beam
+  |turn|2
+  |-fail|
+  |-activate|p1a: EXEGGUTOR|move: solar-beam
+  |-damage|p2a: GENGAR|254/323
+  |turn|3
+  |-fail|
+  |-start|p1a: EXEGGUTOR|move: solar-beam
+  |turn|4
+  |-fail|
+  |-activate|p1a: EXEGGUTOR|move: solar-beam
+  |-damage|p2a: GENGAR|183/323
+  |turn|5
+  |-fail|
+  |-start|p1a: EXEGGUTOR|move: solar-beam
+  |turn|6
+  |-fail|
+  |-activate|p1a: EXEGGUTOR|move: solar-beam
+  |-damage|p2a: GENGAR|118/323
+  |turn|7
+  |-fail|
+  |-start|p1a: EXEGGUTOR|move: solar-beam
+  |turn|8
+  |-fail|
+  |-activate|p1a: EXEGGUTOR|move: solar-beam
+  |-damage|p2a: GENGAR|51/323
+  |turn|9
+  |-fail|
+  |-start|p1a: EXEGGUTOR|move: solar-beam
+  |turn|10
+  |-fail|
+  |-activate|p1a: EXEGGUTOR|move: solar-beam
+  |-damage|p2a: GENGAR|0/323
+  |faint|p2a: GENGAR
+  |switch|p2a: CHARIZARD|Charizard, L100|359/359
+  |turn|11
+  |-damage|p1a: EXEGGUTOR|193/393
+  |-crit|
+  |-damage|p2a: CHARIZARD|112/359
+  |turn|12
+  |-damage|p1a: EXEGGUTOR|0/393
+  |faint|p1a: EXEGGUTOR
+  |switch|p1a: BLASTOISE|Blastoise, L100|361/361
+  |turn|13
+  |-damage|p1a: BLASTOISE|300/361
+  |-damage|p2a: CHARIZARD|0/359
+  |faint|p2a: CHARIZARD
+  |switch|p2a: PIDGEOT|Pidgeot, L100|369/369
+  |turn|14
+  |-start|p2a: PIDGEOT|move: sky-attack
+  |-damage|p2a: PIDGEOT|212/369
+  |turn|15
+  |-activate|p2a: PIDGEOT|move: sky-attack
+  |-damage|p1a: BLASTOISE|167/361
+  |-damage|p2a: PIDGEOT|75/369
+  |turn|16
+  |-start|p2a: PIDGEOT|move: sky-attack
+  |-crit|
+  |-damage|p2a: PIDGEOT|0/369
+  |faint|p2a: PIDGEOT
+  |switch|p2a: NIDOKING|Nidoking, L100|365/365
+  |turn|17
+  |-damage|p1a: BLASTOISE|41/361
+  |-miss|p1a: BLASTOISE|p2a: NIDOKING
+  |turn|18
+  |-crit|
+  |-damage|p1a: BLASTOISE|0/361
+  |faint|p1a: BLASTOISE
+  |switch|p1a: FEAROW|Fearow, L100|333/333
+  |turn|19
+  |-start|p1a: FEAROW|move: sky-attack
+  |-damage|p1a: FEAROW|153/333
+  |-status|p1a: FEAROW|frz|[from] move: ice-beam
+  |turn|20
+  |cant|p1a: FEAROW|frz
+  |-damage|p1a: FEAROW|0/333 FRZ
+  |faint|p1a: FEAROW
+  |switch|p1a: NINETALES|Ninetales, L100|349/349
+  |turn|21
+  |-damage|p2a: NIDOKING|261/365
+  |-damage|p1a: NINETALES|55/349
+  |turn|22
+  |-crit|
+  |-damage|p2a: NIDOKING|64/365
+  |-damage|p1a: NINETALES|0/349
+  |faint|p1a: NINETALES
+  |switch|p1a: MACHAMP|Machamp, L100|383/383
+  |turn|23
+  |-crit|
+  |-damage|p1a: MACHAMP|106/383
+  |-damage|p2a: NIDOKING|0/365
+  |faint|p2a: NIDOKING
+  |switch|p2a: SEADRA|Seadra, L100|313/313
+  |turn|24
+  |-damage|p1a: MACHAMP|0/383
+  |faint|p1a: MACHAMP
+  |switch|p1a: RHYDON|Rhydon, L100|413/413
+  |turn|25
+  |-crit|
+  |-damage|p1a: RHYDON|0/413
+  |faint|p1a: RHYDON
+  |win|Mattia?
+
+## Battle 6
+generation: 1
+p1_save: Pokémon - Yellow Version.sav
+p2_save: Pokémon - Blue Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 26
+winner_id: None
+p1_team:
+  1. RHYDON/Rhydon L100 HP 0/413 types=ground,rock ability=none item=none moves=[horn-attack, horn-drill, take-down, earthquake]
+  2. PIKACHU/Pikachu L100 HP 0/273 types=electric ability=none item=none moves=[thunder, slam, thunderbolt, agility]
+  3. SANDSLASH/Sandslash L100 HP 0/353 types=ground ability=none item=none moves=[slash, cut, poison-sting, swift]
+  4. PRIMEAPE/Primeape L100 HP 0/333 types=fighting ability=none item=none moves=[low-kick, leer, swift, karate-chop]
+  5. VICTREEBEL/Victreebel L100 HP 0/363 types=grass,poison ability=none item=none moves=[poison-powder, sleep-powder, stun-spore, substitute]
+  6. TENTACRUEL/Tentacruel L100 HP 0/363 types=water,poison ability=none item=none moves=[surf, blizzard, hydro-pump, hyper-beam]
+p2_team:
+  1. RHYDON/Rhydon L100 HP 0/413 types=ground,rock ability=none item=none moves=[ice-beam, mega-kick, dig, thunderbolt]
+  2. BLASTOISE/Blastoise L100 HP 0/361 types=water ability=none item=none moves=[hydro-pump, water-gun, bite, surf]
+  3. FEAROW/Fearow L100 HP 0/333 types=normal,flying ability=none item=none moves=[sky-attack, fly, razor-wind, drill-peck]
+  4. NINETALES/Ninetales L100 HP 349/349 types=fire ability=none item=none moves=[flamethrower, fire-spin, swift, double-team]
+  5. MACHAMP/Machamp L100 HP 383/383 types=fighting ability=none item=none moves=[fissure, rock-slide, seismic-toss, mega-punch]
+  6. EXEGGUTOR/Exeggutor L100 HP 393/393 types=grass,psychic ability=none item=none moves=[hyper-beam, poison-powder, solar-beam, sleep-powder]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Rhydon, L100
+  |poke|p1|Pikachu, L100
+  |poke|p1|Sandslash, L100
+  |poke|p1|Primeape, L100
+  |poke|p1|Victreebel, L100
+  |poke|p1|Tentacruel, L100
+  |player|p2|Mattia?
+  |poke|p2|Rhydon, L100
+  |poke|p2|Blastoise, L100
+  |poke|p2|Fearow, L100
+  |poke|p2|Ninetales, L100
+  |poke|p2|Machamp, L100
+  |poke|p2|Exeggutor, L100
+  |start|
+  |switch|p1a: RHYDON|Rhydon, L100|413/413
+  |switch|p2a: RHYDON|Rhydon, L100|413/413
+  |turn|1
+  |-damage|p1a: RHYDON|270/413
+  |-miss|p1a: RHYDON|p2a: RHYDON
+  |turn|2
+  |-damage|p1a: RHYDON|134/413
+  |-miss|p1a: RHYDON|p2a: RHYDON
+  |turn|3
+  |-damage|p1a: RHYDON|0/413
+  |faint|p1a: RHYDON
+  |switch|p1a: PIKACHU|Pikachu, L100|273/273
+  |turn|4
+  |-miss|p1a: PIKACHU|p2a: RHYDON
+  |-damage|p1a: PIKACHU|97/273
+  |turn|5
+  |-damage|p2a: RHYDON|393/413
+  |-damage|p1a: PIKACHU|0/273
+  |faint|p1a: PIKACHU
+  |switch|p1a: SANDSLASH|Sandslash, L100|353/353
+  |turn|6
+  |-crit|
+  |-damage|p2a: RHYDON|348/413
+  |-damage|p1a: SANDSLASH|214/353
+  |turn|7
+  |-crit|
+  |-damage|p2a: RHYDON|304/413
+  |-damage|p1a: SANDSLASH|73/353
+  |turn|8
+  |-crit|
+  |-damage|p2a: RHYDON|258/413
+  |-damage|p1a: SANDSLASH|0/353
+  |faint|p1a: SANDSLASH
+  |switch|p1a: PRIMEAPE|Primeape, L100|333/333
+  |turn|9
+  |-damage|p2a: RHYDON|85/413
+  |-damage|p1a: PRIMEAPE|166/333
+  |turn|10
+  |-damage|p2a: RHYDON|0/413
+  |faint|p2a: RHYDON
+  |switch|p2a: BLASTOISE|Blastoise, L100|361/361
+  |turn|11
+  |-damage|p2a: BLASTOISE|265/361
+  |-miss|p2a: BLASTOISE|p1a: PRIMEAPE
+  |turn|12
+  |-damage|p2a: BLASTOISE|162/361
+  |-damage|p1a: PRIMEAPE|0/333
+  |faint|p1a: PRIMEAPE
+  |switch|p1a: VICTREEBEL|Victreebel, L100|363/363
+  |turn|13
+  |-damage|p1a: VICTREEBEL|303/363
+  |turn|14
+  |-damage|p1a: VICTREEBEL|245/363
+  |turn|15
+  |-damage|p1a: VICTREEBEL|183/363
+  |turn|16
+  |-damage|p1a: VICTREEBEL|124/363
+  |turn|17
+  |-damage|p1a: VICTREEBEL|72/363
+  |turn|18
+  |-damage|p1a: VICTREEBEL|21/363
+  |turn|19
+  |-damage|p1a: VICTREEBEL|0/363
+  |faint|p1a: VICTREEBEL
+  |switch|p1a: TENTACRUEL|Tentacruel, L100|363/363
+  |turn|20
+  |-damage|p2a: BLASTOISE|74/361
+  |-damage|p1a: TENTACRUEL|306/363
+  |turn|21
+  |cant|p1a: TENTACRUEL|recharge
+  |-damage|p1a: TENTACRUEL|250/363
+  |turn|22
+  |-damage|p2a: BLASTOISE|0/361
+  |faint|p2a: BLASTOISE
+  |switch|p2a: FEAROW|Fearow, L100|333/333
+  |turn|23
+  |-miss|p1a: TENTACRUEL|p2a: FEAROW
+  |-start|p2a: FEAROW|move: sky-attack
+  |turn|24
+  |-damage|p2a: FEAROW|124/333
+  |-activate|p2a: FEAROW|move: sky-attack
+  |-damage|p1a: TENTACRUEL|51/363
+  |turn|25
+  |-start|p2a: FEAROW|move: sky-attack
+  |-damage|p2a: FEAROW|0/333
+  |faint|p2a: FEAROW
+  |switch|p2a: NINETALES|Ninetales, L100|349/349
+  |turn|26
+  |-miss|p1a: TENTACRUEL|p2a: NINETALES
+  |-crit|
+  |-damage|p1a: TENTACRUEL|0/363
+  |faint|p1a: TENTACRUEL
+  |win|Mattia?
+
+## Battle 7
+generation: 1
+p1_save: Pokémon - Red Version.sav
+p2_save: Pokémon - Blue Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 22
+winner_id: None
+p1_team:
+  1. CHARIZARD/Charizard L100 HP 0/359 types=fire,flying ability=none item=none moves=[flamethrower, slash, fly, dragon-rage]
+  2. PIDGEOT/Pidgeot L100 HP 0/369 types=normal,flying ability=none item=none moves=[wing-attack, fly, sky-attack, razor-wind]
+  3. NIDOKING/Nidoking L100 HP 0/365 types=poison,ground ability=none item=none moves=[earthquake, rock-slide, ice-beam, take-down]
+  4. GENGAR/Gengar L100 HP 0/323 types=ghost,poison ability=none item=none moves=[lick, hypnosis, dream-eater, thunderbolt]
+  5. SEADRA/Seadra L100 HP 113/313 types=water ability=none item=none moves=[blizzard, surf, substitute, rest]
+  6. PINSIR/Pinsir L100 HP 333/333 types=bug ability=none item=none moves=[bind, cut, hyper-beam, strength]
+p2_team:
+  1. FEAROW/Fearow L100 HP 0/333 types=normal,flying ability=none item=none moves=[sky-attack, fly, razor-wind, drill-peck]
+  2. BLASTOISE/Blastoise L100 HP 0/361 types=water ability=none item=none moves=[hydro-pump, water-gun, bite, surf]
+  3. NINETALES/Ninetales L100 HP 0/349 types=fire ability=none item=none moves=[flamethrower, fire-spin, swift, double-team]
+  4. MACHAMP/Machamp L100 HP 0/383 types=fighting ability=none item=none moves=[fissure, rock-slide, seismic-toss, mega-punch]
+  5. EXEGGUTOR/Exeggutor L100 HP 0/393 types=grass,psychic ability=none item=none moves=[hyper-beam, poison-powder, solar-beam, sleep-powder]
+  6. RHYDON/Rhydon L100 HP 0/413 types=ground,rock ability=none item=none moves=[ice-beam, mega-kick, dig, thunderbolt]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Charizard, L100
+  |poke|p1|Pidgeot, L100
+  |poke|p1|Nidoking, L100
+  |poke|p1|Gengar, L100
+  |poke|p1|Seadra, L100
+  |poke|p1|Pinsir, L100
+  |player|p2|Mattia?
+  |poke|p2|Fearow, L100
+  |poke|p2|Blastoise, L100
+  |poke|p2|Ninetales, L100
+  |poke|p2|Machamp, L100
+  |poke|p2|Exeggutor, L100
+  |poke|p2|Rhydon, L100
+  |start|
+  |switch|p1a: CHARIZARD|Charizard, L100|359/359
+  |switch|p2a: FEAROW|Fearow, L100|333/333
+  |turn|1
+  |-crit|
+  |-damage|p2a: FEAROW|49/333
+  |-start|p2a: FEAROW|move: sky-attack
+  |turn|2
+  |-damage|p2a: FEAROW|0/333
+  |faint|p2a: FEAROW
+  |switch|p2a: BLASTOISE|Blastoise, L100|361/361
+  |turn|3
+  |-damage|p2a: BLASTOISE|295/361
+  |-crit|
+  |-damage|p1a: CHARIZARD|0/359
+  |faint|p1a: CHARIZARD
+  |switch|p1a: PIDGEOT|Pidgeot, L100|369/369
+  |turn|4
+  |-start|p1a: PIDGEOT|move: sky-attack
+  |-damage|p1a: PIDGEOT|224/369
+  |turn|5
+  |-activate|p1a: PIDGEOT|move: sky-attack
+  |-damage|p2a: BLASTOISE|161/361
+  |-damage|p1a: PIDGEOT|78/369
+  |turn|6
+  |-start|p1a: PIDGEOT|move: sky-attack
+  |-crit|
+  |-damage|p1a: PIDGEOT|0/369
+  |faint|p1a: PIDGEOT
+  |switch|p1a: NIDOKING|Nidoking, L100|365/365
+  |turn|7
+  |-damage|p2a: BLASTOISE|43/361
+  |-miss|p2a: BLASTOISE|p1a: NIDOKING
+  |turn|8
+  |-damage|p2a: BLASTOISE|0/361
+  |faint|p2a: BLASTOISE
+  |switch|p2a: NINETALES|Ninetales, L100|349/349
+  |turn|9
+  |-damage|p1a: NIDOKING|268/365
+  |-status|p1a: NIDOKING|brn|[from] move: flamethrower
+  |-damage|p2a: NINETALES|205/349
+  |-damage|p1a: NIDOKING|246/365 BRN|[from] brn
+  |turn|10
+  |-damage|p1a: NIDOKING|149/365 BRN
+  |-damage|p2a: NINETALES|62/349
+  |-damage|p1a: NIDOKING|127/365 BRN|[from] brn
+  |turn|11
+  |-damage|p1a: NIDOKING|15/365 BRN
+  |-damage|p2a: NINETALES|0/349
+  |faint|p2a: NINETALES
+  |-damage|p1a: NIDOKING|0/365 BRN|[from] brn
+  |faint|p1a: NIDOKING
+  |switch|p1a: GENGAR|Gengar, L100|323/323
+  |switch|p2a: MACHAMP|Machamp, L100|383/383
+  |turn|12
+  |-fail|
+  |-miss|p2a: MACHAMP|p1a: GENGAR
+  |turn|13
+  |-fail|
+  |-miss|p2a: MACHAMP|p1a: GENGAR
+  |turn|14
+  |-fail|
+  |-miss|p2a: MACHAMP|p1a: GENGAR
+  |turn|15
+  |-fail|
+  |-miss|p2a: MACHAMP|p1a: GENGAR
+  |turn|16
+  |-fail|
+  |-damage|p1a: GENGAR|0/323
+  |faint|p1a: GENGAR
+  |switch|p1a: SEADRA|Seadra, L100|313/313
+  |turn|17
+  |-damage|p2a: MACHAMP|253/383
+  |-damage|p1a: SEADRA|213/313
+  |turn|18
+  |-damage|p2a: MACHAMP|122/383
+  |-damage|p1a: SEADRA|113/313
+  |turn|19
+  |-damage|p2a: MACHAMP|0/383
+  |faint|p2a: MACHAMP
+  |switch|p2a: EXEGGUTOR|Exeggutor, L100|393/393
+  |turn|20
+  |-damage|p2a: EXEGGUTOR|261/393
+  |-start|p2a: EXEGGUTOR|move: solar-beam
+  |turn|21
+  |-crit|
+  |-damage|p2a: EXEGGUTOR|0/393
+  |faint|p2a: EXEGGUTOR
+  |switch|p2a: RHYDON|Rhydon, L100|413/413
+  |turn|22
+  |-damage|p2a: RHYDON|0/413
+  |faint|p2a: RHYDON
+  |win|Mattia?
+
+## Battle 8
+generation: 1
+p1_save: Pokémon - Blue Version.sav
+p2_save: Pokémon - Yellow Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 19
+winner_id: None
+p1_team:
+  1. FEAROW/Fearow L100 HP 0/333 types=normal,flying ability=none item=none moves=[sky-attack, fly, razor-wind, drill-peck]
+  2. BLASTOISE/Blastoise L100 HP 0/361 types=water ability=none item=none moves=[hydro-pump, water-gun, bite, surf]
+  3. NINETALES/Ninetales L100 HP 0/349 types=fire ability=none item=none moves=[flamethrower, fire-spin, swift, double-team]
+  4. MACHAMP/Machamp L100 HP 0/383 types=fighting ability=none item=none moves=[fissure, rock-slide, seismic-toss, mega-punch]
+  5. EXEGGUTOR/Exeggutor L100 HP 393/393 types=grass,psychic ability=none item=none moves=[hyper-beam, poison-powder, solar-beam, sleep-powder]
+  6. RHYDON/Rhydon L100 HP 413/413 types=ground,rock ability=none item=none moves=[ice-beam, mega-kick, dig, thunderbolt]
+p2_team:
+  1. VICTREEBEL/Victreebel L100 HP 0/363 types=grass,poison ability=none item=none moves=[poison-powder, sleep-powder, stun-spore, substitute]
+  2. PIKACHU/Pikachu L100 HP 0/273 types=electric ability=none item=none moves=[thunder, slam, thunderbolt, agility]
+  3. SANDSLASH/Sandslash L100 HP 0/353 types=ground ability=none item=none moves=[slash, cut, poison-sting, swift]
+  4. PRIMEAPE/Primeape L100 HP 0/333 types=fighting ability=none item=none moves=[low-kick, leer, swift, karate-chop]
+  5. TENTACRUEL/Tentacruel L100 HP 0/363 types=water,poison ability=none item=none moves=[surf, blizzard, hydro-pump, hyper-beam]
+  6. RHYDON/Rhydon L100 HP 0/413 types=ground,rock ability=none item=none moves=[horn-attack, horn-drill, take-down, earthquake]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Fearow, L100
+  |poke|p1|Blastoise, L100
+  |poke|p1|Ninetales, L100
+  |poke|p1|Machamp, L100
+  |poke|p1|Exeggutor, L100
+  |poke|p1|Rhydon, L100
+  |player|p2|Mattia?
+  |poke|p2|Victreebel, L100
+  |poke|p2|Pikachu, L100
+  |poke|p2|Sandslash, L100
+  |poke|p2|Primeape, L100
+  |poke|p2|Tentacruel, L100
+  |poke|p2|Rhydon, L100
+  |start|
+  |switch|p1a: FEAROW|Fearow, L100|333/333
+  |switch|p2a: VICTREEBEL|Victreebel, L100|363/363
+  |turn|1
+  |-start|p1a: FEAROW|move: sky-attack
+  |turn|2
+  |-activate|p1a: FEAROW|move: sky-attack
+  |-damage|p2a: VICTREEBEL|0/363
+  |faint|p2a: VICTREEBEL
+  |switch|p2a: PIKACHU|Pikachu, L100|273/273
+  |turn|3
+  |-start|p1a: FEAROW|move: razor-wind
+  |-damage|p1a: FEAROW|102/333
+  |turn|4
+  |-activate|p1a: FEAROW|move: razor-wind
+  |-crit|
+  |-damage|p2a: PIKACHU|0/273
+  |faint|p2a: PIKACHU
+  |switch|p2a: SANDSLASH|Sandslash, L100|353/353
+  |turn|5
+  |-start|p1a: FEAROW|move: sky-attack
+  |-crit|
+  |-damage|p1a: FEAROW|0/333
+  |faint|p1a: FEAROW
+  |switch|p1a: BLASTOISE|Blastoise, L100|361/361
+  |turn|6
+  |-damage|p2a: SANDSLASH|4/353
+  |-crit|
+  |-damage|p1a: BLASTOISE|259/361
+  |turn|7
+  |-miss|p1a: BLASTOISE|p2a: SANDSLASH
+  |-crit|
+  |-damage|p1a: BLASTOISE|146/361
+  |turn|8
+  |-damage|p2a: SANDSLASH|0/353
+  |faint|p2a: SANDSLASH
+  |switch|p2a: PRIMEAPE|Primeape, L100|333/333
+  |turn|9
+  |-damage|p1a: BLASTOISE|53/361
+  |-damage|p2a: PRIMEAPE|169/333
+  |turn|10
+  |-damage|p1a: BLASTOISE|0/361
+  |faint|p1a: BLASTOISE
+  |switch|p1a: NINETALES|Ninetales, L100|349/349
+  |turn|11
+  |-damage|p2a: PRIMEAPE|50/333
+  |-damage|p1a: NINETALES|225/349
+  |turn|12
+  |-damage|p2a: PRIMEAPE|0/333
+  |faint|p2a: PRIMEAPE
+  |switch|p2a: TENTACRUEL|Tentacruel, L100|363/363
+  |turn|13
+  |-damage|p1a: NINETALES|0/349
+  |faint|p1a: NINETALES
+  |switch|p1a: MACHAMP|Machamp, L100|383/383
+  |turn|14
+  |-damage|p1a: MACHAMP|237/383
+  |-damage|p2a: TENTACRUEL|0/363
+  |faint|p2a: TENTACRUEL
+  |switch|p2a: RHYDON|Rhydon, L100|413/413
+  |turn|15
+  |-miss|p1a: MACHAMP|p2a: RHYDON
+  |-miss|p2a: RHYDON|p1a: MACHAMP
+  |turn|16
+  |-miss|p1a: MACHAMP|p2a: RHYDON
+  |-miss|p2a: RHYDON|p1a: MACHAMP
+  |turn|17
+  |-miss|p1a: MACHAMP|p2a: RHYDON
+  |-damage|p1a: MACHAMP|0/383
+  |faint|p1a: MACHAMP
+  |switch|p1a: EXEGGUTOR|Exeggutor, L100|393/393
+  |turn|18
+  |-start|p1a: EXEGGUTOR|move: solar-beam
+  |-miss|p2a: RHYDON|p1a: EXEGGUTOR
+  |turn|19
+  |-activate|p1a: EXEGGUTOR|move: solar-beam
+  |-damage|p2a: RHYDON|0/413
+  |faint|p2a: RHYDON
+  |win|Mattia?
+
+## Battle 9
+generation: 1
+p1_save: Pokémon - Yellow Version.sav
+p2_save: Pokémon - Red Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 19
+winner_id: None
+p1_team:
+  1. PRIMEAPE/Primeape L100 HP 0/333 types=fighting ability=none item=none moves=[low-kick, leer, swift, karate-chop]
+  2. PIKACHU/Pikachu L100 HP 0/273 types=electric ability=none item=none moves=[thunder, slam, thunderbolt, agility]
+  3. SANDSLASH/Sandslash L100 HP 0/353 types=ground ability=none item=none moves=[slash, cut, poison-sting, swift]
+  4. VICTREEBEL/Victreebel L100 HP 0/363 types=grass,poison ability=none item=none moves=[poison-powder, sleep-powder, stun-spore, substitute]
+  5. TENTACRUEL/Tentacruel L100 HP 0/363 types=water,poison ability=none item=none moves=[surf, blizzard, hydro-pump, hyper-beam]
+  6. RHYDON/Rhydon L100 HP 0/413 types=ground,rock ability=none item=none moves=[horn-attack, horn-drill, take-down, earthquake]
+p2_team:
+  1. PINSIR/Pinsir L100 HP 0/333 types=bug ability=none item=none moves=[bind, cut, hyper-beam, strength]
+  2. CHARIZARD/Charizard L100 HP 0/359 types=fire,flying ability=none item=none moves=[flamethrower, slash, fly, dragon-rage]
+  3. PIDGEOT/Pidgeot L100 HP 0/369 types=normal,flying ability=none item=none moves=[wing-attack, fly, sky-attack, razor-wind]
+  4. NIDOKING/Nidoking L100 HP 365/365 types=poison,ground ability=none item=none moves=[earthquake, rock-slide, ice-beam, take-down]
+  5. GENGAR/Gengar L100 HP 323/323 types=ghost,poison ability=none item=none moves=[lick, hypnosis, dream-eater, thunderbolt]
+  6. SEADRA/Seadra L100 HP 313/313 types=water ability=none item=none moves=[blizzard, surf, substitute, rest]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Primeape, L100
+  |poke|p1|Pikachu, L100
+  |poke|p1|Sandslash, L100
+  |poke|p1|Victreebel, L100
+  |poke|p1|Tentacruel, L100
+  |poke|p1|Rhydon, L100
+  |player|p2|Mattia?
+  |poke|p2|Pinsir, L100
+  |poke|p2|Charizard, L100
+  |poke|p2|Pidgeot, L100
+  |poke|p2|Nidoking, L100
+  |poke|p2|Gengar, L100
+  |poke|p2|Seadra, L100
+  |start|
+  |switch|p1a: PRIMEAPE|Primeape, L100|333/333
+  |switch|p2a: PINSIR|Pinsir, L100|333/333
+  |turn|1
+  |-damage|p2a: PINSIR|282/333
+  |-damage|p1a: PRIMEAPE|158/333
+  |turn|2
+  |-damage|p2a: PINSIR|237/333
+  |cant|p2a: PINSIR|recharge
+  |turn|3
+  |-damage|p2a: PINSIR|185/333
+  |-damage|p1a: PRIMEAPE|0/333
+  |faint|p1a: PRIMEAPE
+  |switch|p1a: PIKACHU|Pikachu, L100|273/273
+  |turn|4
+  |-miss|p1a: PIKACHU|p2a: PINSIR
+  |-damage|p1a: PIKACHU|48/273
+  |turn|5
+  |-crit|
+  |-damage|p2a: PINSIR|0/333
+  |faint|p2a: PINSIR
+  |switch|p2a: CHARIZARD|Charizard, L100|359/359
+  |turn|6
+  |-damage|p1a: PIKACHU|0/273
+  |faint|p1a: PIKACHU
+  |switch|p1a: SANDSLASH|Sandslash, L100|353/353
+  |turn|7
+  |-damage|p1a: SANDSLASH|173/353
+  |-crit|
+  |-damage|p2a: CHARIZARD|226/359
+  |turn|8
+  |-damage|p1a: SANDSLASH|1/353
+  |-crit|
+  |-damage|p2a: CHARIZARD|107/359
+  |turn|9
+  |-damage|p1a: SANDSLASH|0/353
+  |faint|p1a: SANDSLASH
+  |switch|p1a: VICTREEBEL|Victreebel, L100|363/363
+  |turn|10
+  |-damage|p1a: VICTREEBEL|134/363
+  |turn|11
+  |-damage|p1a: VICTREEBEL|0/363
+  |faint|p1a: VICTREEBEL
+  |switch|p1a: TENTACRUEL|Tentacruel, L100|363/363
+  |turn|12
+  |-damage|p2a: CHARIZARD|0/359
+  |faint|p2a: CHARIZARD
+  |switch|p2a: PIDGEOT|Pidgeot, L100|369/369
+  |turn|13
+  |-start|p2a: PIDGEOT|move: sky-attack
+  |-miss|p1a: TENTACRUEL|p2a: PIDGEOT
+  |turn|14
+  |-activate|p2a: PIDGEOT|move: sky-attack
+  |-damage|p1a: TENTACRUEL|169/363
+  |-miss|p1a: TENTACRUEL|p2a: PIDGEOT
+  |turn|15
+  |-start|p2a: PIDGEOT|move: sky-attack
+  |-damage|p2a: PIDGEOT|189/369
+  |turn|16
+  |-activate|p2a: PIDGEOT|move: sky-attack
+  |-damage|p1a: TENTACRUEL|0/363
+  |faint|p1a: TENTACRUEL
+  |switch|p1a: RHYDON|Rhydon, L100|413/413
+  |turn|17
+  |-start|p2a: PIDGEOT|move: sky-attack
+  |-damage|p2a: PIDGEOT|0/369
+  |faint|p2a: PIDGEOT
+  |switch|p2a: NIDOKING|Nidoking, L100|365/365
+  |turn|18
+  |-damage|p1a: RHYDON|208/413
+  |-miss|p1a: RHYDON|p2a: NIDOKING
+  |turn|19
+  |-damage|p1a: RHYDON|0/413
+  |faint|p1a: RHYDON
+  |win|Mattia?
+
+## Battle 10
+generation: 1
+p1_save: Pokémon - Red Version.sav
+p2_save: Pokémon - Blue Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 25
+winner_id: None
+p1_team:
+  1. GENGAR/Gengar L100 HP 0/323 types=ghost,poison ability=none item=none moves=[lick, hypnosis, dream-eater, thunderbolt]
+  2. CHARIZARD/Charizard L100 HP 0/359 types=fire,flying ability=none item=none moves=[flamethrower, slash, fly, dragon-rage]
+  3. PIDGEOT/Pidgeot L100 HP 0/369 types=normal,flying ability=none item=none moves=[wing-attack, fly, sky-attack, razor-wind]
+  4. NIDOKING/Nidoking L100 HP 93/365 types=poison,ground ability=none item=none moves=[earthquake, rock-slide, ice-beam, take-down]
+  5. SEADRA/Seadra L100 HP 313/313 types=water ability=none item=none moves=[blizzard, surf, substitute, rest]
+  6. PINSIR/Pinsir L100 HP 333/333 types=bug ability=none item=none moves=[bind, cut, hyper-beam, strength]
+p2_team:
+  1. FEAROW/Fearow L100 HP 0/333 types=normal,flying ability=none item=none moves=[sky-attack, fly, razor-wind, drill-peck]
+  2. BLASTOISE/Blastoise L100 HP 0/361 types=water ability=none item=none moves=[hydro-pump, water-gun, bite, surf]
+  3. NINETALES/Ninetales L100 HP 0/349 types=fire ability=none item=none moves=[flamethrower, fire-spin, swift, double-team]
+  4. MACHAMP/Machamp L100 HP 0/383 types=fighting ability=none item=none moves=[fissure, rock-slide, seismic-toss, mega-punch]
+  5. EXEGGUTOR/Exeggutor L100 HP 0/393 types=grass,psychic ability=none item=none moves=[hyper-beam, poison-powder, solar-beam, sleep-powder]
+  6. RHYDON/Rhydon L100 HP 0/413 types=ground,rock ability=none item=none moves=[ice-beam, mega-kick, dig, thunderbolt]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Gengar, L100
+  |poke|p1|Charizard, L100
+  |poke|p1|Pidgeot, L100
+  |poke|p1|Nidoking, L100
+  |poke|p1|Seadra, L100
+  |poke|p1|Pinsir, L100
+  |player|p2|Mattia?
+  |poke|p2|Fearow, L100
+  |poke|p2|Blastoise, L100
+  |poke|p2|Ninetales, L100
+  |poke|p2|Machamp, L100
+  |poke|p2|Exeggutor, L100
+  |poke|p2|Rhydon, L100
+  |start|
+  |switch|p1a: GENGAR|Gengar, L100|323/323
+  |switch|p2a: FEAROW|Fearow, L100|333/333
+  |turn|1
+  |-damage|p2a: FEAROW|88/333
+  |-start|p2a: FEAROW|move: sky-attack
+  |turn|2
+  |-damage|p2a: FEAROW|0/333
+  |faint|p2a: FEAROW
+  |switch|p2a: BLASTOISE|Blastoise, L100|361/361
+  |turn|3
+  |-crit|
+  |-damage|p2a: BLASTOISE|13/361
+  |-miss|p2a: BLASTOISE|p1a: GENGAR
+  |turn|4
+  |-crit|
+  |-damage|p2a: BLASTOISE|0/361
+  |faint|p2a: BLASTOISE
+  |switch|p2a: NINETALES|Ninetales, L100|349/349
+  |turn|5
+  |-fail|
+  |-damage|p1a: GENGAR|240/323
+  |turn|6
+  |-fail|
+  |-damage|p1a: GENGAR|160/323
+  |turn|7
+  |-fail|
+  |-damage|p1a: GENGAR|79/323
+  |turn|8
+  |-fail|
+  |-damage|p1a: GENGAR|6/323
+  |turn|9
+  |-fail|
+  |-damage|p1a: GENGAR|0/323
+  |faint|p1a: GENGAR
+  |switch|p1a: CHARIZARD|Charizard, L100|359/359
+  |turn|10
+  |-crit|
+  |-damage|p1a: CHARIZARD|273/359
+  |-damage|p2a: NINETALES|290/349
+  |turn|11
+  |-damage|p2a: NINETALES|228/349
+  |-crit|
+  |-damage|p1a: CHARIZARD|179/359
+  |turn|12
+  |-crit|
+  |-damage|p2a: NINETALES|112/349
+  |-damage|p1a: CHARIZARD|131/359
+  |turn|13
+  |-damage|p2a: NINETALES|45/349
+  |-damage|p1a: CHARIZARD|83/359
+  |turn|14
+  |-damage|p1a: CHARIZARD|35/359
+  |-damage|p2a: NINETALES|0/349
+  |faint|p2a: NINETALES
+  |switch|p2a: MACHAMP|Machamp, L100|383/383
+  |turn|15
+  |-damage|p2a: MACHAMP|237/383
+  |-damage|p1a: CHARIZARD|0/359
+  |faint|p1a: CHARIZARD
+  |switch|p1a: PIDGEOT|Pidgeot, L100|369/369
+  |turn|16
+  |-start|p1a: PIDGEOT|move: sky-attack
+  |-damage|p1a: PIDGEOT|193/369
+  |turn|17
+  |-activate|p1a: PIDGEOT|move: sky-attack
+  |-crit|
+  |-damage|p2a: MACHAMP|0/383
+  |faint|p2a: MACHAMP
+  |switch|p2a: EXEGGUTOR|Exeggutor, L100|393/393
+  |turn|18
+  |-start|p1a: PIDGEOT|move: sky-attack
+  |-damage|p1a: PIDGEOT|52/369
+  |turn|19
+  |-activate|p1a: PIDGEOT|move: sky-attack
+  |-damage|p2a: EXEGGUTOR|67/393
+  |cant|p2a: EXEGGUTOR|flinch
+  |turn|20
+  |-start|p1a: PIDGEOT|move: sky-attack
+  |cant|p2a: EXEGGUTOR|recharge
+  |turn|21
+  |-activate|p1a: PIDGEOT|move: sky-attack
+  |-damage|p2a: EXEGGUTOR|0/393
+  |faint|p2a: EXEGGUTOR
+  |switch|p2a: RHYDON|Rhydon, L100|413/413
+  |turn|22
+  |-start|p1a: PIDGEOT|move: sky-attack
+  |-damage|p1a: PIDGEOT|0/369
+  |faint|p1a: PIDGEOT
+  |switch|p1a: NIDOKING|Nidoking, L100|365/365
+  |turn|23
+  |-damage|p2a: RHYDON|209/413
+  |-damage|p1a: NIDOKING|232/365
+  |turn|24
+  |-damage|p2a: RHYDON|7/413
+  |-damage|p1a: NIDOKING|93/365
+  |turn|25
+  |-damage|p2a: RHYDON|0/413
+  |faint|p2a: RHYDON
+  |win|Mattia?
+
+summary: pass=10 fail=0 total=10

@@ -8,6 +8,7 @@ window.POKECABLE_BATTLE_FLOW = {
     setBattleStatus,
     log,
     battleLog,
+    battleScene,
     elements
   }) {
     const {
@@ -128,6 +129,15 @@ window.POKECABLE_BATTLE_FLOW = {
       }
     }
 
+    function syncBattleSceneContext() {
+      const loadedSave = getLoadedSave();
+      battleScene?.setTrainerContext?.({
+        playerName: loadedSave?.player_name || "Treinador",
+        party: loadedSave?.party || [],
+        inventory: loadedSave?.inventory || []
+      });
+    }
+
     function battleFormatLabel(room) {
       const formatId = room?.format_id || "automatico";
       if (formatId === "gen1customgame") return "Gen 1 Custom Game";
@@ -151,6 +161,7 @@ window.POKECABLE_BATTLE_FLOW = {
       confirmBattleButton.disabled = !state.readyToConfirm;
       forfeitBattleButton.disabled = !state.hasJoinedBattleRoom || (!state.currentBattleId && !state.roomReady);
       
+      syncBattleSceneContext();
       updateBattleInventoryPreview();
       renderBattleTeamPreview();
     }
@@ -199,6 +210,7 @@ window.POKECABLE_BATTLE_FLOW = {
       state.currentBattleId = null;
       state.currentBattleRequest = null;
       battleLogEl.textContent = "";
+      battleScene?.reset(loadedSave.generation);
       renderBattleActions(null);
       setBattleActionsEnabled(false);
       syncButtons();
@@ -244,12 +256,14 @@ window.POKECABLE_BATTLE_FLOW = {
           state.readyToConfirm = false;
           renderBattleActions(null);
           setBattleActionsEnabled(false);
+          battleScene?.setWaiting?.(message.message || "Erro na batalha.");
           syncButtons();
           log(`Erro de batalha: ${message.message || message.code}`);
           return true;
         case "battle_waiting":
           state.roomReady = false;
           setBattleStatus(message.message || "Aguardando segundo usuário para batalha.");
+          battleScene?.setWaiting?.(message.message || "Aguardando segundo usuário para batalha.");
           syncButtons();
           return true;
         case "battle_room_created":
@@ -257,6 +271,7 @@ window.POKECABLE_BATTLE_FLOW = {
           state.roomReady = false;
           updateBattleRoomDisplay(message.room);
           setBattleStatus("Sala de batalha criada. Aguardando segundo usuário.");
+          battleScene?.setWaiting?.("Sala criada. Aguardando oponente.");
           log("Sala de batalha criada.");
           syncButtons();
           return true;
@@ -265,6 +280,7 @@ window.POKECABLE_BATTLE_FLOW = {
           state.roomReady = false;
           updateBattleRoomDisplay(message.room);
           setBattleStatus("Entrou na sala de batalha. Envie seu time quando quiser.");
+          battleScene?.setWaiting?.("Entrou na sala. Envie seu time.");
           log("Entrou na sala de batalha.");
           syncButtons();
           return true;
@@ -273,6 +289,7 @@ window.POKECABLE_BATTLE_FLOW = {
           state.roomReady = true;
           updateBattleRoomDisplay(message.room);
           setBattleStatus("Sala de batalha pronta. Envie seu time.");
+          battleScene?.setWaiting?.("Sala pronta. Envie seu time.");
           log("Sala de batalha pronta.");
           syncButtons();
           return true;
@@ -292,12 +309,14 @@ window.POKECABLE_BATTLE_FLOW = {
         case "battle_team_received":
           updateBattleRoomDisplay(message.room);
           setBattleStatus(`Servidor recebeu seu time (${message.team_size || 0} Pokémon).`);
+          battleScene?.setWaiting?.("Time recebido. Aguardando confirmação.");
           log("Servidor recebeu seu time de batalha.");
           return true;
         case "battle_ready":
           state.readyToConfirm = true;
           updateBattleRoomDisplay(message.room);
           setBattleStatus("Times prontos. Confirme para iniciar.");
+          battleScene?.setWaiting?.("Times prontos. Confirme a batalha.");
           syncButtons();
           log("Batalha pronta para confirmação.");
           return true;
@@ -305,6 +324,7 @@ window.POKECABLE_BATTLE_FLOW = {
           state.readyToConfirm = false;
           syncButtons();
           setBattleStatus("Confirmação enviada. Aguardando o outro jogador.");
+          battleScene?.setWaiting?.("Confirmação enviada. Aguardando oponente.");
           log("Confirmação de batalha enviada.");
           return true;
         case "battle_started":
@@ -313,20 +333,28 @@ window.POKECABLE_BATTLE_FLOW = {
           state.readyToConfirm = false;
           updateBattleRoomDisplay(message.room);
           setBattleStatus("Batalha iniciada. Aguarde sua ação.");
+          battleScene?.reset(getLoadedSave()?.generation || message.room?.generation || 1);
           renderBattleActions(null);
           setBattleActionsEnabled(false);
-          for (const line of message.logs || []) battleLog(line);
+          for (const line of message.logs || []) {
+            battleLog(line);
+            battleScene?.pushLog(line);
+          }
           syncButtons();
           log("Batalha iniciada.");
           return true;
         case "battle_log":
-          for (const line of message.logs || []) battleLog(line);
+          for (const line of message.logs || []) {
+            battleLog(line);
+            battleScene?.pushLog(line);
+          }
           return true;
         case "battle_request_action":
           state.currentBattleId = message.battle_id || state.currentBattleId;
           state.currentBattleRequest = message.request || null;
           setBattleStatus("Escolha uma ação de batalha.");
           renderBattleActions(state.currentBattleRequest);
+          battleScene?.setRequest(state.currentBattleRequest);
           renderBattleTeamPreview(); // Atualiza a lista lateral com o status real
           setBattleActionsEnabled(true);
           battleLog(state.currentBattleRequest ? "|request|ação disponível para este jogador" : "|request|escolha um golpe ou passe o turno");
@@ -360,7 +388,10 @@ window.POKECABLE_BATTLE_FLOW = {
           } else {
             setBattleStatus("Batalha finalizada. A sala continua pronta para nova batalha.");
           }
-          for (const line of message.logs || []) battleLog(line);
+          for (const line of message.logs || []) {
+            battleLog(line);
+            battleScene?.pushLog(line);
+          }
           renderBattleActions(null);
           setBattleActionsEnabled(false);
           syncButtons();
@@ -371,12 +402,39 @@ window.POKECABLE_BATTLE_FLOW = {
       }
     }
 
+    function submitBattleAction(action) {
+      if (!action) return false;
+      if (action === "forfeit") {
+        handleBattleForfeit();
+        return true;
+      }
+      if (!state.currentBattleId) {
+        setBattleStatus("A batalha ainda nao esta pronta para receber ações.");
+        return false;
+      }
+      setBattleActionsEnabled(false);
+      state.currentBattleRequest = null;
+      setBattleStatus(`Ação enviada: ${action}.`);
+      battleScene?.setWaiting?.(`Ação enviada: ${action}. Aguardando oponente.`);
+      send({ type: "battle_action", battle_id: state.currentBattleId, action });
+      return true;
+    }
+
+    function handleBattleForfeit() {
+      setBattleActionsEnabled(false);
+      state.currentBattleRequest = null;
+      battleScene?.setWaiting?.("Desistência enviada. Aguardando servidor.");
+      setBattleStatus("Desistência enviada.");
+      send({ type: "battle_forfeit" });
+    }
+
     function handleBattleServerError(message) {
       setBattleStatus(message.message || "Erro no servidor.");
       state.currentBattleRequest = null;
       state.readyToConfirm = false;
       renderBattleActions(null);
       setBattleActionsEnabled(false);
+      battleScene?.reset(getLoadedSave()?.generation || 1);
       syncButtons();
     }
 
@@ -388,6 +446,7 @@ window.POKECABLE_BATTLE_FLOW = {
       state.roomReady = false;
       renderBattleActions(null);
       setBattleActionsEnabled(false);
+      battleScene?.reset(getLoadedSave()?.generation || 1);
       syncButtons();
       if (battleLogEl) battleLogEl.textContent += "";
       setBattleStatus("Conexão de batalha encerrada.");
@@ -414,10 +473,7 @@ window.POKECABLE_BATTLE_FLOW = {
         const button = event.target.closest("[data-battle-action]");
         if (!button) return false;
         const action = button.dataset.battleAction || "pass";
-        setBattleActionsEnabled(false);
-        setBattleStatus(`Ação enviada: ${action}.`);
-        send({ type: "battle_action", battle_id: state.currentBattleId, action });
-        return true;
+        return submitBattleAction(action);
       },
       handleBattleItemClick(event) {
         const itemBtn = event.target.closest("[data-battle-item-id]");
@@ -451,13 +507,11 @@ window.POKECABLE_BATTLE_FLOW = {
         state.readyToConfirm = false;
         syncButtons();
         setBattleStatus("Confirmação enviada. Aguardando início da batalha.");
+        battleScene?.setWaiting?.("Confirmação enviada. Aguardando início.");
         send({ type: "confirm_battle" });
       },
-      handleBattleForfeit() {
-        setBattleActionsEnabled(false);
-        setBattleStatus("Desistência enviada.");
-        send({ type: "battle_forfeit" });
-      },
+      handleBattleForfeit,
+      submitBattleAction,
       renderBattleActions,
       updateBattleRoomDisplay,
       syncButtons,

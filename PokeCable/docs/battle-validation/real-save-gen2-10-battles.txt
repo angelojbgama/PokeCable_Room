@@ -1,0 +1,1992 @@
+# Real Save Battle Validation Gen 2
+source: local .sav files parsed by pokecable_room parsers
+reference: pret disassemblies available under reference/pret when cloned
+battle_count: 10
+turn_limit: 250
+
+## Battle 1
+generation: 2
+p1_save: Pokémon - Gold Version.sav
+p2_save: Pokémon - Silver Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 30
+winner_id: None
+p1_team:
+  1. FERALIGATR/Feraligatr L100 HP 0/367 types=water ability=none item=none moves=[slash, hydro-pump, strength, surf]
+  2. ARIADOS/Ariados L100 HP 0/337 types=bug,poison ability=none item=none moves=[psychic, night-shade, leech-life, fury-swipes]
+  3. XATU/Xatu L100 HP 0/327 types=psychic,flying ability=none item=none moves=[night-shade, fly, hyper-beam, confuse-ray]
+  4. AMPHAROS/Ampharos L100 HP 0/377 types=electric ability=none item=none moves=[flash, thunder-punch, thunder-shock, thunder-wave]
+  5. GIRAFARIG/Girafarig L100 HP 0/337 types=normal,psychic ability=none item=none moves=[stomp, agility, baton-pass, psybeam]
+  6. URSARING/Ursaring L100 HP 0/377 types=normal ability=none item=none moves=[dynamic-punch, cut, rest, rock-smash]
+p2_team:
+  1. CROBAT/Crobat L100 HP 0/367 types=poison,flying ability=none item=none moves=[bite, confuse-ray, wing-attack, fly]
+  2. MEGANIUM/Meganium L100 HP 0/333 types=grass ability=none item=none moves=[giga-drain, poison-powder, razor-leaf, reflect]
+  3. AMPHAROS/Ampharos L100 HP 0/377 types=electric ability=none item=none moves=[thunder-punch, thunderbolt, flash, iron-tail]
+  4. QUAGSIRE/Quagsire L100 HP 0/379 types=water,ground ability=none item=none moves=[earthquake, surf, mud-slap, dig]
+  5. SCIZOR/Scizor L100 HP 0/321 types=bug,steel ability=none item=none moves=[slash, wing-attack, swords-dance, cut]
+  6. MILTANK/Miltank L100 HP 279/363 types=normal ability=none item=none moves=[rollout, strength, milk-drink, rock-smash]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Feraligatr, L100
+  |poke|p1|Ariados, L100
+  |poke|p1|Xatu, L100
+  |poke|p1|Ampharos, L100
+  |poke|p1|Girafarig, L100
+  |poke|p1|Ursaring, L100
+  |player|p2|Mattia?
+  |poke|p2|Crobat, L100
+  |poke|p2|Meganium, L100
+  |poke|p2|Ampharos, L100
+  |poke|p2|Quagsire, L100
+  |poke|p2|Scizor, L100
+  |poke|p2|Miltank, L100
+  |start|
+  |switch|p1a: FERALIGATR|Feraligatr, L100|367/367
+  |switch|p2a: CROBAT|Crobat, L100|367/367
+  |turn|1
+  |move|p2a: CROBAT|wing-attack|p1a
+  |damage|p1a: FERALIGATR|306/367
+  |move|p1a: FERALIGATR|hydro-pump|p2a
+  |-miss|p1a: FERALIGATR|p2a: CROBAT
+  |turn|2
+  |move|p2a: CROBAT|wing-attack|p1a
+  |damage|p1a: FERALIGATR|242/367
+  |move|p1a: FERALIGATR|hydro-pump|p2a
+  |damage|p2a: CROBAT|245/367
+  |turn|3
+  |move|p2a: CROBAT|wing-attack|p1a
+  |damage|p1a: FERALIGATR|180/367
+  |move|p1a: FERALIGATR|hydro-pump|p2a
+  |-miss|p1a: FERALIGATR|p2a: CROBAT
+  |turn|4
+  |move|p2a: CROBAT|wing-attack|p1a
+  |damage|p1a: FERALIGATR|114/367
+  |move|p1a: FERALIGATR|hydro-pump|p2a
+  |-miss|p1a: FERALIGATR|p2a: CROBAT
+  |turn|5
+  |move|p2a: CROBAT|wing-attack|p1a
+  |damage|p1a: FERALIGATR|46/367
+  |move|p1a: FERALIGATR|hydro-pump|p2a
+  |damage|p2a: CROBAT|118/367
+  |turn|6
+  |move|p2a: CROBAT|wing-attack|p1a
+  |-crit|
+  |damage|p1a: FERALIGATR|0/367
+  |faint|p1a: FERALIGATR
+  |switch|p1a: ARIADOS|Ariados, L100|337/337
+  |turn|7
+  |move|p2a: CROBAT|wing-attack|p1a
+  |damage|p1a: ARIADOS|160/337
+  |move|p1a: ARIADOS|psychic|p2a
+  |-crit|
+  |damage|p2a: CROBAT|0/367
+  |faint|p2a: CROBAT
+  |switch|p2a: MEGANIUM|Meganium, L100|333/333
+  |turn|8
+  |move|p2a: MEGANIUM|giga-drain|p1a
+  |damage|p1a: ARIADOS|134/337
+  |-heal|p2a: MEGANIUM|333/333|[from] move: giga-drain
+  |move|p1a: ARIADOS|leech-life|p2a
+  |damage|p2a: MEGANIUM|149/333
+  |-heal|p1a: ARIADOS|226/337|[from] move: leech-life
+  |turn|9
+  |move|p2a: MEGANIUM|giga-drain|p1a
+  |damage|p1a: ARIADOS|201/337
+  |-heal|p2a: MEGANIUM|161/333|[from] move: giga-drain
+  |move|p1a: ARIADOS|leech-life|p2a
+  |damage|p2a: MEGANIUM|0/333
+  |faint|p2a: MEGANIUM
+  |-heal|p1a: ARIADOS|291/337|[from] move: leech-life
+  |switch|p2a: AMPHAROS|Ampharos, L100|377/377
+  |turn|10
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: ARIADOS|157/337
+  |move|p1a: ARIADOS|leech-life|p2a
+  |damage|p2a: AMPHAROS|273/377
+  |-heal|p1a: ARIADOS|209/337|[from] move: leech-life
+  |turn|11
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: ARIADOS|73/337
+  |move|p1a: ARIADOS|leech-life|p2a
+  |damage|p2a: AMPHAROS|173/377
+  |-heal|p1a: ARIADOS|123/337|[from] move: leech-life
+  |turn|12
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: ARIADOS|0/337
+  |faint|p1a: ARIADOS
+  |switch|p1a: XATU|Xatu, L100|327/327
+  |turn|13
+  |move|p1a: XATU|hyper-beam|p2a
+  |damage|p2a: AMPHAROS|66/377
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: XATU|31/327
+  |turn|14
+  |cant|p1a: XATU|recharge
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: XATU|0/327
+  |faint|p1a: XATU
+  |switch|p1a: AMPHAROS|Ampharos, L100|377/377
+  |turn|15
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: AMPHAROS|322/377
+  |move|p1a: AMPHAROS|thunder-punch|p2a
+  |-crit|
+  |damage|p2a: AMPHAROS|0/377
+  |faint|p2a: AMPHAROS
+  |switch|p2a: QUAGSIRE|Quagsire, L100|379/379
+  |turn|16
+  |move|p1a: AMPHAROS|thunder-punch|p2a
+  |-immune|p2a: QUAGSIRE
+  |move|p2a: QUAGSIRE|earthquake|p1a
+  |damage|p1a: AMPHAROS|90/377
+  |turn|17
+  |move|p1a: AMPHAROS|thunder-punch|p2a
+  |-immune|p2a: QUAGSIRE
+  |move|p2a: QUAGSIRE|earthquake|p1a
+  |damage|p1a: AMPHAROS|0/377
+  |faint|p1a: AMPHAROS
+  |switch|p1a: GIRAFARIG|Girafarig, L100|337/337
+  |turn|18
+  |move|p1a: GIRAFARIG|psybeam|p2a
+  |damage|p2a: QUAGSIRE|290/379
+  |move|p2a: QUAGSIRE|earthquake|p1a
+  |damage|p1a: GIRAFARIG|190/337
+  |turn|19
+  |move|p1a: GIRAFARIG|psybeam|p2a
+  |damage|p2a: QUAGSIRE|203/379
+  |move|p2a: QUAGSIRE|earthquake|p1a
+  |damage|p1a: GIRAFARIG|48/337
+  |turn|20
+  |move|p1a: GIRAFARIG|psybeam|p2a
+  |damage|p2a: QUAGSIRE|126/379
+  |-activate|p2a: QUAGSIRE|confusion
+  |-activate|p2a: QUAGSIRE|confusion
+  |-damage|p2a: QUAGSIRE|91/379|[from] confusion
+  |turn|21
+  |move|p1a: GIRAFARIG|psybeam|p2a
+  |damage|p2a: QUAGSIRE|12/379
+  |-activate|p2a: QUAGSIRE|confusion
+  |-damage|p2a: QUAGSIRE|0/379|[from] confusion
+  |faint|p2a: QUAGSIRE
+  |switch|p2a: SCIZOR|Scizor, L100|321/321
+  |turn|22
+  |move|p2a: SCIZOR|slash|p1a
+  |damage|p1a: GIRAFARIG|0/337
+  |faint|p1a: GIRAFARIG
+  |switch|p1a: URSARING|Ursaring, L100|377/377
+  |turn|23
+  |move|p2a: SCIZOR|slash|p1a
+  |damage|p1a: URSARING|301/377
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |damage|p2a: SCIZOR|225/321
+  |-activate|p2a: SCIZOR|confusion
+  |turn|24
+  |-activate|p2a: SCIZOR|confusion
+  |-damage|p2a: SCIZOR|183/321|[from] confusion
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |damage|p2a: SCIZOR|80/321
+  |-activate|p2a: SCIZOR|confusion
+  |turn|25
+  |-activate|p2a: SCIZOR|confusion
+  |-damage|p2a: SCIZOR|38/321|[from] confusion
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |-miss|p1a: URSARING|p2a: SCIZOR
+  |turn|26
+  |-activate|p2a: SCIZOR|confusion
+  |-damage|p2a: SCIZOR|0/321|[from] confusion
+  |faint|p2a: SCIZOR
+  |switch|p2a: MILTANK|Miltank, L100|363/363
+  |turn|27
+  |move|p2a: MILTANK|strength|p1a
+  |damage|p1a: URSARING|196/377
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |-miss|p1a: URSARING|p2a: MILTANK
+  |turn|28
+  |move|p2a: MILTANK|strength|p1a
+  |damage|p1a: URSARING|93/377
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |-miss|p1a: URSARING|p2a: MILTANK
+  |turn|29
+  |move|p2a: MILTANK|strength|p1a
+  |damage|p1a: URSARING|3/377
+  |move|p1a: URSARING|rock-smash|p2a
+  |damage|p2a: MILTANK|279/363
+  |turn|30
+  |move|p2a: MILTANK|strength|p1a
+  |damage|p1a: URSARING|0/377
+  |faint|p1a: URSARING
+  |win|Mattia?
+
+## Battle 2
+generation: 2
+p1_save: Pokémon - Silver Version.sav
+p2_save: Pokémon - Crystal Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 30
+winner_id: None
+p1_team:
+  1. CROBAT/Crobat L100 HP 0/367 types=poison,flying ability=none item=none moves=[bite, confuse-ray, wing-attack, fly]
+  2. MEGANIUM/Meganium L100 HP 0/333 types=grass ability=none item=none moves=[giga-drain, poison-powder, razor-leaf, reflect]
+  3. AMPHAROS/Ampharos L100 HP 0/377 types=electric ability=none item=none moves=[thunder-punch, thunderbolt, flash, iron-tail]
+  4. QUAGSIRE/Quagsire L100 HP 0/379 types=water,ground ability=none item=none moves=[earthquake, surf, mud-slap, dig]
+  5. SCIZOR/Scizor L100 HP 0/321 types=bug,steel ability=none item=none moves=[slash, wing-attack, swords-dance, cut]
+  6. MILTANK/Miltank L100 HP 15/363 types=normal ability=none item=none moves=[rollout, strength, milk-drink, rock-smash]
+p2_team:
+  1. TYRANITAR/Tyranitar L100 HP 0/397 types=rock,dark ability=none item=none moves=[earthquake, fury-cutter, rock-slide, dig]
+  2. TYPHLOSION/Typhlosion L100 HP 0/353 types=fire ability=none item=none moves=[flamethrower, flame-wheel, swift, ember]
+  3. NOCTOWL/Noctowl L100 HP 0/397 types=normal,flying ability=none item=none moves=[steel-wing, fly, flash, mud-slap]
+  4. MANTINE/Mantine L100 HP 0/367 types=water,flying ability=none item=none moves=[surf, blizzard, waterfall, whirlpool]
+  5. DELIBIRD/Delibird L100 HP 0/287 types=ice,flying ability=none item=none moves=[present, blizzard, toxic, curse]
+  6. GRANBULL/Granbull L100 HP 0/377 types=fairy ability=none item=none moves=[bite, lick, strength, rage]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Crobat, L100
+  |poke|p1|Meganium, L100
+  |poke|p1|Ampharos, L100
+  |poke|p1|Quagsire, L100
+  |poke|p1|Scizor, L100
+  |poke|p1|Miltank, L100
+  |player|p2|Mattia?
+  |poke|p2|Tyranitar, L100
+  |poke|p2|Typhlosion, L100
+  |poke|p2|Noctowl, L100
+  |poke|p2|Mantine, L100
+  |poke|p2|Delibird, L100
+  |poke|p2|Granbull, L100
+  |start|
+  |switch|p1a: CROBAT|Crobat, L100|367/367
+  |switch|p2a: TYRANITAR|Tyranitar, L100|397/397
+  |turn|1
+  |move|p1a: CROBAT|wing-attack|p2a
+  |damage|p2a: TYRANITAR|366/397
+  |move|p2a: TYRANITAR|rock-slide|p1a
+  |damage|p1a: CROBAT|86/367
+  |turn|2
+  |move|p1a: CROBAT|wing-attack|p2a
+  |damage|p2a: TYRANITAR|338/397
+  |move|p2a: TYRANITAR|rock-slide|p1a
+  |damage|p1a: CROBAT|0/367
+  |faint|p1a: CROBAT
+  |switch|p1a: MEGANIUM|Meganium, L100|333/333
+  |turn|3
+  |move|p1a: MEGANIUM|giga-drain|p2a
+  |damage|p2a: TYRANITAR|190/397
+  |-heal|p1a: MEGANIUM|333/333|[from] move: giga-drain
+  |move|p2a: TYRANITAR|rock-slide|p1a
+  |damage|p1a: MEGANIUM|222/333
+  |-flinch|p1a: MEGANIUM
+  |turn|4
+  |cant|p1a: MEGANIUM|flinch
+  |move|p2a: TYRANITAR|rock-slide|p1a
+  |damage|p1a: MEGANIUM|107/333
+  |turn|5
+  |move|p1a: MEGANIUM|giga-drain|p2a
+  |damage|p2a: TYRANITAR|30/397
+  |-heal|p1a: MEGANIUM|187/333|[from] move: giga-drain
+  |move|p2a: TYRANITAR|rock-slide|p1a
+  |damage|p1a: MEGANIUM|63/333
+  |turn|6
+  |move|p1a: MEGANIUM|giga-drain|p2a
+  |damage|p2a: TYRANITAR|0/397
+  |faint|p2a: TYRANITAR
+  |-heal|p1a: MEGANIUM|148/333|[from] move: giga-drain
+  |switch|p2a: TYPHLOSION|Typhlosion, L100|353/353
+  |turn|7
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |damage|p1a: MEGANIUM|0/333
+  |faint|p1a: MEGANIUM
+  |switch|p1a: AMPHAROS|Ampharos, L100|377/377
+  |turn|8
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |damage|p1a: AMPHAROS|239/377
+  |-status|p1a: AMPHAROS|brn|[from] move: flamethrower
+  |move|p1a: AMPHAROS|thunderbolt|p2a
+  |damage|p2a: TYPHLOSION|235/353
+  |-damage|p1a: AMPHAROS|216/377 BRN|[from] brn
+  |turn|9
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |damage|p1a: AMPHAROS|73/377 BRN
+  |move|p1a: AMPHAROS|thunderbolt|p2a
+  |damage|p2a: TYPHLOSION|102/353
+  |-damage|p1a: AMPHAROS|50/377 BRN|[from] brn
+  |turn|10
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |damage|p1a: AMPHAROS|0/377 BRN
+  |faint|p1a: AMPHAROS
+  |switch|p1a: QUAGSIRE|Quagsire, L100|379/379
+  |turn|11
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |damage|p1a: QUAGSIRE|295/379
+  |move|p1a: QUAGSIRE|earthquake|p2a
+  |damage|p2a: TYPHLOSION|0/353
+  |faint|p2a: TYPHLOSION
+  |switch|p2a: NOCTOWL|Noctowl, L100|397/397
+  |turn|12
+  |move|p2a: NOCTOWL|steel-wing|p1a
+  |damage|p1a: QUAGSIRE|276/379
+  |move|p1a: QUAGSIRE|surf|p2a
+  |damage|p2a: NOCTOWL|322/397
+  |turn|13
+  |move|p2a: NOCTOWL|steel-wing|p1a
+  |-crit|
+  |damage|p1a: QUAGSIRE|239/379
+  |-boost|p2a: NOCTOWL|def|up|[from] move: steel-wing
+  |move|p1a: QUAGSIRE|surf|p2a
+  |damage|p2a: NOCTOWL|248/397
+  |turn|14
+  |move|p2a: NOCTOWL|steel-wing|p1a
+  |-miss|p2a: NOCTOWL|p1a: QUAGSIRE
+  |move|p1a: QUAGSIRE|surf|p2a
+  |damage|p2a: NOCTOWL|162/397
+  |turn|15
+  |move|p2a: NOCTOWL|steel-wing|p1a
+  |damage|p1a: QUAGSIRE|218/379
+  |move|p1a: QUAGSIRE|surf|p2a
+  |damage|p2a: NOCTOWL|79/397
+  |turn|16
+  |move|p2a: NOCTOWL|steel-wing|p1a
+  |-crit|
+  |damage|p1a: QUAGSIRE|179/379
+  |move|p1a: QUAGSIRE|surf|p2a
+  |damage|p2a: NOCTOWL|1/397
+  |turn|17
+  |move|p2a: NOCTOWL|steel-wing|p1a
+  |-crit|
+  |damage|p1a: QUAGSIRE|139/379
+  |move|p1a: QUAGSIRE|surf|p2a
+  |-crit|
+  |damage|p2a: NOCTOWL|0/397
+  |faint|p2a: NOCTOWL
+  |switch|p2a: MANTINE|Mantine, L100|367/367
+  |turn|18
+  |move|p2a: MANTINE|surf|p1a
+  |damage|p1a: QUAGSIRE|25/379
+  |move|p1a: QUAGSIRE|surf|p2a
+  |damage|p2a: MANTINE|338/367
+  |turn|19
+  |move|p2a: MANTINE|surf|p1a
+  |-crit|
+  |damage|p1a: QUAGSIRE|0/379
+  |faint|p1a: QUAGSIRE
+  |switch|p1a: SCIZOR|Scizor, L100|321/321
+  |turn|20
+  |move|p2a: MANTINE|surf|p1a
+  |damage|p1a: SCIZOR|217/321
+  |move|p1a: SCIZOR|slash|p2a
+  |damage|p2a: MANTINE|263/367
+  |turn|21
+  |move|p2a: MANTINE|surf|p1a
+  |damage|p1a: SCIZOR|108/321
+  |move|p1a: SCIZOR|slash|p2a
+  |damage|p2a: MANTINE|180/367
+  |turn|22
+  |move|p2a: MANTINE|surf|p1a
+  |damage|p1a: SCIZOR|7/321
+  |move|p1a: SCIZOR|slash|p2a
+  |damage|p2a: MANTINE|96/367
+  |turn|23
+  |move|p2a: MANTINE|surf|p1a
+  |damage|p1a: SCIZOR|0/321
+  |faint|p1a: SCIZOR
+  |switch|p1a: MILTANK|Miltank, L100|363/363
+  |turn|24
+  |move|p1a: MILTANK|strength|p2a
+  |damage|p2a: MANTINE|0/367
+  |faint|p2a: MANTINE
+  |switch|p2a: DELIBIRD|Delibird, L100|287/287
+  |turn|25
+  |move|p1a: MILTANK|rollout|p2a
+  |damage|p2a: DELIBIRD|145/287
+  |move|p2a: DELIBIRD|blizzard|p1a
+  |damage|p1a: MILTANK|246/363
+  |turn|26
+  |move|p1a: MILTANK|rollout|p2a
+  |damage|p2a: DELIBIRD|0/287
+  |faint|p2a: DELIBIRD
+  |switch|p2a: GRANBULL|Granbull, L100|377/377
+  |turn|27
+  |move|p1a: MILTANK|strength|p2a
+  |damage|p2a: GRANBULL|275/377
+  |move|p2a: GRANBULL|strength|p1a
+  |damage|p1a: MILTANK|174/363
+  |turn|28
+  |move|p1a: MILTANK|strength|p2a
+  |damage|p2a: GRANBULL|177/377
+  |move|p2a: GRANBULL|strength|p1a
+  |damage|p1a: MILTANK|95/363
+  |turn|29
+  |move|p1a: MILTANK|strength|p2a
+  |damage|p2a: GRANBULL|78/377
+  |move|p2a: GRANBULL|strength|p1a
+  |damage|p1a: MILTANK|15/363
+  |turn|30
+  |move|p1a: MILTANK|strength|p2a
+  |damage|p2a: GRANBULL|0/377
+  |faint|p2a: GRANBULL
+  |win|Mattia?
+
+## Battle 3
+generation: 2
+p1_save: Pokémon - Crystal Version.sav
+p2_save: Pokémon - Gold Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 25
+winner_id: None
+p1_team:
+  1. MANTINE/Mantine L100 HP 0/367 types=water,flying ability=none item=none moves=[surf, blizzard, waterfall, whirlpool]
+  2. TYPHLOSION/Typhlosion L100 HP 0/353 types=fire ability=none item=none moves=[flamethrower, flame-wheel, swift, ember]
+  3. NOCTOWL/Noctowl L100 HP 0/397 types=normal,flying ability=none item=none moves=[steel-wing, fly, flash, mud-slap]
+  4. TYRANITAR/Tyranitar L100 HP 0/397 types=rock,dark ability=none item=none moves=[earthquake, fury-cutter, rock-slide, dig]
+  5. DELIBIRD/Delibird L100 HP 0/287 types=ice,flying ability=none item=none moves=[present, blizzard, toxic, curse]
+  6. GRANBULL/Granbull L100 HP 0/377 types=fairy ability=none item=none moves=[bite, lick, strength, rage]
+p2_team:
+  1. URSARING/Ursaring L100 HP 0/377 types=normal ability=none item=none moves=[dynamic-punch, cut, rest, rock-smash]
+  2. FERALIGATR/Feraligatr L100 HP 0/367 types=water ability=none item=none moves=[slash, hydro-pump, strength, surf]
+  3. ARIADOS/Ariados L100 HP 0/337 types=bug,poison ability=none item=none moves=[psychic, night-shade, leech-life, fury-swipes]
+  4. XATU/Xatu L100 HP 0/327 types=psychic,flying ability=none item=none moves=[night-shade, fly, hyper-beam, confuse-ray]
+  5. AMPHAROS/Ampharos L100 HP 134/377 types=electric ability=none item=none moves=[flash, thunder-punch, thunder-shock, thunder-wave]
+  6. GIRAFARIG/Girafarig L100 HP 337/337 types=normal,psychic ability=none item=none moves=[stomp, agility, baton-pass, psybeam]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Mantine, L100
+  |poke|p1|Typhlosion, L100
+  |poke|p1|Noctowl, L100
+  |poke|p1|Tyranitar, L100
+  |poke|p1|Delibird, L100
+  |poke|p1|Granbull, L100
+  |player|p2|Mattia?
+  |poke|p2|Ursaring, L100
+  |poke|p2|Feraligatr, L100
+  |poke|p2|Ariados, L100
+  |poke|p2|Xatu, L100
+  |poke|p2|Ampharos, L100
+  |poke|p2|Girafarig, L100
+  |start|
+  |switch|p1a: MANTINE|Mantine, L100|367/367
+  |switch|p2a: URSARING|Ursaring, L100|377/377
+  |turn|1
+  |move|p1a: MANTINE|surf|p2a
+  |damage|p2a: URSARING|268/377
+  |move|p2a: URSARING|cut|p1a
+  |damage|p1a: MANTINE|278/367
+  |turn|2
+  |move|p1a: MANTINE|surf|p2a
+  |damage|p2a: URSARING|159/377
+  |move|p2a: URSARING|cut|p1a
+  |damage|p1a: MANTINE|196/367
+  |turn|3
+  |move|p1a: MANTINE|surf|p2a
+  |damage|p2a: URSARING|48/377
+  |move|p2a: URSARING|cut|p1a
+  |damage|p1a: MANTINE|112/367
+  |turn|4
+  |move|p1a: MANTINE|surf|p2a
+  |damage|p2a: URSARING|0/377
+  |faint|p2a: URSARING
+  |switch|p2a: FERALIGATR|Feraligatr, L100|367/367
+  |turn|5
+  |move|p2a: FERALIGATR|strength|p1a
+  |damage|p1a: MANTINE|36/367
+  |move|p1a: MANTINE|surf|p2a
+  |damage|p2a: FERALIGATR|318/367
+  |turn|6
+  |move|p2a: FERALIGATR|strength|p1a
+  |damage|p1a: MANTINE|0/367
+  |faint|p1a: MANTINE
+  |switch|p1a: TYPHLOSION|Typhlosion, L100|353/353
+  |turn|7
+  |move|p1a: TYPHLOSION|flamethrower|p2a
+  |damage|p2a: FERALIGATR|254/367
+  |-status|p2a: FERALIGATR|brn|[from] move: flamethrower
+  |move|p2a: FERALIGATR|hydro-pump|p1a
+  |damage|p1a: TYPHLOSION|117/353
+  |-damage|p2a: FERALIGATR|232/367 BRN|[from] brn
+  |turn|8
+  |move|p1a: TYPHLOSION|flamethrower|p2a
+  |damage|p2a: FERALIGATR|164/367 BRN
+  |move|p2a: FERALIGATR|hydro-pump|p1a
+  |damage|p1a: TYPHLOSION|0/353
+  |faint|p1a: TYPHLOSION
+  |-damage|p2a: FERALIGATR|142/367 BRN|[from] brn
+  |switch|p1a: NOCTOWL|Noctowl, L100|397/397
+  |turn|9
+  |move|p2a: FERALIGATR|hydro-pump|p1a
+  |-miss|p2a: FERALIGATR|p1a: NOCTOWL
+  |move|p1a: NOCTOWL|steel-wing|p2a
+  |damage|p2a: FERALIGATR|123/367 BRN
+  |-damage|p2a: FERALIGATR|101/367 BRN|[from] brn
+  |turn|10
+  |move|p2a: FERALIGATR|hydro-pump|p1a
+  |damage|p1a: NOCTOWL|282/397
+  |move|p1a: NOCTOWL|steel-wing|p2a
+  |damage|p2a: FERALIGATR|83/367 BRN
+  |-boost|p1a: NOCTOWL|def|up|[from] move: steel-wing
+  |-damage|p2a: FERALIGATR|61/367 BRN|[from] brn
+  |turn|11
+  |move|p2a: FERALIGATR|hydro-pump|p1a
+  |damage|p1a: NOCTOWL|172/397
+  |move|p1a: NOCTOWL|steel-wing|p2a
+  |damage|p2a: FERALIGATR|42/367 BRN
+  |-damage|p2a: FERALIGATR|20/367 BRN|[from] brn
+  |turn|12
+  |move|p2a: FERALIGATR|surf|p1a
+  |damage|p1a: NOCTOWL|77/397
+  |move|p1a: NOCTOWL|steel-wing|p2a
+  |damage|p2a: FERALIGATR|1/367 BRN
+  |-damage|p2a: FERALIGATR|0/367 BRN|[from] brn
+  |faint|p2a: FERALIGATR
+  |switch|p2a: ARIADOS|Ariados, L100|337/337
+  |turn|13
+  |move|p1a: NOCTOWL|steel-wing|p2a
+  |damage|p2a: ARIADOS|291/337
+  |-boost|p1a: NOCTOWL|def|up|[from] move: steel-wing
+  |move|p2a: ARIADOS|psychic|p1a
+  |damage|p1a: NOCTOWL|22/397
+  |turn|14
+  |move|p1a: NOCTOWL|steel-wing|p2a
+  |damage|p2a: ARIADOS|246/337
+  |-boost|p1a: NOCTOWL|def|up|[from] move: steel-wing
+  |move|p2a: ARIADOS|psychic|p1a
+  |damage|p1a: NOCTOWL|0/397
+  |faint|p1a: NOCTOWL
+  |switch|p1a: TYRANITAR|Tyranitar, L100|397/397
+  |turn|15
+  |move|p1a: TYRANITAR|rock-slide|p2a
+  |-miss|p1a: TYRANITAR|p2a: ARIADOS
+  |move|p2a: ARIADOS|leech-life|p1a
+  |damage|p1a: TYRANITAR|237/397
+  |-heal|p2a: ARIADOS|326/337|[from] move: leech-life
+  |turn|16
+  |move|p1a: TYRANITAR|rock-slide|p2a
+  |damage|p2a: ARIADOS|36/337
+  |move|p2a: ARIADOS|leech-life|p1a
+  |damage|p1a: TYRANITAR|58/397
+  |-heal|p2a: ARIADOS|125/337|[from] move: leech-life
+  |turn|17
+  |move|p1a: TYRANITAR|rock-slide|p2a
+  |damage|p2a: ARIADOS|0/337
+  |faint|p2a: ARIADOS
+  |switch|p2a: XATU|Xatu, L100|327/327
+  |turn|18
+  |move|p2a: XATU|night-shade|p1a
+  |damage|p1a: TYRANITAR|0/397
+  |faint|p1a: TYRANITAR
+  |switch|p1a: DELIBIRD|Delibird, L100|287/287
+  |turn|19
+  |move|p2a: XATU|hyper-beam|p1a
+  |damage|p1a: DELIBIRD|126/287
+  |move|p1a: DELIBIRD|blizzard|p2a
+  |damage|p2a: XATU|60/327
+  |turn|20
+  |cant|p2a: XATU|recharge
+  |move|p1a: DELIBIRD|blizzard|p2a
+  |-miss|p1a: DELIBIRD|p2a: XATU
+  |turn|21
+  |move|p2a: XATU|hyper-beam|p1a
+  |damage|p1a: DELIBIRD|0/287
+  |faint|p1a: DELIBIRD
+  |switch|p1a: GRANBULL|Granbull, L100|377/377
+  |turn|22
+  |cant|p2a: XATU|recharge
+  |move|p1a: GRANBULL|strength|p2a
+  |damage|p2a: XATU|0/327
+  |faint|p2a: XATU
+  |switch|p2a: AMPHAROS|Ampharos, L100|377/377
+  |turn|23
+  |move|p1a: GRANBULL|strength|p2a
+  |damage|p2a: AMPHAROS|293/377
+  |move|p2a: AMPHAROS|thunder-punch|p1a
+  |damage|p1a: GRANBULL|228/377
+  |turn|24
+  |move|p1a: GRANBULL|strength|p2a
+  |damage|p2a: AMPHAROS|216/377
+  |move|p2a: AMPHAROS|thunder-punch|p1a
+  |damage|p1a: GRANBULL|96/377
+  |turn|25
+  |move|p1a: GRANBULL|strength|p2a
+  |damage|p2a: AMPHAROS|134/377
+  |move|p2a: AMPHAROS|thunder-punch|p1a
+  |damage|p1a: GRANBULL|0/377
+  |faint|p1a: GRANBULL
+  |win|Mattia?
+
+## Battle 4
+generation: 2
+p1_save: Pokémon - Gold Version.sav
+p2_save: Pokémon - Crystal Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 28
+winner_id: None
+p1_team:
+  1. AMPHAROS/Ampharos L100 HP 0/377 types=electric ability=none item=none moves=[flash, thunder-punch, thunder-shock, thunder-wave]
+  2. FERALIGATR/Feraligatr L100 HP 0/367 types=water ability=none item=none moves=[slash, hydro-pump, strength, surf]
+  3. ARIADOS/Ariados L100 HP 0/337 types=bug,poison ability=none item=none moves=[psychic, night-shade, leech-life, fury-swipes]
+  4. XATU/Xatu L100 HP 0/327 types=psychic,flying ability=none item=none moves=[night-shade, fly, hyper-beam, confuse-ray]
+  5. GIRAFARIG/Girafarig L100 HP 0/337 types=normal,psychic ability=none item=none moves=[stomp, agility, baton-pass, psybeam]
+  6. URSARING/Ursaring L100 HP 21/377 types=normal ability=none item=none moves=[dynamic-punch, cut, rest, rock-smash]
+p2_team:
+  1. NOCTOWL/Noctowl L100 HP 0/397 types=normal,flying ability=none item=none moves=[steel-wing, fly, flash, mud-slap]
+  2. TYPHLOSION/Typhlosion L100 HP 0/353 types=fire ability=none item=none moves=[flamethrower, flame-wheel, swift, ember]
+  3. MANTINE/Mantine L100 HP 0/367 types=water,flying ability=none item=none moves=[surf, blizzard, waterfall, whirlpool]
+  4. TYRANITAR/Tyranitar L100 HP 0/397 types=rock,dark ability=none item=none moves=[earthquake, fury-cutter, rock-slide, dig]
+  5. DELIBIRD/Delibird L100 HP 0/287 types=ice,flying ability=none item=none moves=[present, blizzard, toxic, curse]
+  6. GRANBULL/Granbull L100 HP 0/377 types=fairy ability=none item=none moves=[bite, lick, strength, rage]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Ampharos, L100
+  |poke|p1|Feraligatr, L100
+  |poke|p1|Ariados, L100
+  |poke|p1|Xatu, L100
+  |poke|p1|Girafarig, L100
+  |poke|p1|Ursaring, L100
+  |player|p2|Mattia?
+  |poke|p2|Noctowl, L100
+  |poke|p2|Typhlosion, L100
+  |poke|p2|Mantine, L100
+  |poke|p2|Tyranitar, L100
+  |poke|p2|Delibird, L100
+  |poke|p2|Granbull, L100
+  |start|
+  |switch|p1a: AMPHAROS|Ampharos, L100|377/377
+  |switch|p2a: NOCTOWL|Noctowl, L100|397/397
+  |turn|1
+  |move|p2a: NOCTOWL|mud-slap|p1a
+  |damage|p1a: AMPHAROS|353/377
+  |-boost|p1a: AMPHAROS|accuracy|down|[from] move: mud-slap
+  |move|p1a: AMPHAROS|thunder-punch|p2a
+  |-miss|p1a: AMPHAROS|p2a: NOCTOWL
+  |turn|2
+  |move|p2a: NOCTOWL|mud-slap|p1a
+  |damage|p1a: AMPHAROS|326/377
+  |-boost|p1a: AMPHAROS|accuracy|down|[from] move: mud-slap
+  |move|p1a: AMPHAROS|thunder-punch|p2a
+  |damage|p2a: NOCTOWL|174/397
+  |turn|3
+  |move|p2a: NOCTOWL|mud-slap|p1a
+  |damage|p1a: AMPHAROS|301/377
+  |-boost|p1a: AMPHAROS|accuracy|down|[from] move: mud-slap
+  |move|p1a: AMPHAROS|thunder-punch|p2a
+  |damage|p2a: NOCTOWL|0/397
+  |faint|p2a: NOCTOWL
+  |switch|p2a: TYPHLOSION|Typhlosion, L100|353/353
+  |turn|4
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |damage|p1a: AMPHAROS|171/377
+  |move|p1a: AMPHAROS|thunder-punch|p2a
+  |-miss|p1a: AMPHAROS|p2a: TYPHLOSION
+  |turn|5
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |damage|p1a: AMPHAROS|44/377
+  |move|p1a: AMPHAROS|thunder-punch|p2a
+  |-miss|p1a: AMPHAROS|p2a: TYPHLOSION
+  |turn|6
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |damage|p1a: AMPHAROS|0/377
+  |faint|p1a: AMPHAROS
+  |switch|p1a: FERALIGATR|Feraligatr, L100|367/367
+  |turn|7
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |damage|p1a: FERALIGATR|302/367
+  |move|p1a: FERALIGATR|hydro-pump|p2a
+  |damage|p2a: TYPHLOSION|113/353
+  |turn|8
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |damage|p1a: FERALIGATR|240/367
+  |move|p1a: FERALIGATR|hydro-pump|p2a
+  |damage|p2a: TYPHLOSION|0/353
+  |faint|p2a: TYPHLOSION
+  |switch|p2a: MANTINE|Mantine, L100|367/367
+  |turn|9
+  |move|p1a: FERALIGATR|strength|p2a
+  |damage|p2a: MANTINE|284/367
+  |move|p2a: MANTINE|surf|p1a
+  |damage|p1a: FERALIGATR|187/367
+  |turn|10
+  |move|p1a: FERALIGATR|strength|p2a
+  |damage|p2a: MANTINE|203/367
+  |move|p2a: MANTINE|surf|p1a
+  |damage|p1a: FERALIGATR|137/367
+  |turn|11
+  |move|p1a: FERALIGATR|strength|p2a
+  |damage|p2a: MANTINE|122/367
+  |move|p2a: MANTINE|surf|p1a
+  |damage|p1a: FERALIGATR|82/367
+  |turn|12
+  |move|p1a: FERALIGATR|strength|p2a
+  |damage|p2a: MANTINE|38/367
+  |move|p2a: MANTINE|surf|p1a
+  |damage|p1a: FERALIGATR|29/367
+  |turn|13
+  |move|p1a: FERALIGATR|strength|p2a
+  |damage|p2a: MANTINE|0/367
+  |faint|p2a: MANTINE
+  |switch|p2a: TYRANITAR|Tyranitar, L100|397/397
+  |turn|14
+  |move|p1a: FERALIGATR|hydro-pump|p2a
+  |damage|p2a: TYRANITAR|194/397
+  |move|p2a: TYRANITAR|rock-slide|p1a
+  |damage|p1a: FERALIGATR|0/367
+  |faint|p1a: FERALIGATR
+  |switch|p1a: ARIADOS|Ariados, L100|337/337
+  |turn|15
+  |move|p2a: TYRANITAR|rock-slide|p1a
+  |damage|p1a: ARIADOS|67/337
+  |move|p1a: ARIADOS|leech-life|p2a
+  |damage|p2a: TYRANITAR|24/397
+  |-heal|p1a: ARIADOS|152/337|[from] move: leech-life
+  |turn|16
+  |move|p2a: TYRANITAR|rock-slide|p1a
+  |damage|p1a: ARIADOS|0/337
+  |faint|p1a: ARIADOS
+  |switch|p1a: XATU|Xatu, L100|327/327
+  |turn|17
+  |move|p1a: XATU|night-shade|p2a
+  |damage|p2a: TYRANITAR|0/397
+  |faint|p2a: TYRANITAR
+  |switch|p2a: DELIBIRD|Delibird, L100|287/287
+  |turn|18
+  |move|p1a: XATU|hyper-beam|p2a
+  |damage|p2a: DELIBIRD|133/287
+  |move|p2a: DELIBIRD|blizzard|p1a
+  |damage|p1a: XATU|74/327
+  |-status|p1a: XATU|frz|[from] move: blizzard
+  |turn|19
+  |cant|p1a: XATU|frz
+  |move|p2a: DELIBIRD|blizzard|p1a
+  |damage|p1a: XATU|0/327 FRZ
+  |faint|p1a: XATU
+  |switch|p1a: GIRAFARIG|Girafarig, L100|337/337
+  |turn|20
+  |move|p2a: DELIBIRD|blizzard|p1a
+  |damage|p1a: GIRAFARIG|186/337
+  |move|p1a: GIRAFARIG|psybeam|p2a
+  |damage|p2a: DELIBIRD|31/287
+  |turn|21
+  |move|p2a: DELIBIRD|blizzard|p1a
+  |damage|p1a: GIRAFARIG|30/337
+  |move|p1a: GIRAFARIG|psybeam|p2a
+  |damage|p2a: DELIBIRD|0/287
+  |faint|p2a: DELIBIRD
+  |switch|p2a: GRANBULL|Granbull, L100|377/377
+  |turn|22
+  |move|p1a: GIRAFARIG|psybeam|p2a
+  |damage|p2a: GRANBULL|282/377
+  |move|p2a: GRANBULL|bite|p1a
+  |damage|p1a: GIRAFARIG|0/337
+  |faint|p1a: GIRAFARIG
+  |switch|p1a: URSARING|Ursaring, L100|377/377
+  |turn|23
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |-miss|p1a: URSARING|p2a: GRANBULL
+  |move|p2a: GRANBULL|strength|p1a
+  |damage|p1a: URSARING|290/377
+  |turn|24
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |damage|p2a: GRANBULL|172/377
+  |-activate|p2a: GRANBULL|confusion
+  |-activate|p2a: GRANBULL|confusion
+  |move|p2a: GRANBULL|strength|p1a
+  |damage|p1a: URSARING|204/377
+  |turn|25
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |damage|p2a: GRANBULL|65/377
+  |-activate|p2a: GRANBULL|confusion
+  |-activate|p2a: GRANBULL|confusion
+  |move|p2a: GRANBULL|strength|p1a
+  |damage|p1a: URSARING|112/377
+  |turn|26
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |-miss|p1a: URSARING|p2a: GRANBULL
+  |-activate|p2a: GRANBULL|confusion
+  |-damage|p2a: GRANBULL|18/377|[from] confusion
+  |-end|p2a: GRANBULL|confusion
+  |turn|27
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |-miss|p1a: URSARING|p2a: GRANBULL
+  |move|p2a: GRANBULL|strength|p1a
+  |damage|p1a: URSARING|21/377
+  |turn|28
+  |move|p1a: URSARING|cut|p2a
+  |damage|p2a: GRANBULL|0/377
+  |faint|p2a: GRANBULL
+  |win|Mattia?
+
+## Battle 5
+generation: 2
+p1_save: Pokémon - Silver Version.sav
+p2_save: Pokémon - Gold Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 24
+winner_id: None
+p1_team:
+  1. SCIZOR/Scizor L100 HP 0/321 types=bug,steel ability=none item=none moves=[slash, wing-attack, swords-dance, cut]
+  2. MEGANIUM/Meganium L100 HP 0/333 types=grass ability=none item=none moves=[giga-drain, poison-powder, razor-leaf, reflect]
+  3. CROBAT/Crobat L100 HP 0/367 types=poison,flying ability=none item=none moves=[bite, confuse-ray, wing-attack, fly]
+  4. AMPHAROS/Ampharos L100 HP 76/377 types=electric ability=none item=none moves=[thunder-punch, thunderbolt, flash, iron-tail]
+  5. QUAGSIRE/Quagsire L100 HP 379/379 types=water,ground ability=none item=none moves=[earthquake, surf, mud-slap, dig]
+  6. MILTANK/Miltank L100 HP 363/363 types=normal ability=none item=none moves=[rollout, strength, milk-drink, rock-smash]
+p2_team:
+  1. AMPHAROS/Ampharos L100 HP 0/377 types=electric ability=none item=none moves=[flash, thunder-punch, thunder-shock, thunder-wave]
+  2. FERALIGATR/Feraligatr L100 HP 0/367 types=water ability=none item=none moves=[slash, hydro-pump, strength, surf]
+  3. ARIADOS/Ariados L100 HP 0/337 types=bug,poison ability=none item=none moves=[psychic, night-shade, leech-life, fury-swipes]
+  4. XATU/Xatu L100 HP 0/327 types=psychic,flying ability=none item=none moves=[night-shade, fly, hyper-beam, confuse-ray]
+  5. GIRAFARIG/Girafarig L100 HP 0/337 types=normal,psychic ability=none item=none moves=[stomp, agility, baton-pass, psybeam]
+  6. URSARING/Ursaring L100 HP 0/377 types=normal ability=none item=none moves=[dynamic-punch, cut, rest, rock-smash]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Scizor, L100
+  |poke|p1|Meganium, L100
+  |poke|p1|Crobat, L100
+  |poke|p1|Ampharos, L100
+  |poke|p1|Quagsire, L100
+  |poke|p1|Miltank, L100
+  |player|p2|Mattia?
+  |poke|p2|Ampharos, L100
+  |poke|p2|Feraligatr, L100
+  |poke|p2|Ariados, L100
+  |poke|p2|Xatu, L100
+  |poke|p2|Girafarig, L100
+  |poke|p2|Ursaring, L100
+  |start|
+  |switch|p1a: SCIZOR|Scizor, L100|321/321
+  |switch|p2a: AMPHAROS|Ampharos, L100|377/377
+  |turn|1
+  |move|p1a: SCIZOR|slash|p2a
+  |damage|p2a: AMPHAROS|309/377
+  |move|p2a: AMPHAROS|thunder-punch|p1a
+  |damage|p1a: SCIZOR|198/321
+  |-status|p1a: SCIZOR|par|[from] move: thunder-punch
+  |turn|2
+  |move|p2a: AMPHAROS|thunder-punch|p1a
+  |damage|p1a: SCIZOR|84/321 PAR
+  |move|p1a: SCIZOR|slash|p2a
+  |damage|p2a: AMPHAROS|236/377
+  |turn|3
+  |move|p2a: AMPHAROS|thunder-punch|p1a
+  |damage|p1a: SCIZOR|0/321 PAR
+  |faint|p1a: SCIZOR
+  |switch|p1a: MEGANIUM|Meganium, L100|333/333
+  |turn|4
+  |move|p1a: MEGANIUM|giga-drain|p2a
+  |damage|p2a: AMPHAROS|154/377
+  |-heal|p1a: MEGANIUM|333/333|[from] move: giga-drain
+  |move|p2a: AMPHAROS|thunder-punch|p1a
+  |damage|p1a: MEGANIUM|286/333
+  |turn|5
+  |move|p1a: MEGANIUM|giga-drain|p2a
+  |damage|p2a: AMPHAROS|77/377
+  |-heal|p1a: MEGANIUM|324/333|[from] move: giga-drain
+  |move|p2a: AMPHAROS|thunder-punch|p1a
+  |damage|p1a: MEGANIUM|271/333
+  |turn|6
+  |move|p1a: MEGANIUM|giga-drain|p2a
+  |damage|p2a: AMPHAROS|0/377
+  |faint|p2a: AMPHAROS
+  |-heal|p1a: MEGANIUM|314/333|[from] move: giga-drain
+  |switch|p2a: FERALIGATR|Feraligatr, L100|367/367
+  |turn|7
+  |move|p1a: MEGANIUM|giga-drain|p2a
+  |damage|p2a: FERALIGATR|177/367
+  |-heal|p1a: MEGANIUM|333/333|[from] move: giga-drain
+  |move|p2a: FERALIGATR|strength|p1a
+  |damage|p1a: MEGANIUM|261/333
+  |turn|8
+  |move|p1a: MEGANIUM|giga-drain|p2a
+  |damage|p2a: FERALIGATR|0/367
+  |faint|p2a: FERALIGATR
+  |-heal|p1a: MEGANIUM|333/333|[from] move: giga-drain
+  |switch|p2a: ARIADOS|Ariados, L100|337/337
+  |turn|9
+  |move|p1a: MEGANIUM|giga-drain|p2a
+  |damage|p2a: ARIADOS|311/337
+  |-heal|p1a: MEGANIUM|333/333|[from] move: giga-drain
+  |move|p2a: ARIADOS|leech-life|p1a
+  |-crit|
+  |damage|p1a: MEGANIUM|0/333
+  |faint|p1a: MEGANIUM
+  |-heal|p2a: ARIADOS|337/337|[from] move: leech-life
+  |switch|p1a: CROBAT|Crobat, L100|367/367
+  |turn|10
+  |move|p1a: CROBAT|wing-attack|p2a
+  |damage|p2a: ARIADOS|182/337
+  |move|p2a: ARIADOS|psychic|p1a
+  |damage|p1a: CROBAT|250/367
+  |turn|11
+  |move|p1a: CROBAT|wing-attack|p2a
+  |damage|p2a: ARIADOS|17/337
+  |move|p2a: ARIADOS|psychic|p1a
+  |damage|p1a: CROBAT|130/367
+  |turn|12
+  |move|p1a: CROBAT|wing-attack|p2a
+  |damage|p2a: ARIADOS|0/337
+  |faint|p2a: ARIADOS
+  |switch|p2a: XATU|Xatu, L100|327/327
+  |turn|13
+  |move|p1a: CROBAT|bite|p2a
+  |damage|p2a: XATU|225/327
+  |move|p2a: XATU|hyper-beam|p1a
+  |damage|p1a: CROBAT|8/367
+  |turn|14
+  |move|p1a: CROBAT|bite|p2a
+  |damage|p2a: XATU|131/327
+  |cant|p2a: XATU|recharge
+  |turn|15
+  |move|p1a: CROBAT|bite|p2a
+  |damage|p2a: XATU|26/327
+  |move|p2a: XATU|hyper-beam|p1a
+  |-miss|p2a: XATU|p1a: CROBAT
+  |turn|16
+  |move|p1a: CROBAT|bite|p2a
+  |damage|p2a: XATU|0/327
+  |faint|p2a: XATU
+  |switch|p2a: GIRAFARIG|Girafarig, L100|337/337
+  |turn|17
+  |move|p1a: CROBAT|bite|p2a
+  |damage|p2a: GIRAFARIG|221/337
+  |move|p2a: GIRAFARIG|psybeam|p1a
+  |-crit|
+  |damage|p1a: CROBAT|0/367
+  |faint|p1a: CROBAT
+  |switch|p1a: AMPHAROS|Ampharos, L100|377/377
+  |turn|18
+  |move|p2a: GIRAFARIG|stomp|p1a
+  |damage|p1a: AMPHAROS|306/377
+  |-flinch|p1a: AMPHAROS
+  |cant|p1a: AMPHAROS|flinch
+  |turn|19
+  |move|p2a: GIRAFARIG|stomp|p1a
+  |damage|p1a: AMPHAROS|228/377
+  |move|p1a: AMPHAROS|thunderbolt|p2a
+  |damage|p2a: GIRAFARIG|53/337
+  |turn|20
+  |move|p2a: GIRAFARIG|stomp|p1a
+  |damage|p1a: AMPHAROS|156/377
+  |-flinch|p1a: AMPHAROS
+  |cant|p1a: AMPHAROS|flinch
+  |turn|21
+  |move|p2a: GIRAFARIG|stomp|p1a
+  |damage|p1a: AMPHAROS|76/377
+  |move|p1a: AMPHAROS|thunderbolt|p2a
+  |damage|p2a: GIRAFARIG|0/337
+  |faint|p2a: GIRAFARIG
+  |switch|p2a: URSARING|Ursaring, L100|377/377
+  |turn|22
+  |move|p1a: AMPHAROS|thunderbolt|p2a
+  |damage|p2a: URSARING|252/377
+  |move|p2a: URSARING|dynamic-punch|p1a
+  |-miss|p2a: URSARING|p1a: AMPHAROS
+  |turn|23
+  |move|p1a: AMPHAROS|thunderbolt|p2a
+  |damage|p2a: URSARING|126/377
+  |move|p2a: URSARING|dynamic-punch|p1a
+  |-miss|p2a: URSARING|p1a: AMPHAROS
+  |turn|24
+  |move|p1a: AMPHAROS|thunderbolt|p2a
+  |damage|p2a: URSARING|0/377
+  |faint|p2a: URSARING
+  |win|Mattia?
+
+## Battle 6
+generation: 2
+p1_save: Pokémon - Crystal Version.sav
+p2_save: Pokémon - Silver Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 22
+winner_id: None
+p1_team:
+  1. GRANBULL/Granbull L100 HP 0/377 types=fairy ability=none item=none moves=[bite, lick, strength, rage]
+  2. TYPHLOSION/Typhlosion L100 HP 0/353 types=fire ability=none item=none moves=[flamethrower, flame-wheel, swift, ember]
+  3. NOCTOWL/Noctowl L100 HP 0/397 types=normal,flying ability=none item=none moves=[steel-wing, fly, flash, mud-slap]
+  4. MANTINE/Mantine L100 HP 0/367 types=water,flying ability=none item=none moves=[surf, blizzard, waterfall, whirlpool]
+  5. TYRANITAR/Tyranitar L100 HP 0/397 types=rock,dark ability=none item=none moves=[earthquake, fury-cutter, rock-slide, dig]
+  6. DELIBIRD/Delibird L100 HP 0/287 types=ice,flying ability=none item=none moves=[present, blizzard, toxic, curse]
+p2_team:
+  1. MILTANK/Miltank L100 HP 0/363 types=normal ability=none item=none moves=[rollout, strength, milk-drink, rock-smash]
+  2. MEGANIUM/Meganium L100 HP 0/333 types=grass ability=none item=none moves=[giga-drain, poison-powder, razor-leaf, reflect]
+  3. CROBAT/Crobat L100 HP 0/367 types=poison,flying ability=none item=none moves=[bite, confuse-ray, wing-attack, fly]
+  4. AMPHAROS/Ampharos L100 HP 0/377 types=electric ability=none item=none moves=[thunder-punch, thunderbolt, flash, iron-tail]
+  5. QUAGSIRE/Quagsire L100 HP 0/379 types=water,ground ability=none item=none moves=[earthquake, surf, mud-slap, dig]
+  6. SCIZOR/Scizor L100 HP 265/321 types=bug,steel ability=none item=none moves=[slash, wing-attack, swords-dance, cut]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Granbull, L100
+  |poke|p1|Typhlosion, L100
+  |poke|p1|Noctowl, L100
+  |poke|p1|Mantine, L100
+  |poke|p1|Tyranitar, L100
+  |poke|p1|Delibird, L100
+  |player|p2|Mattia?
+  |poke|p2|Miltank, L100
+  |poke|p2|Meganium, L100
+  |poke|p2|Crobat, L100
+  |poke|p2|Ampharos, L100
+  |poke|p2|Quagsire, L100
+  |poke|p2|Scizor, L100
+  |start|
+  |switch|p1a: GRANBULL|Granbull, L100|377/377
+  |switch|p2a: MILTANK|Miltank, L100|363/363
+  |turn|1
+  |move|p2a: MILTANK|strength|p1a
+  |damage|p1a: GRANBULL|286/377
+  |move|p1a: GRANBULL|strength|p2a
+  |damage|p2a: MILTANK|285/363
+  |turn|2
+  |move|p2a: MILTANK|strength|p1a
+  |damage|p1a: GRANBULL|183/377
+  |move|p1a: GRANBULL|strength|p2a
+  |damage|p2a: MILTANK|216/363
+  |turn|3
+  |move|p2a: MILTANK|strength|p1a
+  |damage|p1a: GRANBULL|88/377
+  |move|p1a: GRANBULL|strength|p2a
+  |damage|p2a: MILTANK|139/363
+  |turn|4
+  |move|p2a: MILTANK|strength|p1a
+  |damage|p1a: GRANBULL|0/377
+  |faint|p1a: GRANBULL
+  |switch|p1a: TYPHLOSION|Typhlosion, L100|353/353
+  |turn|5
+  |move|p2a: MILTANK|strength|p1a
+  |damage|p1a: TYPHLOSION|255/353
+  |move|p1a: TYPHLOSION|flamethrower|p2a
+  |damage|p2a: MILTANK|0/363
+  |faint|p2a: MILTANK
+  |switch|p2a: MEGANIUM|Meganium, L100|333/333
+  |turn|6
+  |move|p1a: TYPHLOSION|flamethrower|p2a
+  |damage|p2a: MEGANIUM|103/333
+  |move|p2a: MEGANIUM|giga-drain|p1a
+  |damage|p1a: TYPHLOSION|210/353
+  |-heal|p2a: MEGANIUM|125/333|[from] move: giga-drain
+  |turn|7
+  |move|p1a: TYPHLOSION|flamethrower|p2a
+  |damage|p2a: MEGANIUM|0/333
+  |faint|p2a: MEGANIUM
+  |switch|p2a: CROBAT|Crobat, L100|367/367
+  |turn|8
+  |move|p2a: CROBAT|wing-attack|p1a
+  |damage|p1a: TYPHLOSION|137/353
+  |move|p1a: TYPHLOSION|flamethrower|p2a
+  |damage|p2a: CROBAT|230/367
+  |turn|9
+  |move|p2a: CROBAT|wing-attack|p1a
+  |damage|p1a: TYPHLOSION|63/353
+  |move|p1a: TYPHLOSION|flamethrower|p2a
+  |damage|p2a: CROBAT|109/367
+  |turn|10
+  |move|p2a: CROBAT|wing-attack|p1a
+  |damage|p1a: TYPHLOSION|0/353
+  |faint|p1a: TYPHLOSION
+  |switch|p1a: NOCTOWL|Noctowl, L100|397/397
+  |turn|11
+  |move|p2a: CROBAT|wing-attack|p1a
+  |damage|p1a: NOCTOWL|297/397
+  |move|p1a: NOCTOWL|steel-wing|p2a
+  |damage|p2a: CROBAT|64/367
+  |turn|12
+  |move|p2a: CROBAT|wing-attack|p1a
+  |damage|p1a: NOCTOWL|197/397
+  |move|p1a: NOCTOWL|steel-wing|p2a
+  |damage|p2a: CROBAT|20/367
+  |turn|13
+  |move|p2a: CROBAT|wing-attack|p1a
+  |damage|p1a: NOCTOWL|98/397
+  |move|p1a: NOCTOWL|steel-wing|p2a
+  |damage|p2a: CROBAT|0/367
+  |faint|p2a: CROBAT
+  |switch|p2a: AMPHAROS|Ampharos, L100|377/377
+  |turn|14
+  |move|p1a: NOCTOWL|mud-slap|p2a
+  |damage|p2a: AMPHAROS|351/377
+  |-boost|p2a: AMPHAROS|accuracy|down|[from] move: mud-slap
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: NOCTOWL|0/397
+  |faint|p1a: NOCTOWL
+  |switch|p1a: MANTINE|Mantine, L100|367/367
+  |turn|15
+  |move|p1a: MANTINE|surf|p2a
+  |damage|p2a: AMPHAROS|248/377
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: MANTINE|31/367
+  |turn|16
+  |move|p1a: MANTINE|surf|p2a
+  |damage|p2a: AMPHAROS|143/377
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: MANTINE|0/367
+  |faint|p1a: MANTINE
+  |switch|p1a: TYRANITAR|Tyranitar, L100|397/397
+  |turn|17
+  |move|p1a: TYRANITAR|earthquake|p2a
+  |damage|p2a: AMPHAROS|0/377
+  |faint|p2a: AMPHAROS
+  |switch|p2a: QUAGSIRE|Quagsire, L100|379/379
+  |turn|18
+  |move|p1a: TYRANITAR|earthquake|p2a
+  |damage|p2a: QUAGSIRE|272/379
+  |move|p2a: QUAGSIRE|earthquake|p1a
+  |-crit|
+  |damage|p1a: TYRANITAR|24/397
+  |turn|19
+  |move|p1a: TYRANITAR|earthquake|p2a
+  |damage|p2a: QUAGSIRE|163/379
+  |move|p2a: QUAGSIRE|earthquake|p1a
+  |damage|p1a: TYRANITAR|0/397
+  |faint|p1a: TYRANITAR
+  |switch|p1a: DELIBIRD|Delibird, L100|287/287
+  |turn|20
+  |move|p1a: DELIBIRD|blizzard|p2a
+  |-miss|p1a: DELIBIRD|p2a: QUAGSIRE
+  |move|p2a: QUAGSIRE|surf|p1a
+  |-crit|
+  |damage|p1a: DELIBIRD|36/287
+  |turn|21
+  |move|p1a: DELIBIRD|blizzard|p2a
+  |-crit|
+  |damage|p2a: QUAGSIRE|0/379
+  |faint|p2a: QUAGSIRE
+  |switch|p2a: SCIZOR|Scizor, L100|321/321
+  |turn|22
+  |move|p1a: DELIBIRD|blizzard|p2a
+  |damage|p2a: SCIZOR|265/321
+  |move|p2a: SCIZOR|slash|p1a
+  |-crit|
+  |damage|p1a: DELIBIRD|0/287
+  |faint|p1a: DELIBIRD
+  |win|Mattia?
+
+## Battle 7
+generation: 2
+p1_save: Pokémon - Gold Version.sav
+p2_save: Pokémon - Silver Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 26
+winner_id: None
+p1_team:
+  1. FERALIGATR/Feraligatr L100 HP 0/367 types=water ability=none item=none moves=[slash, hydro-pump, strength, surf]
+  2. ARIADOS/Ariados L100 HP 0/337 types=bug,poison ability=none item=none moves=[psychic, night-shade, leech-life, fury-swipes]
+  3. XATU/Xatu L100 HP 0/327 types=psychic,flying ability=none item=none moves=[night-shade, fly, hyper-beam, confuse-ray]
+  4. AMPHAROS/Ampharos L100 HP 0/377 types=electric ability=none item=none moves=[flash, thunder-punch, thunder-shock, thunder-wave]
+  5. GIRAFARIG/Girafarig L100 HP 0/337 types=normal,psychic ability=none item=none moves=[stomp, agility, baton-pass, psybeam]
+  6. URSARING/Ursaring L100 HP 37/377 types=normal ability=none item=none moves=[dynamic-punch, cut, rest, rock-smash]
+p2_team:
+  1. CROBAT/Crobat L100 HP 0/367 types=poison,flying ability=none item=none moves=[bite, confuse-ray, wing-attack, fly]
+  2. MEGANIUM/Meganium L100 HP 0/333 types=grass ability=none item=none moves=[giga-drain, poison-powder, razor-leaf, reflect]
+  3. AMPHAROS/Ampharos L100 HP 0/377 types=electric ability=none item=none moves=[thunder-punch, thunderbolt, flash, iron-tail]
+  4. QUAGSIRE/Quagsire L100 HP 0/379 types=water,ground ability=none item=none moves=[earthquake, surf, mud-slap, dig]
+  5. SCIZOR/Scizor L100 HP 0/321 types=bug,steel ability=none item=none moves=[slash, wing-attack, swords-dance, cut]
+  6. MILTANK/Miltank L100 HP 0/363 types=normal ability=none item=none moves=[rollout, strength, milk-drink, rock-smash]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Feraligatr, L100
+  |poke|p1|Ariados, L100
+  |poke|p1|Xatu, L100
+  |poke|p1|Ampharos, L100
+  |poke|p1|Girafarig, L100
+  |poke|p1|Ursaring, L100
+  |player|p2|Mattia?
+  |poke|p2|Crobat, L100
+  |poke|p2|Meganium, L100
+  |poke|p2|Ampharos, L100
+  |poke|p2|Quagsire, L100
+  |poke|p2|Scizor, L100
+  |poke|p2|Miltank, L100
+  |start|
+  |switch|p1a: FERALIGATR|Feraligatr, L100|367/367
+  |switch|p2a: CROBAT|Crobat, L100|367/367
+  |turn|1
+  |move|p2a: CROBAT|wing-attack|p1a
+  |-crit|
+  |damage|p1a: FERALIGATR|248/367
+  |move|p1a: FERALIGATR|hydro-pump|p2a
+  |damage|p2a: CROBAT|242/367
+  |turn|2
+  |move|p2a: CROBAT|wing-attack|p1a
+  |damage|p1a: FERALIGATR|184/367
+  |move|p1a: FERALIGATR|hydro-pump|p2a
+  |damage|p2a: CROBAT|126/367
+  |turn|3
+  |move|p2a: CROBAT|wing-attack|p1a
+  |damage|p1a: FERALIGATR|120/367
+  |move|p1a: FERALIGATR|hydro-pump|p2a
+  |damage|p2a: CROBAT|9/367
+  |turn|4
+  |move|p2a: CROBAT|wing-attack|p1a
+  |damage|p1a: FERALIGATR|55/367
+  |move|p1a: FERALIGATR|hydro-pump|p2a
+  |damage|p2a: CROBAT|0/367
+  |faint|p2a: CROBAT
+  |switch|p2a: MEGANIUM|Meganium, L100|333/333
+  |turn|5
+  |move|p2a: MEGANIUM|giga-drain|p1a
+  |damage|p1a: FERALIGATR|0/367
+  |faint|p1a: FERALIGATR
+  |-heal|p2a: MEGANIUM|333/333|[from] move: giga-drain
+  |switch|p1a: ARIADOS|Ariados, L100|337/337
+  |turn|6
+  |move|p2a: MEGANIUM|giga-drain|p1a
+  |damage|p1a: ARIADOS|311/337
+  |-heal|p2a: MEGANIUM|333/333|[from] move: giga-drain
+  |move|p1a: ARIADOS|leech-life|p2a
+  |damage|p2a: MEGANIUM|144/333
+  |-heal|p1a: ARIADOS|337/337|[from] move: leech-life
+  |turn|7
+  |move|p2a: MEGANIUM|giga-drain|p1a
+  |damage|p1a: ARIADOS|312/337
+  |-heal|p2a: MEGANIUM|156/333|[from] move: giga-drain
+  |move|p1a: ARIADOS|leech-life|p2a
+  |-crit|
+  |damage|p2a: MEGANIUM|0/333
+  |faint|p2a: MEGANIUM
+  |-heal|p1a: ARIADOS|337/337|[from] move: leech-life
+  |switch|p2a: AMPHAROS|Ampharos, L100|377/377
+  |turn|8
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: ARIADOS|205/337
+  |move|p1a: ARIADOS|leech-life|p2a
+  |damage|p2a: AMPHAROS|273/377
+  |-heal|p1a: ARIADOS|257/337|[from] move: leech-life
+  |turn|9
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: ARIADOS|112/337
+  |move|p1a: ARIADOS|leech-life|p2a
+  |damage|p2a: AMPHAROS|176/377
+  |-heal|p1a: ARIADOS|160/337|[from] move: leech-life
+  |turn|10
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: ARIADOS|22/337
+  |move|p1a: ARIADOS|leech-life|p2a
+  |damage|p2a: AMPHAROS|76/377
+  |-heal|p1a: ARIADOS|72/337|[from] move: leech-life
+  |turn|11
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: ARIADOS|0/337
+  |faint|p1a: ARIADOS
+  |switch|p1a: XATU|Xatu, L100|327/327
+  |turn|12
+  |move|p1a: XATU|hyper-beam|p2a
+  |damage|p2a: AMPHAROS|0/377
+  |faint|p2a: AMPHAROS
+  |switch|p2a: QUAGSIRE|Quagsire, L100|379/379
+  |turn|13
+  |cant|p1a: XATU|recharge
+  |move|p2a: QUAGSIRE|surf|p1a
+  |damage|p1a: XATU|222/327
+  |turn|14
+  |move|p1a: XATU|hyper-beam|p2a
+  |damage|p2a: QUAGSIRE|262/379
+  |move|p2a: QUAGSIRE|surf|p1a
+  |damage|p1a: XATU|112/327
+  |turn|15
+  |cant|p1a: XATU|recharge
+  |move|p2a: QUAGSIRE|surf|p1a
+  |damage|p1a: XATU|8/327
+  |turn|16
+  |move|p1a: XATU|hyper-beam|p2a
+  |damage|p2a: QUAGSIRE|157/379
+  |move|p2a: QUAGSIRE|surf|p1a
+  |damage|p1a: XATU|0/327
+  |faint|p1a: XATU
+  |switch|p1a: AMPHAROS|Ampharos, L100|377/377
+  |turn|17
+  |move|p1a: AMPHAROS|thunder-punch|p2a
+  |-immune|p2a: QUAGSIRE
+  |move|p2a: QUAGSIRE|earthquake|p1a
+  |-crit|
+  |damage|p1a: AMPHAROS|0/377
+  |faint|p1a: AMPHAROS
+  |switch|p1a: GIRAFARIG|Girafarig, L100|337/337
+  |turn|18
+  |move|p1a: GIRAFARIG|psybeam|p2a
+  |damage|p2a: QUAGSIRE|69/379
+  |-activate|p2a: QUAGSIRE|confusion
+  |-activate|p2a: QUAGSIRE|confusion
+  |move|p2a: QUAGSIRE|earthquake|p1a
+  |damage|p1a: GIRAFARIG|192/337
+  |turn|19
+  |move|p1a: GIRAFARIG|psybeam|p2a
+  |damage|p2a: QUAGSIRE|0/379
+  |faint|p2a: QUAGSIRE
+  |switch|p2a: SCIZOR|Scizor, L100|321/321
+  |turn|20
+  |move|p2a: SCIZOR|slash|p1a
+  |damage|p1a: GIRAFARIG|106/337
+  |move|p1a: GIRAFARIG|psybeam|p2a
+  |damage|p2a: SCIZOR|286/321
+  |turn|21
+  |move|p2a: SCIZOR|slash|p1a
+  |damage|p1a: GIRAFARIG|24/337
+  |move|p1a: GIRAFARIG|psybeam|p2a
+  |damage|p2a: SCIZOR|253/321
+  |turn|22
+  |move|p2a: SCIZOR|slash|p1a
+  |damage|p1a: GIRAFARIG|0/337
+  |faint|p1a: GIRAFARIG
+  |switch|p1a: URSARING|Ursaring, L100|377/377
+  |turn|23
+  |move|p2a: SCIZOR|slash|p1a
+  |damage|p1a: URSARING|293/377
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |damage|p2a: SCIZOR|164/321
+  |-activate|p2a: SCIZOR|confusion
+  |turn|24
+  |-activate|p2a: SCIZOR|confusion
+  |move|p2a: SCIZOR|slash|p1a
+  |-crit|
+  |damage|p1a: URSARING|140/377
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |damage|p2a: SCIZOR|70/321
+  |-activate|p2a: SCIZOR|confusion
+  |turn|25
+  |-activate|p2a: SCIZOR|confusion
+  |-damage|p2a: SCIZOR|28/321|[from] confusion
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |damage|p2a: SCIZOR|0/321
+  |faint|p2a: SCIZOR
+  |switch|p2a: MILTANK|Miltank, L100|363/363
+  |turn|26
+  |move|p2a: MILTANK|strength|p1a
+  |damage|p1a: URSARING|37/377
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |-crit|
+  |damage|p2a: MILTANK|0/363
+  |faint|p2a: MILTANK
+  |win|Mattia?
+
+## Battle 8
+generation: 2
+p1_save: Pokémon - Silver Version.sav
+p2_save: Pokémon - Crystal Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 30
+winner_id: None
+p1_team:
+  1. CROBAT/Crobat L100 HP 0/367 types=poison,flying ability=none item=none moves=[bite, confuse-ray, wing-attack, fly]
+  2. MEGANIUM/Meganium L100 HP 0/333 types=grass ability=none item=none moves=[giga-drain, poison-powder, razor-leaf, reflect]
+  3. AMPHAROS/Ampharos L100 HP 0/377 types=electric ability=none item=none moves=[thunder-punch, thunderbolt, flash, iron-tail]
+  4. QUAGSIRE/Quagsire L100 HP 0/379 types=water,ground ability=none item=none moves=[earthquake, surf, mud-slap, dig]
+  5. SCIZOR/Scizor L100 HP 0/321 types=bug,steel ability=none item=none moves=[slash, wing-attack, swords-dance, cut]
+  6. MILTANK/Miltank L100 HP 66/363 types=normal ability=none item=none moves=[rollout, strength, milk-drink, rock-smash]
+p2_team:
+  1. TYRANITAR/Tyranitar L100 HP 0/397 types=rock,dark ability=none item=none moves=[earthquake, fury-cutter, rock-slide, dig]
+  2. TYPHLOSION/Typhlosion L100 HP 0/353 types=fire ability=none item=none moves=[flamethrower, flame-wheel, swift, ember]
+  3. NOCTOWL/Noctowl L100 HP 0/397 types=normal,flying ability=none item=none moves=[steel-wing, fly, flash, mud-slap]
+  4. MANTINE/Mantine L100 HP 0/367 types=water,flying ability=none item=none moves=[surf, blizzard, waterfall, whirlpool]
+  5. DELIBIRD/Delibird L100 HP 0/287 types=ice,flying ability=none item=none moves=[present, blizzard, toxic, curse]
+  6. GRANBULL/Granbull L100 HP 0/377 types=fairy ability=none item=none moves=[bite, lick, strength, rage]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Crobat, L100
+  |poke|p1|Meganium, L100
+  |poke|p1|Ampharos, L100
+  |poke|p1|Quagsire, L100
+  |poke|p1|Scizor, L100
+  |poke|p1|Miltank, L100
+  |player|p2|Mattia?
+  |poke|p2|Tyranitar, L100
+  |poke|p2|Typhlosion, L100
+  |poke|p2|Noctowl, L100
+  |poke|p2|Mantine, L100
+  |poke|p2|Delibird, L100
+  |poke|p2|Granbull, L100
+  |start|
+  |switch|p1a: CROBAT|Crobat, L100|367/367
+  |switch|p2a: TYRANITAR|Tyranitar, L100|397/397
+  |turn|1
+  |move|p1a: CROBAT|wing-attack|p2a
+  |damage|p2a: TYRANITAR|369/397
+  |move|p2a: TYRANITAR|rock-slide|p1a
+  |damage|p1a: CROBAT|75/367
+  |turn|2
+  |move|p1a: CROBAT|wing-attack|p2a
+  |damage|p2a: TYRANITAR|338/397
+  |move|p2a: TYRANITAR|rock-slide|p1a
+  |damage|p1a: CROBAT|0/367
+  |faint|p1a: CROBAT
+  |switch|p1a: MEGANIUM|Meganium, L100|333/333
+  |turn|3
+  |move|p1a: MEGANIUM|giga-drain|p2a
+  |damage|p2a: TYRANITAR|176/397
+  |-heal|p1a: MEGANIUM|333/333|[from] move: giga-drain
+  |move|p2a: TYRANITAR|rock-slide|p1a
+  |-miss|p2a: TYRANITAR|p1a: MEGANIUM
+  |turn|4
+  |move|p1a: MEGANIUM|giga-drain|p2a
+  |damage|p2a: TYRANITAR|8/397
+  |-heal|p1a: MEGANIUM|333/333|[from] move: giga-drain
+  |move|p2a: TYRANITAR|rock-slide|p1a
+  |damage|p1a: MEGANIUM|213/333
+  |turn|5
+  |move|p1a: MEGANIUM|giga-drain|p2a
+  |damage|p2a: TYRANITAR|0/397
+  |faint|p2a: TYRANITAR
+  |-heal|p1a: MEGANIUM|286/333|[from] move: giga-drain
+  |switch|p2a: TYPHLOSION|Typhlosion, L100|353/353
+  |turn|6
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |damage|p1a: MEGANIUM|41/333
+  |move|p1a: MEGANIUM|giga-drain|p2a
+  |damage|p2a: TYPHLOSION|307/353
+  |-heal|p1a: MEGANIUM|64/333|[from] move: giga-drain
+  |turn|7
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |-crit|
+  |damage|p1a: MEGANIUM|0/333
+  |faint|p1a: MEGANIUM
+  |switch|p1a: AMPHAROS|Ampharos, L100|377/377
+  |turn|8
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |damage|p1a: AMPHAROS|251/377
+  |move|p1a: AMPHAROS|thunderbolt|p2a
+  |damage|p2a: TYPHLOSION|188/353
+  |turn|9
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |damage|p1a: AMPHAROS|113/377
+  |move|p1a: AMPHAROS|thunderbolt|p2a
+  |damage|p2a: TYPHLOSION|61/353
+  |turn|10
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |damage|p1a: AMPHAROS|0/377
+  |faint|p1a: AMPHAROS
+  |switch|p1a: QUAGSIRE|Quagsire, L100|379/379
+  |turn|11
+  |move|p2a: TYPHLOSION|flamethrower|p1a
+  |damage|p1a: QUAGSIRE|307/379
+  |move|p1a: QUAGSIRE|earthquake|p2a
+  |damage|p2a: TYPHLOSION|0/353
+  |faint|p2a: TYPHLOSION
+  |switch|p2a: NOCTOWL|Noctowl, L100|397/397
+  |turn|12
+  |move|p2a: NOCTOWL|steel-wing|p1a
+  |damage|p1a: QUAGSIRE|285/379
+  |move|p1a: QUAGSIRE|surf|p2a
+  |damage|p2a: NOCTOWL|312/397
+  |turn|13
+  |move|p2a: NOCTOWL|steel-wing|p1a
+  |damage|p1a: QUAGSIRE|265/379
+  |move|p1a: QUAGSIRE|surf|p2a
+  |damage|p2a: NOCTOWL|238/397
+  |turn|14
+  |move|p2a: NOCTOWL|steel-wing|p1a
+  |damage|p1a: QUAGSIRE|244/379
+  |move|p1a: QUAGSIRE|surf|p2a
+  |damage|p2a: NOCTOWL|157/397
+  |turn|15
+  |move|p2a: NOCTOWL|steel-wing|p1a
+  |damage|p1a: QUAGSIRE|225/379
+  |move|p1a: QUAGSIRE|surf|p2a
+  |damage|p2a: NOCTOWL|82/397
+  |turn|16
+  |move|p2a: NOCTOWL|steel-wing|p1a
+  |damage|p1a: QUAGSIRE|203/379
+  |move|p1a: QUAGSIRE|surf|p2a
+  |damage|p2a: NOCTOWL|3/397
+  |turn|17
+  |move|p2a: NOCTOWL|steel-wing|p1a
+  |damage|p1a: QUAGSIRE|184/379
+  |move|p1a: QUAGSIRE|surf|p2a
+  |damage|p2a: NOCTOWL|0/397
+  |faint|p2a: NOCTOWL
+  |switch|p2a: MANTINE|Mantine, L100|367/367
+  |turn|18
+  |move|p2a: MANTINE|surf|p1a
+  |damage|p1a: QUAGSIRE|71/379
+  |move|p1a: QUAGSIRE|surf|p2a
+  |damage|p2a: MANTINE|339/367
+  |turn|19
+  |move|p2a: MANTINE|surf|p1a
+  |damage|p1a: QUAGSIRE|0/379
+  |faint|p1a: QUAGSIRE
+  |switch|p1a: SCIZOR|Scizor, L100|321/321
+  |turn|20
+  |move|p2a: MANTINE|surf|p1a
+  |damage|p1a: SCIZOR|221/321
+  |move|p1a: SCIZOR|slash|p2a
+  |-crit|
+  |damage|p2a: MANTINE|171/367
+  |turn|21
+  |move|p2a: MANTINE|surf|p1a
+  |damage|p1a: SCIZOR|124/321
+  |move|p1a: SCIZOR|slash|p2a
+  |damage|p2a: MANTINE|90/367
+  |turn|22
+  |move|p2a: MANTINE|surf|p1a
+  |damage|p1a: SCIZOR|14/321
+  |move|p1a: SCIZOR|slash|p2a
+  |damage|p2a: MANTINE|2/367
+  |turn|23
+  |move|p2a: MANTINE|surf|p1a
+  |damage|p1a: SCIZOR|0/321
+  |faint|p1a: SCIZOR
+  |switch|p1a: MILTANK|Miltank, L100|363/363
+  |turn|24
+  |move|p1a: MILTANK|strength|p2a
+  |damage|p2a: MANTINE|0/367
+  |faint|p2a: MANTINE
+  |switch|p2a: DELIBIRD|Delibird, L100|287/287
+  |turn|25
+  |move|p1a: MILTANK|rollout|p2a
+  |damage|p2a: DELIBIRD|162/287
+  |move|p2a: DELIBIRD|blizzard|p1a
+  |-miss|p2a: DELIBIRD|p1a: MILTANK
+  |turn|26
+  |move|p1a: MILTANK|rollout|p2a
+  |damage|p2a: DELIBIRD|0/287
+  |faint|p2a: DELIBIRD
+  |switch|p2a: GRANBULL|Granbull, L100|377/377
+  |turn|27
+  |move|p1a: MILTANK|strength|p2a
+  |damage|p2a: GRANBULL|284/377
+  |move|p2a: GRANBULL|strength|p1a
+  |damage|p1a: MILTANK|291/363
+  |turn|28
+  |move|p1a: MILTANK|strength|p2a
+  |damage|p2a: GRANBULL|191/377
+  |move|p2a: GRANBULL|strength|p1a
+  |damage|p1a: MILTANK|217/363
+  |turn|29
+  |move|p1a: MILTANK|strength|p2a
+  |damage|p2a: GRANBULL|86/377
+  |move|p2a: GRANBULL|strength|p1a
+  |-crit|
+  |damage|p1a: MILTANK|66/363
+  |turn|30
+  |move|p1a: MILTANK|strength|p2a
+  |damage|p2a: GRANBULL|0/377
+  |faint|p2a: GRANBULL
+  |win|Mattia?
+
+## Battle 9
+generation: 2
+p1_save: Pokémon - Crystal Version.sav
+p2_save: Pokémon - Gold Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 25
+winner_id: None
+p1_team:
+  1. MANTINE/Mantine L100 HP 0/367 types=water,flying ability=none item=none moves=[surf, blizzard, waterfall, whirlpool]
+  2. TYPHLOSION/Typhlosion L100 HP 0/353 types=fire ability=none item=none moves=[flamethrower, flame-wheel, swift, ember]
+  3. NOCTOWL/Noctowl L100 HP 0/397 types=normal,flying ability=none item=none moves=[steel-wing, fly, flash, mud-slap]
+  4. TYRANITAR/Tyranitar L100 HP 0/397 types=rock,dark ability=none item=none moves=[earthquake, fury-cutter, rock-slide, dig]
+  5. DELIBIRD/Delibird L100 HP 0/287 types=ice,flying ability=none item=none moves=[present, blizzard, toxic, curse]
+  6. GRANBULL/Granbull L100 HP 0/377 types=fairy ability=none item=none moves=[bite, lick, strength, rage]
+p2_team:
+  1. URSARING/Ursaring L100 HP 0/377 types=normal ability=none item=none moves=[dynamic-punch, cut, rest, rock-smash]
+  2. FERALIGATR/Feraligatr L100 HP 0/367 types=water ability=none item=none moves=[slash, hydro-pump, strength, surf]
+  3. ARIADOS/Ariados L100 HP 0/337 types=bug,poison ability=none item=none moves=[psychic, night-shade, leech-life, fury-swipes]
+  4. XATU/Xatu L100 HP 0/327 types=psychic,flying ability=none item=none moves=[night-shade, fly, hyper-beam, confuse-ray]
+  5. AMPHAROS/Ampharos L100 HP 126/377 types=electric ability=none item=none moves=[flash, thunder-punch, thunder-shock, thunder-wave]
+  6. GIRAFARIG/Girafarig L100 HP 337/337 types=normal,psychic ability=none item=none moves=[stomp, agility, baton-pass, psybeam]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Mantine, L100
+  |poke|p1|Typhlosion, L100
+  |poke|p1|Noctowl, L100
+  |poke|p1|Tyranitar, L100
+  |poke|p1|Delibird, L100
+  |poke|p1|Granbull, L100
+  |player|p2|Mattia?
+  |poke|p2|Ursaring, L100
+  |poke|p2|Feraligatr, L100
+  |poke|p2|Ariados, L100
+  |poke|p2|Xatu, L100
+  |poke|p2|Ampharos, L100
+  |poke|p2|Girafarig, L100
+  |start|
+  |switch|p1a: MANTINE|Mantine, L100|367/367
+  |switch|p2a: URSARING|Ursaring, L100|377/377
+  |turn|1
+  |move|p1a: MANTINE|surf|p2a
+  |damage|p2a: URSARING|257/377
+  |move|p2a: URSARING|cut|p1a
+  |-miss|p2a: URSARING|p1a: MANTINE
+  |turn|2
+  |move|p1a: MANTINE|surf|p2a
+  |damage|p2a: URSARING|136/377
+  |move|p2a: URSARING|cut|p1a
+  |damage|p1a: MANTINE|271/367
+  |turn|3
+  |move|p1a: MANTINE|surf|p2a
+  |damage|p2a: URSARING|32/377
+  |move|p2a: URSARING|cut|p1a
+  |damage|p1a: MANTINE|182/367
+  |turn|4
+  |move|p1a: MANTINE|surf|p2a
+  |damage|p2a: URSARING|0/377
+  |faint|p2a: URSARING
+  |switch|p2a: FERALIGATR|Feraligatr, L100|367/367
+  |turn|5
+  |move|p2a: FERALIGATR|strength|p1a
+  |damage|p1a: MANTINE|105/367
+  |move|p1a: MANTINE|surf|p2a
+  |damage|p2a: FERALIGATR|318/367
+  |turn|6
+  |move|p2a: FERALIGATR|strength|p1a
+  |damage|p1a: MANTINE|21/367
+  |move|p1a: MANTINE|surf|p2a
+  |damage|p2a: FERALIGATR|269/367
+  |turn|7
+  |move|p2a: FERALIGATR|strength|p1a
+  |damage|p1a: MANTINE|0/367
+  |faint|p1a: MANTINE
+  |switch|p1a: TYPHLOSION|Typhlosion, L100|353/353
+  |turn|8
+  |move|p1a: TYPHLOSION|flamethrower|p2a
+  |damage|p2a: FERALIGATR|201/367
+  |move|p2a: FERALIGATR|hydro-pump|p1a
+  |damage|p1a: TYPHLOSION|105/353
+  |turn|9
+  |move|p1a: TYPHLOSION|flamethrower|p2a
+  |damage|p2a: FERALIGATR|132/367
+  |move|p2a: FERALIGATR|hydro-pump|p1a
+  |damage|p1a: TYPHLOSION|0/353
+  |faint|p1a: TYPHLOSION
+  |switch|p1a: NOCTOWL|Noctowl, L100|397/397
+  |turn|10
+  |move|p2a: FERALIGATR|hydro-pump|p1a
+  |damage|p1a: NOCTOWL|295/397
+  |move|p1a: NOCTOWL|steel-wing|p2a
+  |-miss|p1a: NOCTOWL|p2a: FERALIGATR
+  |turn|11
+  |move|p2a: FERALIGATR|hydro-pump|p1a
+  |-miss|p2a: FERALIGATR|p1a: NOCTOWL
+  |move|p1a: NOCTOWL|steel-wing|p2a
+  |damage|p2a: FERALIGATR|114/367
+  |-boost|p1a: NOCTOWL|def|up|[from] move: steel-wing
+  |turn|12
+  |move|p2a: FERALIGATR|hydro-pump|p1a
+  |damage|p1a: NOCTOWL|177/397
+  |move|p1a: NOCTOWL|steel-wing|p2a
+  |damage|p2a: FERALIGATR|96/367
+  |turn|13
+  |move|p2a: FERALIGATR|surf|p1a
+  |damage|p1a: NOCTOWL|89/397
+  |move|p1a: NOCTOWL|steel-wing|p2a
+  |damage|p2a: FERALIGATR|77/367
+  |turn|14
+  |move|p2a: FERALIGATR|surf|p1a
+  |damage|p1a: NOCTOWL|0/397
+  |faint|p1a: NOCTOWL
+  |switch|p1a: TYRANITAR|Tyranitar, L100|397/397
+  |turn|15
+  |move|p2a: FERALIGATR|surf|p1a
+  |damage|p1a: TYRANITAR|215/397
+  |move|p1a: TYRANITAR|rock-slide|p2a
+  |damage|p2a: FERALIGATR|0/367
+  |faint|p2a: FERALIGATR
+  |switch|p2a: ARIADOS|Ariados, L100|337/337
+  |turn|16
+  |move|p1a: TYRANITAR|rock-slide|p2a
+  |damage|p2a: ARIADOS|63/337
+  |move|p2a: ARIADOS|leech-life|p1a
+  |damage|p1a: TYRANITAR|36/397
+  |-heal|p2a: ARIADOS|152/337|[from] move: leech-life
+  |turn|17
+  |move|p1a: TYRANITAR|rock-slide|p2a
+  |damage|p2a: ARIADOS|0/337
+  |faint|p2a: ARIADOS
+  |switch|p2a: XATU|Xatu, L100|327/327
+  |turn|18
+  |move|p2a: XATU|night-shade|p1a
+  |damage|p1a: TYRANITAR|0/397
+  |faint|p1a: TYRANITAR
+  |switch|p1a: DELIBIRD|Delibird, L100|287/287
+  |turn|19
+  |move|p2a: XATU|hyper-beam|p1a
+  |damage|p1a: DELIBIRD|141/287
+  |move|p1a: DELIBIRD|blizzard|p2a
+  |damage|p2a: XATU|83/327
+  |turn|20
+  |cant|p2a: XATU|recharge
+  |move|p1a: DELIBIRD|blizzard|p2a
+  |-miss|p1a: DELIBIRD|p2a: XATU
+  |turn|21
+  |move|p2a: XATU|hyper-beam|p1a
+  |damage|p1a: DELIBIRD|0/287
+  |faint|p1a: DELIBIRD
+  |switch|p1a: GRANBULL|Granbull, L100|377/377
+  |turn|22
+  |cant|p2a: XATU|recharge
+  |move|p1a: GRANBULL|strength|p2a
+  |damage|p2a: XATU|0/327
+  |faint|p2a: XATU
+  |switch|p2a: AMPHAROS|Ampharos, L100|377/377
+  |turn|23
+  |move|p1a: GRANBULL|strength|p2a
+  |damage|p2a: AMPHAROS|294/377
+  |move|p2a: AMPHAROS|thunder-punch|p1a
+  |damage|p1a: GRANBULL|223/377
+  |turn|24
+  |move|p1a: GRANBULL|strength|p2a
+  |damage|p2a: AMPHAROS|211/377
+  |move|p2a: AMPHAROS|thunder-punch|p1a
+  |damage|p1a: GRANBULL|74/377
+  |turn|25
+  |move|p1a: GRANBULL|strength|p2a
+  |damage|p2a: AMPHAROS|126/377
+  |move|p2a: AMPHAROS|thunder-punch|p1a
+  |damage|p1a: GRANBULL|0/377
+  |faint|p1a: GRANBULL
+  |win|Mattia?
+
+## Battle 10
+generation: 2
+p1_save: Pokémon - Gold Version.sav
+p2_save: Pokémon - Silver Version.sav
+p1_player: Mattia?
+p2_player: Mattia?
+result: PASS
+finished: True
+turns: 30
+winner_id: None
+p1_team:
+  1. AMPHAROS/Ampharos L100 HP 0/377 types=electric ability=none item=none moves=[flash, thunder-punch, thunder-shock, thunder-wave]
+  2. FERALIGATR/Feraligatr L100 HP 0/367 types=water ability=none item=none moves=[slash, hydro-pump, strength, surf]
+  3. ARIADOS/Ariados L100 HP 0/337 types=bug,poison ability=none item=none moves=[psychic, night-shade, leech-life, fury-swipes]
+  4. XATU/Xatu L100 HP 0/327 types=psychic,flying ability=none item=none moves=[night-shade, fly, hyper-beam, confuse-ray]
+  5. GIRAFARIG/Girafarig L100 HP 0/337 types=normal,psychic ability=none item=none moves=[stomp, agility, baton-pass, psybeam]
+  6. URSARING/Ursaring L100 HP 0/377 types=normal ability=none item=none moves=[dynamic-punch, cut, rest, rock-smash]
+p2_team:
+  1. CROBAT/Crobat L100 HP 0/367 types=poison,flying ability=none item=none moves=[bite, confuse-ray, wing-attack, fly]
+  2. MEGANIUM/Meganium L100 HP 0/333 types=grass ability=none item=none moves=[giga-drain, poison-powder, razor-leaf, reflect]
+  3. AMPHAROS/Ampharos L100 HP 0/377 types=electric ability=none item=none moves=[thunder-punch, thunderbolt, flash, iron-tail]
+  4. QUAGSIRE/Quagsire L100 HP 0/379 types=water,ground ability=none item=none moves=[earthquake, surf, mud-slap, dig]
+  5. SCIZOR/Scizor L100 HP 0/321 types=bug,steel ability=none item=none moves=[slash, wing-attack, swords-dance, cut]
+  6. MILTANK/Miltank L100 HP 363/363 types=normal ability=none item=none moves=[rollout, strength, milk-drink, rock-smash]
+logs:
+  |init|battle
+  |player|p1|Mattia?
+  |poke|p1|Ampharos, L100
+  |poke|p1|Feraligatr, L100
+  |poke|p1|Ariados, L100
+  |poke|p1|Xatu, L100
+  |poke|p1|Girafarig, L100
+  |poke|p1|Ursaring, L100
+  |player|p2|Mattia?
+  |poke|p2|Crobat, L100
+  |poke|p2|Meganium, L100
+  |poke|p2|Ampharos, L100
+  |poke|p2|Quagsire, L100
+  |poke|p2|Scizor, L100
+  |poke|p2|Miltank, L100
+  |start|
+  |switch|p1a: AMPHAROS|Ampharos, L100|377/377
+  |switch|p2a: CROBAT|Crobat, L100|367/367
+  |turn|1
+  |move|p2a: CROBAT|bite|p1a
+  |damage|p1a: AMPHAROS|337/377
+  |move|p1a: AMPHAROS|thunder-punch|p2a
+  |damage|p2a: CROBAT|122/367
+  |turn|2
+  |move|p2a: CROBAT|bite|p1a
+  |damage|p1a: AMPHAROS|297/377
+  |-flinch|p1a: AMPHAROS
+  |cant|p1a: AMPHAROS|flinch
+  |turn|3
+  |move|p2a: CROBAT|bite|p1a
+  |damage|p1a: AMPHAROS|257/377
+  |-flinch|p1a: AMPHAROS
+  |cant|p1a: AMPHAROS|flinch
+  |turn|4
+  |move|p2a: CROBAT|bite|p1a
+  |damage|p1a: AMPHAROS|217/377
+  |move|p1a: AMPHAROS|thunder-punch|p2a
+  |damage|p2a: CROBAT|0/367
+  |faint|p2a: CROBAT
+  |switch|p2a: MEGANIUM|Meganium, L100|333/333
+  |turn|5
+  |move|p2a: MEGANIUM|giga-drain|p1a
+  |damage|p1a: AMPHAROS|135/377
+  |-heal|p2a: MEGANIUM|333/333|[from] move: giga-drain
+  |move|p1a: AMPHAROS|thunder-punch|p2a
+  |damage|p2a: MEGANIUM|285/333
+  |-status|p2a: MEGANIUM|par|[from] move: thunder-punch
+  |turn|6
+  |move|p1a: AMPHAROS|thunder-punch|p2a
+  |damage|p2a: MEGANIUM|234/333 PAR
+  |move|p2a: MEGANIUM|giga-drain|p1a
+  |damage|p1a: AMPHAROS|51/377
+  |-heal|p2a: MEGANIUM|276/333 PAR|[from] move: giga-drain
+  |turn|7
+  |move|p1a: AMPHAROS|thunder-punch|p2a
+  |damage|p2a: MEGANIUM|229/333 PAR
+  |move|p2a: MEGANIUM|giga-drain|p1a
+  |damage|p1a: AMPHAROS|0/377
+  |faint|p1a: AMPHAROS
+  |-heal|p2a: MEGANIUM|269/333 PAR|[from] move: giga-drain
+  |switch|p1a: FERALIGATR|Feraligatr, L100|367/367
+  |turn|8
+  |move|p1a: FERALIGATR|strength|p2a
+  |damage|p2a: MEGANIUM|195/333 PAR
+  |move|p2a: MEGANIUM|giga-drain|p1a
+  |damage|p1a: FERALIGATR|202/367
+  |-heal|p2a: MEGANIUM|277/333 PAR|[from] move: giga-drain
+  |turn|9
+  |move|p1a: FERALIGATR|strength|p2a
+  |damage|p2a: MEGANIUM|206/333 PAR
+  |move|p2a: MEGANIUM|giga-drain|p1a
+  |damage|p1a: FERALIGATR|23/367
+  |-heal|p2a: MEGANIUM|295/333 PAR|[from] move: giga-drain
+  |turn|10
+  |move|p1a: FERALIGATR|strength|p2a
+  |damage|p2a: MEGANIUM|227/333 PAR
+  |cant|p2a: MEGANIUM|par
+  |turn|11
+  |move|p1a: FERALIGATR|strength|p2a
+  |-crit|
+  |damage|p2a: MEGANIUM|86/333 PAR
+  |move|p2a: MEGANIUM|giga-drain|p1a
+  |damage|p1a: FERALIGATR|0/367
+  |faint|p1a: FERALIGATR
+  |-heal|p2a: MEGANIUM|173/333 PAR|[from] move: giga-drain
+  |switch|p1a: ARIADOS|Ariados, L100|337/337
+  |turn|12
+  |move|p1a: ARIADOS|leech-life|p2a
+  |damage|p2a: MEGANIUM|0/333 PAR
+  |faint|p2a: MEGANIUM
+  |-heal|p1a: ARIADOS|337/337|[from] move: leech-life
+  |switch|p2a: AMPHAROS|Ampharos, L100|377/377
+  |turn|13
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: ARIADOS|187/337
+  |move|p1a: ARIADOS|leech-life|p2a
+  |-crit|
+  |damage|p2a: AMPHAROS|181/377
+  |-heal|p1a: ARIADOS|285/337|[from] move: leech-life
+  |turn|14
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: ARIADOS|138/337
+  |move|p1a: ARIADOS|leech-life|p2a
+  |damage|p2a: AMPHAROS|85/377
+  |-heal|p1a: ARIADOS|186/337|[from] move: leech-life
+  |turn|15
+  |move|p2a: AMPHAROS|thunderbolt|p1a
+  |damage|p1a: ARIADOS|45/337
+  |move|p1a: ARIADOS|leech-life|p2a
+  |damage|p2a: AMPHAROS|0/377
+  |faint|p2a: AMPHAROS
+  |-heal|p1a: ARIADOS|93/337|[from] move: leech-life
+  |switch|p2a: QUAGSIRE|Quagsire, L100|379/379
+  |turn|16
+  |move|p1a: ARIADOS|leech-life|p2a
+  |damage|p2a: QUAGSIRE|282/379
+  |-heal|p1a: ARIADOS|141/337|[from] move: leech-life
+  |move|p2a: QUAGSIRE|earthquake|p1a
+  |damage|p1a: ARIADOS|11/337
+  |turn|17
+  |move|p1a: ARIADOS|leech-life|p2a
+  |damage|p2a: QUAGSIRE|189/379
+  |-heal|p1a: ARIADOS|57/337|[from] move: leech-life
+  |move|p2a: QUAGSIRE|earthquake|p1a
+  |damage|p1a: ARIADOS|0/337
+  |faint|p1a: ARIADOS
+  |switch|p1a: XATU|Xatu, L100|327/327
+  |turn|18
+  |move|p1a: XATU|hyper-beam|p2a
+  |damage|p2a: QUAGSIRE|82/379
+  |move|p2a: QUAGSIRE|surf|p1a
+  |damage|p1a: XATU|225/327
+  |turn|19
+  |cant|p1a: XATU|recharge
+  |move|p2a: QUAGSIRE|surf|p1a
+  |damage|p1a: XATU|123/327
+  |turn|20
+  |move|p1a: XATU|hyper-beam|p2a
+  |damage|p2a: QUAGSIRE|0/379
+  |faint|p2a: QUAGSIRE
+  |switch|p2a: SCIZOR|Scizor, L100|321/321
+  |turn|21
+  |cant|p1a: XATU|recharge
+  |move|p2a: SCIZOR|slash|p1a
+  |-crit|
+  |damage|p1a: XATU|0/327
+  |faint|p1a: XATU
+  |switch|p1a: GIRAFARIG|Girafarig, L100|337/337
+  |turn|22
+  |move|p2a: SCIZOR|slash|p1a
+  |damage|p1a: GIRAFARIG|258/337
+  |move|p1a: GIRAFARIG|psybeam|p2a
+  |damage|p2a: SCIZOR|288/321
+  |turn|23
+  |move|p2a: SCIZOR|slash|p1a
+  |damage|p1a: GIRAFARIG|170/337
+  |move|p1a: GIRAFARIG|psybeam|p2a
+  |damage|p2a: SCIZOR|249/321
+  |turn|24
+  |move|p2a: SCIZOR|slash|p1a
+  |damage|p1a: GIRAFARIG|90/337
+  |move|p1a: GIRAFARIG|psybeam|p2a
+  |damage|p2a: SCIZOR|215/321
+  |turn|25
+  |move|p2a: SCIZOR|slash|p1a
+  |-crit|
+  |damage|p1a: GIRAFARIG|0/337
+  |faint|p1a: GIRAFARIG
+  |switch|p1a: URSARING|Ursaring, L100|377/377
+  |turn|26
+  |move|p2a: SCIZOR|slash|p1a
+  |damage|p1a: URSARING|295/377
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |-miss|p1a: URSARING|p2a: SCIZOR
+  |turn|27
+  |move|p2a: SCIZOR|slash|p1a
+  |damage|p1a: URSARING|216/377
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |-miss|p1a: URSARING|p2a: SCIZOR
+  |turn|28
+  |move|p2a: SCIZOR|slash|p1a
+  |damage|p1a: URSARING|134/377
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |-crit|
+  |damage|p2a: SCIZOR|35/321
+  |-activate|p2a: SCIZOR|confusion
+  |turn|29
+  |-activate|p2a: SCIZOR|confusion
+  |move|p2a: SCIZOR|slash|p1a
+  |damage|p1a: URSARING|58/377
+  |move|p1a: URSARING|dynamic-punch|p2a
+  |damage|p2a: SCIZOR|0/321
+  |faint|p2a: SCIZOR
+  |switch|p2a: MILTANK|Miltank, L100|363/363
+  |turn|30
+  |move|p2a: MILTANK|strength|p1a
+  |damage|p1a: URSARING|0/377
+  |faint|p1a: URSARING
+  |win|Mattia?
+
+summary: pass=10 fail=0 total=10
