@@ -354,6 +354,7 @@ def _source_config(reference_root: Path) -> list[GenerationSource]:
             battle_asset_dirs=(
                 pokecrystal / "gfx" / "battle",
                 pokecrystal / "gfx" / "font",
+                pokecrystal / "gfx" / "frames",
             ),
             optional_animation_dirs=(pokecrystal / "gfx" / "battle_anims",),
             behavior_dirs=(

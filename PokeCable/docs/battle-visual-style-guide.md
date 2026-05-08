@@ -2,6 +2,11 @@
 
 Este documento define como o frontend do PokeCable deve reproduzir a aparência de batalha das Gens 1, 2 e 3. O objetivo é orientar a implementação do renderer no navegador para parecer nativo de cada jogo, mantendo as engines Python isoladas por geração.
 
+Para a ordem de execucao e controle de pendencias, use tambem:
+
+- `docs/battle-visual-checklist.md`
+- `docs/battle-visual-pokemon-frame-coverage.md`
+
 Referências locais principais:
 
 - Gen 1: `reference/pret/pokered`
@@ -9,6 +14,27 @@ Referências locais principais:
 - Gen 3: `reference/pret/pokeemerald`
 - Assets exportados: `PokeCable/frontend/generated/battle-assets/`
 - Renderer atual: `PokeCable/frontend/battle-scene.js`
+
+Essas referências foram clonadas localmente dentro de `PokeCable/reference/pret/` para consulta offline durante a implementação do frontend.
+
+O renderer da batalha deve ser orientado por assets:
+
+- CSS fica responsável por layout, recorte e posicionamento.
+- Elementos visuais de batalha devem vir dos assets exportados do jogo original sempre que existirem.
+- Imagens com `frame.count > 1` são animadas no browser por JavaScript com base no metadata do manifest.
+- Os scripts de batalha originais servem como referência para a ordem e o tipo das animações, não para recriar a arte em CSS.
+- Textos de batalha e rótulos devem preferir fontes sprite exportadas do jogo original:
+  - Gens 1/2 usam `font.png` do pacote exportado.
+  - Gen 3 usa `latin_short.png` exportado do `pokeemerald`.
+- CSS deve ficar restrito a:
+  - layout
+  - recorte
+  - posicionamento
+  - estado visual mínimo de fallback
+- Quando houver asset original de background para um efeito de batalha:
+  - usar a imagem exportada do jogo como camada visual principal
+  - manter o fundo-base do renderer apenas como fallback
+  - não inventar backdrop persistente quando o jogo original não exportou esse campo
 
 ## Regras gerais para todas as gerações
 
@@ -215,15 +241,28 @@ Referências locais principais:
 - Base visual 160x144.
 - Inimigo no superior direito.
 - Jogador no inferior esquerdo.
-- Campo ainda é relativamente limpo, mas com paletas mais ricas.
-- Pode usar cores diferentes por contexto, mas o renderer inicial deve usar:
-  - Céu/fundo claro.
-  - Campo verde claro.
-  - Plataformas discretas.
+- Coordenadas visuais devem ser derivadas de `GEN2_BATTLE_LAYOUT`, que espelha `hlcoord` e `menu_coords` do ASM.
+- Posições principais:
+  - Inimigo front sprite: `hlcoord 12, 0`.
+  - Jogador back sprite: `hlcoord 2, 6`.
+  - Textbox: `hlcoord 0, 12`.
+  - Command menu: `menu_coords 8, 12, 19, 17`.
+  - Move menu: `hlcoord 4, 12`.
+  - Move info box: `hlcoord 0, 8`.
+- Campo ainda é relativamente limpo, com paletas mais ricas que Gen 1.
+- A batalha normal não deve parecer um cenário moderno com céu e grama em gradiente.
+- O fundo base deve parecer uma superfície/tilemap limpo de GBC.
+- Plataformas devem ser discretas e tile-like, não elipses suaves modernas.
+- Backgrounds detalhados devem aparecer principalmente quando um efeito de golpe pedir `battle_anims/*`.
 - Referências:
   - `reference/pret/pokecrystal/engine/battle/start_battle.asm`
   - `reference/pret/pokecrystal/engine/battle/sliding_intro.asm`
   - `reference/pret/pokecrystal/gfx/battle/`
+- Efeitos de background da batalha:
+  - `reference/pret/pokecrystal/gfx/battle_anims/`
+  - em especial `sand.png`, `water.png`, `shine.png`, `lightning.png`, `psychic.png`
+- Progresso operacional:
+  - `docs/battle-visual-gen2-progress.md`
 
 ### Sprites de Pokémon
 
@@ -237,6 +276,16 @@ Referências locais principais:
   - Sprite back do jogador.
   - Pixelated.
   - Sem filtros modernos.
+- Regra de front sprite exportado:
+  - Alguns `gen2/pokemon/*/front.png` sao sheets verticais com varios frames.
+  - Quando a altura for multipla da largura e o manifest marcar como `static`, o renderer deve inferir `pokemon_front`.
+  - A ordem e a duracao devem vir de `frontend/generated/battle-assets/gen2/pokemon-front-anim-sequences.json`.
+  - Esse JSON e extraido de `reference/pret/pokecrystal/gfx/pokemon/*/anim.asm` e `anim_idle.asm`, com `frame`, `setrepeat`, `dorepeat` e `endanim`.
+  - `species` representa a animacao de entrada de `anim.asm`.
+  - `idle_species` representa a animacao idle de `anim_idle.asm`.
+  - O playback deve retornar ao frame base apos `endanim`, como `PokeAnim_Play` faz no ASM.
+  - Idle deve rodar em loop quando o contexto visual pedir `animationKind: "idle"`.
+  - O fallback de tocar os frames de cima para baixo uma vez so deve ser usado quando a especie nao tiver entrada extraida.
 - Shiny:
   - Gen 2 suporta shiny.
   - Renderer deve reservar variação de paleta/sprite quando o save indicar shiny.
@@ -245,6 +294,11 @@ Referências locais principais:
 ### HUD de HP
 
 - HUD mais refinado que Gen 1.
+- Coordenadas originais de referencia:
+  - Inimigo: `hlcoord 1, 0`, HP em `hlcoord 2, 2`.
+  - Jogador: `hlcoord 9, 7`, HP em `hlcoord 10, 9`.
+  - Party balls inimigo: `ldpixel wPlaceBallsX, 9, 4`, direcao `-TILE_WIDTH`.
+  - Party balls jogador: `ldpixel wPlaceBallsX, 12, 12`, direcao `TILE_WIDTH`.
 - Assets:
   - `reference/pret/pokecrystal/gfx/battle/enemy_hp_bar_border.png`
   - `reference/pret/pokecrystal/gfx/battle/hp_exp_bar_border.png`
@@ -262,10 +316,23 @@ Referências locais principais:
   - Amarela em HP médio.
   - Vermelha em HP baixo.
   - Transição deve ser em passos, não linear suave.
+- A largura visual da barra deve seguir `ComputeHPBarPixels`:
+  - `HP_BAR_LENGTH = 6` tiles.
+  - `HP_BAR_LENGTH_PX = 48` pixels.
+  - HP maior que zero sempre mostra pelo menos 1 pixel.
+- A cor deve seguir `GetHPPal`:
+  - Verde quando `e >= 24`.
+  - Amarela quando `e >= 10`.
+  - Vermelha quando `e < 10`.
+- O renderer Gen 2 deve tratar nivel e status como campos separados:
+  - Se houver status, o jogo substitui a area de nivel pelo status.
+  - Se não houver status, o nivel aparece na coordenada original.
 
 ### Caixa de texto
 
 - Caixa inferior com borda tile-based.
+- A borda deve vir de `reference/pret/pokecrystal/gfx/frames/1.png` por padrao.
+- No frontend, o asset correspondente e `frontend/generated/battle-assets/gen2/ui/frames/1.png`.
 - Texto em fonte GBC.
 - Cor de texto escura, fundo claro.
 - Mensagens de batalha seguem a cadência:
@@ -387,6 +454,36 @@ Referências locais principais:
   - Flash de paleta.
   - Shake.
   - Delays em frames.
+- Regra de sheets:
+  - `BATTLE_ANIM_GFX_*` da Gen 2 representa tiles de 8x8 carregados em VRAM.
+  - O frontend deve recortar o tile/frame correto da sheet exportada.
+  - A sheet completa nunca deve aparecer como objeto visual de golpe.
+  - Quando houver OAM composite em `animation-map.json`, ele prevalece sobre qualquer fallback generico.
+  - Quando nao houver composite, o fallback deve mostrar um tile/frame recortado e registrar a pendencia de timeline real.
+- Regra de objeto:
+  - `anim_obj` da Gen 2 deve virar uma instancia visual propria, nao um composite generico compartilhado por GFX.
+  - Cada instancia deve preservar `args`, `callback`, `frameset`, `gfx`, `object` e OAM composite.
+  - Cada instancia deve preservar tambem `startFrame` e `startMs`, calculados pela ordem real do script ASM.
+  - O renderer deve aplicar `--battle-effect-delay` com base nesse tempo para que o objeto apareca no frame correto.
+  - As coordenadas X/Y dos argumentos de `anim_obj` devem ser a fonte primaria de `--battle-effect-left/top`.
+  - Posicionamento generico por ordem do elemento deve ser apenas fallback quando o objeto nao tiver coordenada ASM.
+  - `BATTLE_ANIM_FUNC_*` deve ser aplicado como movimento frame-based em JavaScript.
+  - O primeiro criterio de cobertura e ter perfil JS para todo callback nao nulo presente em `animation-map.json`.
+  - O criterio final e comparar cada perfil com a rotina correspondente em `engine/battle_anims/functions.asm`.
+- Regra de timeline:
+  - `battle-scene-gen2.js` deve montar a timeline a partir de `data/moves/animations.asm`, sem reordenar comandos.
+  - `anim_wait` acumula frames e converte tempo usando 60fps.
+  - `anim_obj` registra o frame exato de spawn do objeto.
+  - `anim_incobj` e `anim_setobj` usam IDs ASM 1-based; o renderer deve normalizar para indices JS 0-based e anexar o evento ao objeto alvo.
+  - `anim_setobj` deve preservar o estado solicitado pelo script.
+  - `anim_bgeffect` registra o frame exato em que o efeito de background deve iniciar.
+  - O primeiro `anim_bgeffect` deve preencher `backgroundStartFrame`/`backgroundStartMs` e virar `--battle-bg-effect-delay` no renderer.
+  - `anim_incbgeffect` deve ser associado pelo nome do efeito e usado para delimitar a duracao do efeito ativo quando aplicavel.
+  - `anim_clearobjs` deve encerrar os objetos ativos no frame exato da limpeza de OAM.
+  - `anim_ret` encerra a timeline no frame acumulado.
+  - O estado atual ja aplica timing da timeline nos objetos `anim_obj`, no primeiro background de efeito, no encerramento por `anim_clearobjs` e na delimitacao por `anim_incbgeffect`.
+  - O estado atual tambem anexa `stateEvents` de `anim_incobj`/`anim_setobj` aos objetos, mas a interpretacao visual final ainda precisa seguir cada rotina de `engine/battle_anims/functions.asm`.
+  - A pendencia e fazer o renderer consumir a semantica completa de multiplos `anim_bgeffect`, `anim_sound` e `anim_cry`.
 
 ## Gen 3: Ruby, Sapphire, Emerald, FireRed, LeafGreen
 
@@ -419,6 +516,8 @@ Referências locais principais:
   - `reference/pret/pokeemerald/src/battle_bg.c`
   - `reference/pret/pokeemerald/src/data/graphics/battle_environment.h`
   - `reference/pret/pokeemerald/graphics/battle_interface/`
+  - backgrounds de efeito:
+    - `reference/pret/pokeemerald/graphics/battle_anims/backgrounds/`
 
 ### Sprites de Pokémon
 
