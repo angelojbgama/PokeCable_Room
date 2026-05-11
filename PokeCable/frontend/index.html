@@ -17,9 +17,26 @@
       </section>
 
       <section class="notice">
-        <strong>Feche o emulador antes de editar o save.</strong>
+        <strong>⚠️ Feche o emulador antes de continuar.</strong>
         <span>O navegador não envia save completo ao servidor. Depois da troca, ele gera um backup e um novo arquivo para baixar.</span>
       </section>
+
+      <div class="steps-indicator">
+        <div class="step active">
+          <span class="step-number">①</span>
+          <span class="step-label">Save</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step">
+          <span class="step-number">②</span>
+          <span class="step-label">Sala</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step">
+          <span class="step-number">③</span>
+          <span class="step-label">Troca</span>
+        </div>
+      </div>
 
       <section id="tab-setup">
         <div class="grid grid-single">
@@ -56,51 +73,48 @@
                 <input id="roomPassword" type="password" required autocomplete="off" />
               </label>
 
+              <div class="setup-status" id="setupStatus"></div>
+
               <div class="actions">
                 <button type="button" id="accessSession">Acessar sala</button>
                 <button type="button" id="leaveSession" class="ghost" disabled>Sair da sala</button>
               </div>
             </div>
 
-            <div id="setupChoiceStage" class="setup-stage-hidden">
-              <div class="mode-grid">
-                <button type="button" class="mode-card" id="openTradeTab">
-                  <span>Ação</span>
-                  <strong>Troca</strong>
-                </button>
-                <div class="mode-card mode-card-disabled" aria-disabled="true">
-                  <span>Em breve</span>
-                  <strong>...</strong>
-                </div>
-              </div>
-            </div>
-
-            <div class="frontend-infra-hidden" aria-hidden="true" style="display: none;">
-              <div class="status-box">
-                <span>Pokémon selecionado</span>
-                <strong id="setupSelectedSummary">Nenhum Pokémon selecionado.</strong>
-                <small id="setupSelectionDetail">Selecione um Pokémon da party ou do PC para trocar, mover ou editar item.</small>
-              </div>
-              <div class="actions actions-wrap">
-                <button type="button" id="startMovePokemon" class="secondary" disabled>Iniciar movimentação</button>
-                <button type="button" id="cancelMovePokemon" class="ghost" disabled>Cancelar movimentação</button>
-                <button type="button" id="removeHeldItem" class="secondary" disabled>Remover item</button>
-                <button type="button" id="applyHeldItem" disabled>Fazer segurar item selecionado</button>
-              </div>
-              <div class="status-box">
-                <span>Organização do save</span>
-                <strong id="saveManagementStatus">Selecione um Pokémon para começar.</strong>
-                <small id="selectedInventoryItemStatus">Nenhum item selecionado na mochila/PC.</small>
-              </div>
-              <div class="team-preview" id="setupPartyPreview"></div>
-              <div id="setupBagPreview" class="inventory-preview-body inventory-preview-empty"></div>
-              <div id="setupPcPreview" class="inventory-preview-body inventory-preview-empty"></div>
-              <button type="button" id="setupTogglePokemonPc" class="ghost">Computador do Player</button>
-              <div id="setupPokemonPcPreview" class="inventory-preview-body inventory-preview-empty"></div>
-            </div>
+            <div id="setupFooter" hidden></div>
           </form>
         </div>
+
+        <div class="grid">
+          <section class="panel" hidden>
+            <div class="status-box">
+              <span id="setupSelectedSummary">Nenhum Pokémon selecionado.</span>
+              <strong id="setupSelectionDetail">Selecione um Pokémon para continuar.</strong>
+            </div>
+
+            <div id="setupPartyPreview" class="team-preview"></div>
+            <div id="setupBagPreview" class="inventory-preview-body inventory-preview-empty">
+              Carregue um save para visualizar os itens da mochila.
+            </div>
+            <div id="setupPcPreview" class="inventory-preview-body inventory-preview-empty">
+              Carregue um save para visualizar os itens guardados no PC.
+            </div>
+          </section>
+        </div>
+
       </section>
+
+      <section id="sessionStatus" hidden>
+        <div class="grid grid-single">
+          <div class="panel">
+            <strong>Sessão Status</strong>
+            <div id="sessionDetail"></div>
+          </div>
+        </div>
+      </section>
+
+      <div id="saveManagementStatus" hidden></div>
+      <div id="selectedInventoryItemStatus" hidden></div>
 
       <section id="tab-trade" class="setup-stage-hidden">
         <div class="grid grid-single">
@@ -145,6 +159,8 @@
               <button type="button" id="sendTradeOffer" disabled>Enviar oferta</button>
               <button type="button" id="confirmTrade" disabled>Confirmar troca</button>
               <button type="button" id="cancelTrade" class="secondary" disabled>Cancelar rodada</button>
+              <button type="button" id="startMovePokemon" class="ghost" disabled>Mover Pokémon</button>
+              <button type="button" id="cancelMovePokemon" class="ghost" hidden>Cancelar movimentação</button>
             </div>
           </section>
 
@@ -206,15 +222,6 @@
         </div>
       </section>
 
-      <section class="panel" style="margin-top: 20px;">
-        <section class="log-panel" aria-label="Eventos">
-          <div class="panel-head compact">
-            <h2>Eventos</h2>
-            <button type="button" class="ghost" id="clearLog">Limpar</button>
-          </div>
-          <pre id="eventLog"></pre>
-        </section>
-      </section>
     </main>
 
     <div class="drawer-backdrop" id="pokemonDetailDrawerBackdrop" hidden></div>

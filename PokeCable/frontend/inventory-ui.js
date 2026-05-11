@@ -19,9 +19,7 @@ window.POKECABLE_INVENTORY_UI = {
     const {
       setupBagPreviewEl,
       setupPcPreviewEl,
-      setupPokemonPcPreviewEl,
       tradeBoxPreviewEl,
-      setupTogglePokemonPcButton,
       tradeTogglePokemonPcButton,
       pokemonDetailDrawerEl,
       pokemonDetailDrawerBackdropEl,
@@ -169,9 +167,6 @@ window.POKECABLE_INVENTORY_UI = {
     function updatePcToggleLabels() {
       const loadedSave = getLoadedSave();
       const playerName = loadedSave ? savePlayerName(loadedSave) : "Player";
-      if (setupTogglePokemonPcButton) {
-        setupTogglePokemonPcButton.textContent = pcVisibleByView.setup ? `Fechar computador de ${playerName}` : `Computador de ${playerName}`;
-      }
       if (tradeTogglePokemonPcButton) {
         tradeTogglePokemonPcButton.textContent = pcVisibleByView.trade ? `Fechar computador de ${playerName}` : `Computador de ${playerName}`;
       }
@@ -450,18 +445,9 @@ window.POKECABLE_INVENTORY_UI = {
       const loadedSave = getLoadedSave();
       updatePcToggleLabels();
       if (!loadedSave) {
-        setupPokemonPcPreviewEl.className = "inventory-preview-body inventory-preview-empty";
-        setupPokemonPcPreviewEl.textContent = "Carregue um save para liberar o computador deste jogador.";
         tradeBoxPreviewEl.className = "inventory-preview-body inventory-preview-empty";
         tradeBoxPreviewEl.textContent = "Carregue um save para liberar o computador deste jogador.";
         return;
-      }
-      if (!pcVisibleByView.setup) {
-        setupPokemonPcPreviewEl.className = "inventory-preview-body inventory-preview-empty";
-        setupPokemonPcPreviewEl.textContent = `Clique em "${setupTogglePokemonPcButton?.textContent || "Computador do Player"}" para abrir as boxes.`;
-      } else {
-        syncActiveBoxWithSelection("setup", false);
-        renderBoxPreviewHtml({ target: setupPokemonPcPreviewEl, selectable: true, view: "setup" });
       }
       if (!pcVisibleByView.trade) {
         tradeBoxPreviewEl.className = "inventory-preview-body inventory-preview-empty";

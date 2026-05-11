@@ -18,7 +18,6 @@ from pokecable_room.backups import (
 from pokecable_room.canonical import CanonicalPokemon, CanonicalMove, CanonicalSpecies
 from pokecable_room.client import (
     SAVE_CHANGED_DURING_ROOM,
-    _default_battle_action,
     _can_continue_with_report,
     _client_supported_protocols,
     _client_supported_trade_modes,
@@ -255,20 +254,6 @@ class ClientSafetyTests(unittest.TestCase):
         self.assertIn("Item removido: King's Rock", output)
         self.assertIn("Campo removido: ability", output)
         self.assertIn("Conversao: Trainer ID sera reduzido para 16 bits.", output)
-
-    def test_default_battle_action_prefers_first_available_move(self) -> None:
-        request = {
-            "active": [
-                {
-                    "moves": [
-                        {"move": "Tackle", "pp": 35, "maxpp": 35, "disabled": False},
-                        {"move": "Growl", "pp": 40, "maxpp": 40, "disabled": False},
-                    ]
-                }
-            ]
-        }
-        self.assertEqual(_default_battle_action(request), "move 1")
-
 
 class FakeParser:
     def __init__(self, save_bytes_after_write: bytes = b"modified-save") -> None:

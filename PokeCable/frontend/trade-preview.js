@@ -149,11 +149,19 @@ window.POKECABLE_TRADE_PREVIEW = {
       const summary = payload.display_summary || (payload.summary && payload.summary.display_summary) || normalizePokemonDisplay(payload);
       const blockedReasons = (report?.blocking_reasons || []).slice();
       const warnings = (report?.warnings || []).slice();
+      const canonical = canonicalFromPayload(payload);
+
       const dataLoss = (report?.data_loss || []).map((entry) => {
-        if (entry === "held_item") return "Held item será removido.";
-        if (entry === "moves") return "Golpes incompatíveis precisam de atenção.";
-        if (entry === "ability") return "Ability será removida.";
-        if (entry === "nature") return "Nature será removida.";
+        if (entry === "held_item") return "Item será removido.";
+        if (entry === "moves") return "Alguns golpes não existem nesta geração.";
+        if (entry === "ability") {
+          const abilityName = cleanName(canonical?.ability?.name || canonical?.ability || "desconhecida");
+          return `Ability "${abilityName}" não existe na Gen ${targetGeneration} e será ignorada.`;
+        }
+        if (entry === "nature") {
+          const natureName = cleanName(canonical?.nature?.name || canonical?.nature || "desconhecida");
+          return `Nature "${natureName}" não existe na Gen ${targetGeneration} e será ignorada.`;
+        }
         return String(entry);
       });
 
@@ -162,8 +170,9 @@ window.POKECABLE_TRADE_PREVIEW = {
         if (!move.valid_replacements || move.valid_replacements.length === 0) {
           return `<div class="move-resolution-row">${label} <small>(Sem substitutos)</small></div>`;
         }
-        
-        const options = move.valid_replacements.map(r => `<option value="${r.move_id}">${escapeHtml(r.name)}</option>`).join("");
+
+        const sortedReplacements = [...move.valid_replacements].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+        const options = sortedReplacements.map(r => `<option value="${r.move_id}">${escapeHtml(r.name)}</option>`).join("");
         return `
           <div class="move-resolution-row">
             <span>${label} ➔ substituir por:</span>
@@ -176,9 +185,12 @@ window.POKECABLE_TRADE_PREVIEW = {
       }).join("");
 
       const removedItems = (report?.removed_items || []).map((item) => `Item removido: ${item.name || `Item #${item.item_id}`}`);
-      const removedFields = (report?.removed_fields || []).map((field) => `${field === "ability" ? "Ability" : field === "nature" ? "Nature" : field} será removido.`);
-      const statusClass = report?.compatible ? "compatible" : "blocked";
-      const statusLabel = report?.compatible ? "Transferência OK" : "Transferência Bloqueada";
+      const statusClass = !report?.compatible ? "blocked"
+        : report?.requires_user_confirmation ? "attention"
+        : "compatible";
+      const statusLabel = !report?.compatible ? "Transferência Bloqueada"
+        : report?.requires_user_confirmation ? "Escolha os golpes substitutos"
+        : "Transferência OK";
       const meta = `Origem Gen ${report?.source_generation || payload.generation} ↔ Destino Gen ${targetGeneration}`;
 
       tradeCompatibilityPreviewEl.className = "trade-preview-body";
@@ -190,9 +202,8 @@ window.POKECABLE_TRADE_PREVIEW = {
         <div class="trade-report-sections">
           ${listSectionHtml("Bloqueios", blockedReasons)}
           ${listSectionHtml("Perdas de dados", dataLoss)}
-          ${removedMovesHtml ? `<div class="trade-report-section"><strong>Resolução de Golpes</strong><div class="list">${removedMovesHtml}</div></div>` : ""}
+          ${removedMovesHtml ? `<div class="trade-report-section"><strong>Resolução de Golpes</strong><small>Escolha um golpe substituto para cada golpe que não existe nesta geração:</small><div class="list">${removedMovesHtml}</div></div>` : ""}
           ${listSectionHtml("Itens removidos", removedItems)}
-          ${listSectionHtml("Campos removidos", removedFields)}
           ${itemTransferSectionHtml(report?.item_transfer)}
           ${listSectionHtml("Avisos", warnings)}
         </div>

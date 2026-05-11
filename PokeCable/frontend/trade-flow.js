@@ -40,13 +40,17 @@ window.POKECABLE_TRADE_FLOW = {
       state.preparedTradeBackup = null;
       state.pendingTradePayload = null;
       state.roundActive = false;
-      
+      state.awaitingMoveConfirmation = false;
+      state.pendingPreflightReport = null;
+      state.pendingMoveReplacements = null;
+
       const localSelected = getSelectedPokemon();
       renderOfferCard(localOfferEl, localOfferDetailsEl, localSelected || null, localSelected ? "" : "-", { emptyMessage: "Item, golpes e características aparecem aqui." });
       renderOfferCard(peerOfferEl, peerOfferDetailsEl, null, "-", { emptyMessage: options.peerMessage || "Aguardando oferta..." });
-      
+
       clearTradePreviews();
       confirmButton.disabled = true;
+      confirmButton.textContent = "Confirmar troca";
       cancelButton.disabled = !state.hasJoinedRoom || !state.roomReady;
       sendOfferButton.disabled = !state.hasJoinedRoom || !state.roomReady || !selected;
     }
@@ -95,7 +99,7 @@ window.POKECABLE_TRADE_FLOW = {
       cancelButton.disabled = false;
       sendOfferButton.disabled = true;
       send({ type: "offer_pokemon", payload: state.localPayload });
-      setStatus("Oferta enviada. Aguardando o outro jogador.");
+      setStatus("Oferta enviada! Aguardando o outro treinador...");
       log("Oferta de troca enviada.");
     }
 
@@ -131,7 +135,7 @@ window.POKECABLE_TRADE_FLOW = {
             sha256: currentHash
           }
         });
-        setStatus("Backup local preparado. Aguardando o outro jogador preparar também.");
+        setStatus("Preparando a troca...");
         log("Preparação local concluída. Backup em memória pronto.");
       } catch (error) {
         send({ type: "write_ready", ready: false, error: error.message || String(error) });
@@ -140,27 +144,62 @@ window.POKECABLE_TRADE_FLOW = {
       }
     }
 
+    function applyMoveReplacements(payload, replacements) {
+      if (!replacements || !payload.canonical?.moves) return payload;
+      const newMoves = payload.canonical.moves
+        .map(move => {
+          const mid = String(move.move_id || move);
+          return replacements[mid] ? { ...move, move_id: replacements[mid] } : move;
+        })
+        .filter(move => (move.move_id || move) !== 0);
+      return { ...payload, canonical: { ...payload.canonical, moves: newMoves } };
+    }
+
     async function handleTradeCommitWrite(message) {
       try {
         const loadedSave = getLoadedSave();
         if (!loadedSave) throw new Error("Nenhum save carregado no navegador.");
         state.pendingTradePayload = message.received_payload;
         const targetLocation = state.localPayload?.metadata?.location || getSelectedLocation();
+
+        let resolvedPayload = state.pendingTradePayload;
+        if (state.pendingMoveReplacements) {
+          resolvedPayload = applyMoveReplacements(state.pendingTradePayload, state.pendingMoveReplacements);
+        }
+
         renderOfferCard(
           peerOfferEl,
           peerOfferDetailsEl,
-          state.pendingTradePayload,
-          state.pendingTradePayload.display_summary || (state.pendingTradePayload.summary && state.pendingTradePayload.summary.display_summary) || "-"
+          resolvedPayload,
+          resolvedPayload.display_summary || (resolvedPayload.summary && resolvedPayload.summary.display_summary) || "-"
         );
-        loadedSave.applyPayload(targetLocation, state.pendingTradePayload);
+        loadedSave.applyPayload(targetLocation, resolvedPayload);
         afterLocalSaveApplied?.();
         send({ type: "write_done", success: true });
-        setStatus("Commit autorizado. Save gravado. Aguardando confirmação remota.");
+        setStatus("Troca registrada. Finalizando...");
         log("Save aplicado localmente no navegador.");
       } catch (error) {
         send({ type: "write_failed", stage: "commit_write", error: error.message || String(error) });
         setStatus(error.message || String(error));
         log(`Erro ao aplicar save local: ${error.message || error}`);
+      }
+    }
+
+    function sendPreflightResult(report, payload, message) {
+      send({
+        type: "preflight_result",
+        compatible: report.compatible,
+        requires_user_confirmation: report.requires_user_confirmation,
+        report,
+        error: report.blocking_reasons.join("; ")
+      });
+      if (report.compatible) {
+        setStatus("Pokémon compatível. Aguardando o outro treinador...");
+        log("Preflight local aprovado.");
+      } else {
+        setStatus(report.blocking_reasons.join(" "));
+        confirmButton.disabled = true;
+        log(`Preflight local bloqueado: ${report.blocking_reasons.join("; ")}`);
       }
     }
 
@@ -186,20 +225,16 @@ window.POKECABLE_TRADE_FLOW = {
       }
       renderTradeCompatibilityPreview(payload, report);
       renderTradeEvolutionPreview(payload, report);
-      send({
-        type: "preflight_result",
-        compatible: report.compatible,
-        requires_user_confirmation: report.requires_user_confirmation,
-        report,
-        error: report.blocking_reasons.join("; ")
-      });
-      if (report.compatible) {
-        setStatus("Preflight local aprovado. Aguardando o outro usuário.");
-        log("Preflight local aprovado.");
+
+      if (report.requires_user_confirmation) {
+        state.awaitingMoveConfirmation = true;
+        state.pendingPreflightReport = { report, payload, message };
+        setStatus("Escolha os golpes substitutos e confirme.");
+        confirmButton.disabled = false;
+        confirmButton.textContent = "Confirmar golpes";
+        log("Aguardando seleção de golpes substitutos.");
       } else {
-        setStatus(report.blocking_reasons.join(" "));
-        confirmButton.disabled = true;
-        log(`Preflight local bloqueado: ${report.blocking_reasons.join("; ")}`);
+        sendPreflightResult(report, payload, message);
       }
     }
 
@@ -208,7 +243,7 @@ window.POKECABLE_TRADE_FLOW = {
         case "room_created":
           state.hasJoinedRoom = true;
           state.roomReady = false;
-          setStatus("Sala de troca criada. Aguardando o segundo usuário.");
+          setStatus("Sala criada. Aguardando outro treinador entrar...");
           log("Sala de troca criada.");
           syncButtons();
           return true;
@@ -228,7 +263,7 @@ window.POKECABLE_TRADE_FLOW = {
         case "room_ready":
           state.hasJoinedRoom = true;
           state.roomReady = true;
-          setStatus("Sala de troca pronta. Escolha um Pokémon e envie a oferta.");
+          setStatus("Treinadores prontos! Escolha um Pokémon para trocar.");
           log("Sala de troca pronta com dois usuários.");
           syncButtons();
           return true;
@@ -250,7 +285,7 @@ window.POKECABLE_TRADE_FLOW = {
             state.peerPayload,
             state.peerPayload.display_summary || (state.peerPayload.summary && state.peerPayload.summary.display_summary) || "-"
           );
-          setStatus("Oferta do outro usuário recebida. Validando compatibilidade.");
+          setStatus("Oferta recebida! Verificando compatibilidade...");
           confirmButton.disabled = true;
           log(`Outro usuário oferece: ${state.peerPayload.display_summary || (state.peerPayload.summary && state.peerPayload.summary.display_summary) || "-"}`);
           return true;
@@ -264,7 +299,7 @@ window.POKECABLE_TRADE_FLOW = {
           log("Preflight enviado ao servidor.");
           return true;
         case "preflight_ready":
-          setStatus("Compatibilidade validada nos dois lados. Confirme para concluir.");
+          setStatus("Tudo pronto! Confirme a troca para finalizar.");
           confirmButton.disabled = false;
           log("Preflight aprovado pelos dois usuários.");
           return true;
@@ -308,13 +343,13 @@ window.POKECABLE_TRADE_FLOW = {
             });
           }
           resetTradeRoundUi({ peerMessage: "A sala continua pronta para uma nova troca." });
-          setStatus(`Troca concluída. Recebido: ${receivedSummary}. A sala continua pronta para nova rodada.`);
+          setStatus(`${receivedSummary} chegou ao seu save! Baixe o arquivo atualizado.`);
           log("Troca concluída. A sala continua aberta.");
           return true;
         }
         case "trade_write_failed":
-          resetTradeRoundUi({ peerMessage: "A rodada falhou. A sala continua pronta para tentar novamente." });
-          setStatus(message.message || "Falha durante a preparação/gravação da troca.");
+          resetTradeRoundUi({ peerMessage: "A rodada falhou. Tente novamente." });
+          setStatus("Falha na troca. Seus saves não foram alterados.");
           log(`Falha de escrita da troca: ${message.message || message.stage}`);
           return true;
         case "trade_round_cancelled":
@@ -325,8 +360,8 @@ window.POKECABLE_TRADE_FLOW = {
         case "trade_cancelled":
           if (message.reason === "peer_disconnected") {
             state.roomReady = false;
-            resetTradeRoundUi({ peerMessage: "Aguardando o Pokémon do outro jogador." });
-            setStatus("Outro usuário desconectou. A sala continua aberta aguardando novo usuário.");
+            resetTradeRoundUi({ peerMessage: "Aguardando o Pokémon do outro treinador." });
+            setStatus("O outro treinador saiu da sala.");
           } else {
             state.hasJoinedRoom = false;
             state.roomReady = false;
@@ -343,6 +378,7 @@ window.POKECABLE_TRADE_FLOW = {
     return {
       joinTradeRoom,
       sendOffer,
+      sendPreflightResult,
       resetTradeRoundUi,
       handleTradeMessage,
       syncButtons,

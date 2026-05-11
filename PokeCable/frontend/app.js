@@ -8,19 +8,16 @@ const localOfferDetailsEl = document.querySelector("#localOfferDetails");
 const peerOfferDetailsEl = document.querySelector("#peerOfferDetails");
 const tradeCompatibilityPreviewEl = document.querySelector("#tradeCompatibilityPreview");
 const tradeEvolutionPreviewEl = document.querySelector("#tradeEvolutionPreview");
-const eventLogEl = document.querySelector("#eventLog");
 const pokemonChoiceEl = document.querySelector("#pokemonChoice");
 const saveFileEl = document.querySelector("#saveFile");
 const saveSummaryEl = document.querySelector("#saveSummary");
 const setupSaveStageEl = document.querySelector("#setupSaveStage");
 const setupRoomStageEl = document.querySelector("#setupRoomStage");
-const setupChoiceStageEl = document.querySelector("#setupChoiceStage");
 const setupHeaderEl = document.querySelector("#setupHeader");
 const setupFooterEl = document.querySelector("#setupFooter");
 const noticeEl = document.querySelector(".notice");
 const accessSessionButton = document.querySelector("#accessSession");
 const leaveSessionButton = document.querySelector("#leaveSession");
-const openTradeTabButton = document.querySelector("#openTradeTab");
 const backToModeFromTradeButton = document.querySelector("#backToModeFromTrade");
 const sessionStatusEl = document.querySelector("#sessionStatus");
 const sessionDetailEl = document.querySelector("#sessionDetail");
@@ -37,22 +34,31 @@ const selectedInventoryItemStatusEl = document.querySelector("#selectedInventory
 const setupPartyPreviewEl = document.querySelector("#setupPartyPreview");
 const setupBagPreviewEl = document.querySelector("#setupBagPreview");
 const setupPcPreviewEl = document.querySelector("#setupPcPreview");
-const setupPokemonPcPreviewEl = document.querySelector("#setupPokemonPcPreview");
-const setupTogglePokemonPcButton = document.querySelector("#setupTogglePokemonPc");
 const pokemonDetailDrawerEl = document.querySelector("#pokemonDetailDrawer");
 const pokemonDetailDrawerBackdropEl = document.querySelector("#pokemonDetailDrawerBackdrop");
 const pokemonDetailDrawerTitleEl = document.querySelector("#pokemonDetailDrawerTitle");
 const pokemonDetailDrawerBodyEl = document.querySelector("#pokemonDetailDrawerBody");
 const closePokemonDetailDrawerButton = document.querySelector("#closePokemonDetailDrawer");
-const startMovePokemonButton = document.querySelector("#startMovePokemon");
-const cancelMovePokemonButton = document.querySelector("#cancelMovePokemon");
-const removeHeldItemButton = document.querySelector("#removeHeldItem");
-const applyHeldItemButton = document.querySelector("#applyHeldItem");
 const tradeSelectedSummaryEl = document.querySelector("#tradeSelectedSummary");
 const tradePartyLabelEl = document.querySelector("#tradePartyLabel");
 const tradePartyPreviewEl = document.querySelector("#tradePartyPreview");
 const tradeBoxPreviewEl = document.querySelector("#tradeBoxPreview");
 const tradeTogglePokemonPcButton = document.querySelector("#tradeTogglePokemonPc");
+const startMovePokemonButton = document.querySelector("#startMovePokemon");
+const cancelMovePokemonButton = document.querySelector("#cancelMovePokemon");
+
+if (!tradeBoxPreviewEl) {
+  console.error("tradeBoxPreviewEl not found - PC functionality will not work");
+}
+if (!tradeTogglePokemonPcButton) {
+  console.error("tradeTogglePokemonPcButton not found - PC button will not work");
+}
+if (!startMovePokemonButton) {
+  console.error("startMovePokemonButton not found - move functionality will not work");
+}
+if (!cancelMovePokemonButton) {
+  console.error("cancelMovePokemonButton not found - cancel move functionality will not work");
+}
 
 const roomNameEl = document.querySelector("#roomName");
 const roomPasswordEl = document.querySelector("#roomPassword");
@@ -472,7 +478,10 @@ const tradeState = {
   pendingTradePayload: null,
   hasJoinedRoom: false,
   roomReady: false,
-  roundActive: false
+  roundActive: false,
+  awaitingMoveConfirmation: false,
+  pendingPreflightReport: null,
+  pendingMoveReplacements: null
 };
 const nonHoldableCategories = new Set(["badge", "system", "key_item", "tm", "hm", "tmhm", "unused"]);
 
@@ -552,10 +561,10 @@ const inventoryUiController = inventoryUiModule?.createInventoryUiController({
   elements: {
     setupBagPreviewEl,
     setupPcPreviewEl,
-    setupPokemonPcPreviewEl,
     tradeBoxPreviewEl,
-    setupTogglePokemonPcButton,
     tradeTogglePokemonPcButton,
+    startMovePokemonButton,
+    cancelMovePokemonButton,
     pokemonDetailDrawerEl,
     pokemonDetailDrawerBackdropEl,
     pokemonDetailDrawerTitleEl,
@@ -641,10 +650,6 @@ const saveManagementController = saveManagementModule?.createSaveManagementContr
     setupSelectionDetailEl,
     selectedInventoryItemStatusEl,
     saveManagementStatusEl,
-    startMovePokemonButton,
-    cancelMovePokemonButton,
-    removeHeldItemButton,
-    applyHeldItemButton,
     setupPartyPreviewEl,
     tradePartyPreviewEl,
     localOfferEl,
@@ -879,9 +884,7 @@ const inventoryLayouts = {
 };
 
 function log(message) {
-  const time = new Date().toLocaleTimeString();
-  eventLogEl.textContent += `[${time}] ${message}\n`;
-  eventLogEl.scrollTop = eventLogEl.scrollHeight;
+  console.debug(`[PokeCable] ${message}`);
 }
 
 function setStatus(message) {
@@ -919,7 +922,6 @@ function clearLoadedSave() {
   saveSummaryEl.innerHTML = "<span>Nenhum save carregado</span><strong>Gen 1, Gen 2 e Gen 3 são detectadas pelo arquivo.</strong>";
   setupSaveStageEl?.classList.remove("setup-stage-hidden");
   setupRoomStageEl?.classList.add("setup-stage-hidden");
-  setupChoiceStageEl?.classList.add("setup-stage-hidden");
   if (tradePartyLabelEl) tradePartyLabelEl.textContent = "Sua Party";
 }
 
@@ -2969,8 +2971,6 @@ function updatePokemonOptions() {
     setupBagPreviewEl.textContent = "Carregue um save para visualizar os pockets da mochila.";
     setupPcPreviewEl.className = "inventory-preview-body inventory-preview-empty";
     setupPcPreviewEl.textContent = "Carregue um save para visualizar os itens guardados no PC.";
-    setupPokemonPcPreviewEl.className = "inventory-preview-body inventory-preview-empty";
-    setupPokemonPcPreviewEl.textContent = "Boxes/PC Pokémon ainda não foram carregados para este save.";
     tradeSelectedSummaryEl.textContent = "Nenhum Pokémon selecionado.";
     if (setupSelectedSummaryEl) setupSelectedSummaryEl.textContent = "Nenhum Pokémon selecionado.";
     if (setupStatusEl) setupStatusEl.textContent = "Carregue um save para liberar as funções.";
@@ -3361,9 +3361,6 @@ function handleMessage(message) {
 accessSessionButton.addEventListener("click", () => {
   void startSession("join").catch((error) => setSessionStatus(error.message || String(error)));
 });
-openTradeTabButton.addEventListener("click", () => {
-  activateTab("trade");
-});
 backToModeFromTradeButton?.addEventListener("click", () => {
   activateTab("setup");
 });
@@ -3384,66 +3381,58 @@ sendTradeOfferButton.addEventListener("click", () => {
   }
 });
 confirmButton.addEventListener("click", () => {
-  confirmButton.disabled = true;
-  
-  // Coleta resoluções de golpes se houver dropdowns na tela
-  const resolvedMoves = {};
-  document.querySelectorAll(".move-replacement-select").forEach(select => {
-    const originalMoveId = select.dataset.originalMoveId;
-    const replacementMoveId = Number(select.value);
-    resolvedMoves[originalMoveId] = replacementMoveId;
-  });
+  if (tradeState.awaitingMoveConfirmation) {
+    // Estágio 1: Confirmar escolha de golpes
+    const resolvedMoves = {};
+    document.querySelectorAll(".move-replacement-select").forEach(select => {
+      const originalMoveId = select.dataset.originalMoveId;
+      const replacementMoveId = Number(select.value);
+      if (replacementMoveId !== 0) {
+        resolvedMoves[originalMoveId] = replacementMoveId;
+      }
+    });
 
-  send({ 
-    type: "confirm_trade",
-    resolved_moves: Object.keys(resolvedMoves).length > 0 ? resolvedMoves : null
-  });
+    tradeState.awaitingMoveConfirmation = false;
+    tradeState.pendingMoveReplacements = resolvedMoves;
+    confirmButton.textContent = "Confirmar troca";
+    confirmButton.disabled = true;
+
+    const { report, payload, message } = tradeState.pendingPreflightReport;
+    report.move_replacements = resolvedMoves;
+    tradeFlowController?.sendPreflightResult(report, payload, message);
+    setStatus("Preflight enviado. Aguardando confirmação...");
+  } else {
+    // Estágio 2: Confirmar troca
+    confirmButton.disabled = true;
+    send({ type: "confirm_trade" });
+  }
 });
 cancelButton.addEventListener("click", () => {
   send({ type: "cancel_trade_round", reason: "user_cancelled" });
 });
-startMovePokemonButton.addEventListener("click", () => {
-  try {
-    startMovePokemon();
-  } catch (error) {
-    saveManagementStatusEl.textContent = error.message || String(error);
-  }
-});
-cancelMovePokemonButton.addEventListener("click", () => {
-  cancelMovePokemon();
-});
-removeHeldItemButton.addEventListener("click", () => {
-  try {
-    removeHeldItemFromSelectedPokemon();
-  } catch (error) {
-    saveManagementStatusEl.textContent = error.message || String(error);
-  }
-});
-applyHeldItemButton.addEventListener("click", () => {
-  try {
-    applySelectedItemToPokemon();
-  } catch (error) {
-    saveManagementStatusEl.textContent = error.message || String(error);
-  }
-});
-setupPokemonPcPreviewEl.addEventListener("click", (event) => {
-  if (inventoryUiController?.handlePokemonPcAction(event, "setup")) return;
-  const button = event.target.closest("[data-pokemon-location]");
-  if (!button) return;
-  handlePokemonSelectionClick(button.getAttribute("data-pokemon-location"), "setup");
-});
-tradeBoxPreviewEl.addEventListener("click", (event) => {
-  if (inventoryUiController?.handlePokemonPcAction(event, "trade")) return;
-  const button = event.target.closest("[data-pokemon-location]");
-  if (!button) return;
-  handlePokemonSelectionClick(button.getAttribute("data-pokemon-location"), "trade");
-});
-setupTogglePokemonPcButton.addEventListener("click", () => {
-  inventoryUiController?.togglePokemonPcVisibility("setup");
-});
-tradeTogglePokemonPcButton.addEventListener("click", () => {
-  inventoryUiController?.togglePokemonPcVisibility("trade");
-});
+if (tradeBoxPreviewEl) {
+  tradeBoxPreviewEl.addEventListener("click", (event) => {
+    if (inventoryUiController?.handlePokemonPcAction(event, "trade")) return;
+    const button = event.target.closest("[data-pokemon-location]");
+    if (!button) return;
+    handlePokemonSelectionClick(button.getAttribute("data-pokemon-location"), "trade");
+  });
+}
+if (tradeTogglePokemonPcButton) {
+  tradeTogglePokemonPcButton.addEventListener("click", () => {
+    inventoryUiController?.togglePokemonPcVisibility("trade");
+  });
+}
+if (startMovePokemonButton) {
+  startMovePokemonButton.addEventListener("click", () => {
+    saveManagementController?.startMovePokemon();
+  });
+}
+if (cancelMovePokemonButton) {
+  cancelMovePokemonButton.addEventListener("click", () => {
+    saveManagementController?.cancelMovePokemon();
+  });
+}
 closePokemonDetailDrawerButton.addEventListener("click", () => {
   inventoryUiController?.closePokemonDetailDrawer();
 });
@@ -3469,9 +3458,6 @@ window.addEventListener("beforeunload", (event) => {
   if (!sessionState.joined) return;
   event.preventDefault();
   event.returnValue = "";
-});
-document.querySelector("#clearLog").addEventListener("click", () => {
-  eventLogEl.textContent = "";
 });
 pokemonChoiceEl.addEventListener("change", () => {
   if (!loadedSave) return;

@@ -9,12 +9,12 @@ window.POKECABLE_WS_CLIENT = {
     let heartbeatTimer = null;
 
     function setDisconnected() {
-      statusEl.textContent = "Desconectado";
+      statusEl.textContent = "Offline";
       statusEl.classList.remove("online");
     }
 
     function setConnecting() {
-      statusEl.textContent = "Conectando";
+      statusEl.textContent = "Conectando...";
       statusEl.classList.remove("online");
     }
 

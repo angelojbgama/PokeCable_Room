@@ -55,8 +55,13 @@ window.POKECABLE_SAVE_MANAGEMENT = {
       const loadedSave = getLoadedSave();
       const selected = pokemonByLocation(loadedSave, getSelectedLocation());
       const canManage = Boolean(loadedSave && selected && !selected.is_egg);
-      startMovePokemonButton.disabled = !canManage || Boolean(getPendingMoveSourceLocation());
-      cancelMovePokemonButton.disabled = !getPendingMoveSourceLocation();
+      const tradeState = getTradeState?.();
+      const pendingMove = Boolean(getPendingMoveSourceLocation());
+
+      startMovePokemonButton.disabled = !canManage || pendingMove || tradeState?.roundActive;
+      if (cancelMovePokemonButton) {
+        cancelMovePokemonButton.hidden = !pendingMove;
+      }
       removeHeldItemButton.disabled = !canManage || loadedSave?.generation === 1 || !selected?.held_item_id;
       applyHeldItemButton.disabled = !canManage || loadedSave?.generation === 1 || !getSelectedInventoryItem();
     }

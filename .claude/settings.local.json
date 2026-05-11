@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 *)",
+      "*",
+      "Bash(node --check /mnt/c/Users/USER/Documents/meu/PokeCable_Room/PokeCable/frontend/trade-preview.js)",
+      "Bash(node --check /mnt/c/Users/USER/Documents/meu/PokeCable_Room/PokeCable/frontend/app.js)"
+    ]
+  }
+}
