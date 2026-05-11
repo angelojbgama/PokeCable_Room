@@ -65,13 +65,13 @@
             <div id="setupChoiceStage" class="setup-stage-hidden">
               <div class="mode-grid">
                 <button type="button" class="mode-card" id="openTradeTab">
-                  <span>Modo</span>
+                  <span>Ação</span>
                   <strong>Troca</strong>
                 </button>
-                <button type="button" class="mode-card" id="openBattleTab">
-                  <span>Modo</span>
-                  <strong>Batalha</strong>
-                </button>
+                <div class="mode-card mode-card-disabled" aria-disabled="true">
+                  <span>Em breve</span>
+                  <strong>...</strong>
+                </div>
               </div>
             </div>
 
@@ -206,76 +206,6 @@
         </div>
       </section>
 
-      <section id="tab-battle" class="setup-stage-hidden">
-        <div class="grid">
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <h2>Batalha na mesma sala</h2>
-                <p>Usa a party do save carregado como time canônico sem sair da sessão atual.</p>
-              </div>
-              <button type="button" id="backToModeFromBattle" class="ghost">Escolher modo</button>
-            </div>
-
-            <div class="status-box">
-              <span>Status da batalha</span>
-              <strong id="battleStatus">Carregue um save para montar o time.</strong>
-              <small id="battleSaveStatus">O save é carregado primeiro na aba inicial.</small>
-            </div>
-
-            <div class="battle-meta">
-              <div>
-                <span>Formato</span>
-                <strong id="battleFormat">Automático</strong>
-              </div>
-              <div>
-                <span>Time</span>
-                <strong id="battleTeamCount">0 Pokémon</strong>
-              </div>
-            </div>
-
-            <div class="battle-inventory-area">
-              <div class="inventory-card inventory-card-compact">
-                <div class="inventory-card-head">
-                  <span>Equipar Itens (Mochila)</span>
-                  <small id="selectedBattleItemStatus">Nenhum item selecionado.</small>
-                </div>
-                <div id="battleInventoryPreview" class="inventory-preview-body">
-                  Carregue um save para selecionar itens da mochila.
-                </div>
-              </div>
-            </div>
-
-            <div class="team-preview" id="battleTeamPreview"></div>
-
-            <div id="battleScene" class="battle-scene" aria-label="Cena visual da batalha"></div>
-
-            <div class="actions">
-              <button type="button" id="sendBattleTeam" disabled>Enviar time</button>
-              <button type="button" id="confirmBattle" disabled>Confirmar batalha</button>
-              <button type="button" id="forfeitBattle" class="secondary" disabled>Desistir</button>
-            </div>
-            <div class="battle-actions" id="battleActions" aria-label="Ações de batalha">
-              <button type="button" data-battle-action="move 1" disabled>Golpe 1</button>
-              <button type="button" data-battle-action="move 2" disabled>Golpe 2</button>
-              <button type="button" data-battle-action="move 3" disabled>Golpe 3</button>
-              <button type="button" data-battle-action="move 4" disabled>Golpe 4</button>
-              <button type="button" data-battle-action="pass" class="secondary" disabled>Passar</button>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <h2>Log de batalha</h2>
-                <p>Logs da engine de batalha atual.</p>
-              </div>
-            </div>
-            <pre id="battleLog"></pre>
-          </section>
-        </div>
-      </section>
-
       <section class="panel" style="margin-top: 20px;">
         <section class="log-panel" aria-label="Eventos">
           <div class="panel-head compact">
@@ -318,9 +248,6 @@
     <script src="/trade-preview.js"></script>
     <script src="/web-compatibility.js"></script>
     <script src="/trade-flow.js"></script>
-    <script src="/battle-scene-gen2.js"></script>
-    <script src="/battle-scene.js"></script>
-    <script src="/battle-flow.js"></script>
     <script src="/websocket-client.js"></script>
     <script src="/app.js"></script>
   </body>

@@ -21,28 +21,13 @@ const noticeEl = document.querySelector(".notice");
 const accessSessionButton = document.querySelector("#accessSession");
 const leaveSessionButton = document.querySelector("#leaveSession");
 const openTradeTabButton = document.querySelector("#openTradeTab");
-const openBattleTabButton = document.querySelector("#openBattleTab");
 const backToModeFromTradeButton = document.querySelector("#backToModeFromTrade");
-const backToModeFromBattleButton = document.querySelector("#backToModeFromBattle");
 const sessionStatusEl = document.querySelector("#sessionStatus");
 const sessionDetailEl = document.querySelector("#sessionDetail");
 const sendTradeOfferButton = document.querySelector("#sendTradeOffer");
 const confirmButton = document.querySelector("#confirmTrade");
 const cancelButton = document.querySelector("#cancelTrade");
 const downloadArea = document.querySelector("#downloadArea");
-const sendBattleTeamButton = document.querySelector("#sendBattleTeam");
-const confirmBattleButton = document.querySelector("#confirmBattle");
-const forfeitBattleButton = document.querySelector("#forfeitBattle");
-const battleLogEl = document.querySelector("#battleLog");
-const battleStatusEl = document.querySelector("#battleStatus");
-const battleSaveStatusEl = document.querySelector("#battleSaveStatus");
-const battleFormatEl = document.querySelector("#battleFormat");
-const battleTeamCountEl = document.querySelector("#battleTeamCount");
-const battleTeamPreviewEl = document.querySelector("#battleTeamPreview");
-const battleActionsEl = document.querySelector("#battleActions");
-const battleInventoryPreviewEl = document.querySelector("#battleInventoryPreview");
-const selectedBattleItemStatusEl = document.querySelector("#selectedBattleItemStatus");
-const battleSceneEl = document.querySelector("#battleScene");
 const setupStatusEl = document.querySelector("#setupStatus");
 const setupSelectedSummaryEl = document.querySelector("#setupSelectedSummary");
 const setupSelectionDetailEl = document.querySelector("#setupSelectionDetail");
@@ -127,14 +112,6 @@ if (!webCompatibilityModule) {
 const tradeFlowModule = window.POKECABLE_TRADE_FLOW;
 if (!tradeFlowModule) {
   console.error("POKECABLE_TRADE_FLOW nao foi carregado. Verifique PokeCable/frontend/trade-flow.js.");
-}
-const battleFlowModule = window.POKECABLE_BATTLE_FLOW;
-if (!battleFlowModule) {
-  console.error("POKECABLE_BATTLE_FLOW nao foi carregado. Verifique PokeCable/frontend/battle-flow.js.");
-}
-const battleSceneModule = window.POKECABLE_BATTLE_SCENE;
-if (!battleSceneModule) {
-  console.error("POKECABLE_BATTLE_SCENE nao foi carregado. Verifique PokeCable/frontend/battle-scene.js.");
 }
 const wsClientModule = window.POKECABLE_WS_CLIENT;
 if (!wsClientModule) {
@@ -484,7 +461,6 @@ const sessionState = {
   pending: false,
   joined: false,
   tradeJoined: false,
-  battleJoined: false,
   saveLocked: false,
   clientId: null,
   slot: null
@@ -497,13 +473,6 @@ const tradeState = {
   hasJoinedRoom: false,
   roomReady: false,
   roundActive: false
-};
-const battleState = {
-  hasJoinedBattleRoom: false,
-  roomReady: false,
-  readyToConfirm: false,
-  currentBattleId: null,
-  currentBattleRequest: null
 };
 const nonHoldableCategories = new Set(["badge", "system", "key_item", "tm", "hm", "tmhm", "unused"]);
 
@@ -594,6 +563,42 @@ const inventoryUiController = inventoryUiModule?.createInventoryUiController({
   }
 });
 
+const tradeFlowController = tradeFlowModule?.createTradeFlowController({
+  state: tradeState,
+  getLoadedSave: () => loadedSave,
+  getSelectedLocation: () => selectedLocation,
+  getSelectedPokemon: () => pokemonByLocation(loadedSave, selectedLocation),
+  getRoomCredentials: () => ({
+    roomName: document.querySelector("#roomName").value.trim(),
+    password: document.querySelector("#roomPassword").value
+  }),
+  getSessionAction: () => sessionState.action,
+  selectedPayload,
+  supportedTradeModes,
+  supportedProtocols,
+  renderOfferCard,
+  buildWebCompatibilityReport,
+  renderTradeCompatibilityPreview,
+  renderTradeEvolutionPreview,
+  clearTradePreviews,
+  send,
+  setStatus,
+  log,
+  sha256Hex,
+  downloadBlob,
+  afterLocalSaveApplied: () => updatePokemonOptions(),
+  elements: {
+    sendOfferButton: sendTradeOfferButton,
+    confirmButton,
+    cancelButton,
+    downloadArea,
+    peerOfferEl,
+    peerOfferDetailsEl,
+    localOfferEl,
+    localOfferDetailsEl
+  }
+});
+
 const saveManagementController = saveManagementModule?.createSaveManagementController({
   getLoadedSave: () => loadedSave,
   getSelectedLocation: () => selectedLocation,
@@ -647,84 +652,6 @@ const saveManagementController = saveManagementModule?.createSaveManagementContr
   }
 });
 
-const tradeFlowController = tradeFlowModule?.createTradeFlowController({
-  state: tradeState,
-  getLoadedSave: () => loadedSave,
-  getSelectedLocation: () => selectedLocation,
-  getSelectedPokemon: () => pokemonByLocation(loadedSave, selectedLocation),
-  getRoomCredentials: () => ({
-    roomName: document.querySelector("#roomName").value.trim(),
-    password: document.querySelector("#roomPassword").value
-  }),
-  getSessionAction: () => sessionState.action,
-  selectedPayload,
-  supportedTradeModes,
-  supportedProtocols,
-  renderOfferCard,
-  buildWebCompatibilityReport,
-  renderTradeCompatibilityPreview,
-  renderTradeEvolutionPreview,
-  clearTradePreviews,
-  send,
-  setStatus,
-  log,
-  sha256Hex,
-  downloadBlob,
-  afterLocalSaveApplied: () => updatePokemonOptions(),
-  elements: {
-    sendOfferButton: sendTradeOfferButton,
-    confirmButton,
-    cancelButton,
-    downloadArea,
-    peerOfferEl,
-    peerOfferDetailsEl,
-    localOfferEl,
-    localOfferDetailsEl
-  }
-});
-
-const battleFlowController = battleFlowModule?.createBattleFlowController({
-  state: battleState,
-  getLoadedSave: () => loadedSave,
-  getRoomCredentials: () => ({
-    roomName: document.querySelector("#roomName").value.trim(),
-    password: document.querySelector("#roomPassword").value
-  }),
-  send,
-  setStatus,
-  setBattleStatus,
-  log,
-  battleLog,
-  battleScene: battleSceneModule?.createBattleSceneController({
-    element: battleSceneEl,
-    getGeneration: () => loadedSave?.generation || 1
-  }),
-  elements: {
-    battleLogEl,
-    battleActionsEl,
-    battleFormatEl,
-    battleTeamCountEl,
-    sendBattleTeamButton,
-    confirmBattleButton,
-    forfeitBattleButton,
-    battleInventoryPreviewEl,
-    selectedBattleItemStatusEl,
-    battleTeamPreviewEl
-  }
-});
-
-battleSceneEl?.addEventListener("pokecable:battle-action", (event) => {
-  battleFlowController?.submitBattleAction(event.detail?.action);
-});
-
-battleInventoryPreviewEl?.addEventListener("click", (event) => {
-  battleFlowController?.handleBattleItemClick(event);
-});
-
-battleTeamPreviewEl?.addEventListener("click", (event) => {
-  battleFlowController?.handleBattleItemClick(event);
-});
-
 function clearTradePreviews() {
   tradePreviewRenderer?.clearTradePreviews();
 }
@@ -736,7 +663,6 @@ function renderTradeCompatibilityPreview(payload, report) {
 function renderTradeEvolutionPreview(payload, report) {
   tradePreviewRenderer?.renderTradeEvolutionPreview(payload, report);
 }
-
 const gen1 = {
   playerNameOffset: 0x2598,
   partyOffset: 0x2f2c,
@@ -958,23 +884,13 @@ function log(message) {
   eventLogEl.scrollTop = eventLogEl.scrollHeight;
 }
 
-function battleLog(message) {
-  if (!battleLogEl) return;
-  battleLogEl.textContent += `${message}\n`;
-  battleLogEl.scrollTop = battleLogEl.scrollHeight;
-}
-
 function setStatus(message) {
   tradeStatusEl.textContent = message;
 }
 
-function setBattleStatus(message) {
-  if (battleStatusEl) battleStatusEl.textContent = message;
-}
-
 function setSessionStatus(message, detail = "") {
   if (sessionStatusEl) sessionStatusEl.textContent = message;
-  if (sessionDetailEl) sessionDetailEl.textContent = detail || "A mesma sessão web mantém troca e batalha sob o mesmo nome de sala.";
+  if (sessionDetailEl) sessionDetailEl.textContent = detail || "Sessão web para troca de Pokémon entre saves.";
 }
 
 function supportedTradeModes(generation) {
@@ -1005,7 +921,6 @@ function clearLoadedSave() {
   setupRoomStageEl?.classList.add("setup-stage-hidden");
   setupChoiceStageEl?.classList.add("setup-stage-hidden");
   if (tradePartyLabelEl) tradePartyLabelEl.textContent = "Sua Party";
-  if (battleSaveStatusEl) battleSaveStatusEl.textContent = "Nenhum save carregado.";
 }
 
 function loadedSaveHeadline(save) {
@@ -1017,7 +932,6 @@ function loadedSaveHeadline(save) {
 function getActiveTab() {
   if (!document.querySelector("#tab-setup").classList.contains("setup-stage-hidden")) return "setup";
   if (!document.querySelector("#tab-trade").classList.contains("setup-stage-hidden")) return "trade";
-  if (!document.querySelector("#tab-battle").classList.contains("setup-stage-hidden")) return "battle";
   return "setup";
 }
 
@@ -1042,7 +956,6 @@ function refreshSessionUi() {
 
   if (setupSaveStageEl) setupSaveStageEl.classList.toggle("setup-stage-hidden", hasLoadedSave);
   if (setupRoomStageEl) setupRoomStageEl.classList.toggle("setup-stage-hidden", !hasLoadedSave || sessionState.joined);
-  if (setupChoiceStageEl) setupChoiceStageEl.classList.toggle("setup-stage-hidden", !roomChoiceReady);
   
   if (hasLoadedSave) {
     if (isSetupTab) updateSetupPartyPreview();
@@ -1050,7 +963,6 @@ function refreshSessionUi() {
   }
 
   tradeFlowController?.syncButtons();
-  battleFlowController?.syncButtons();
   
   if (!loadedSave) {
     setSessionStatus("Carregue um save local.");
@@ -1064,12 +976,18 @@ function refreshSessionUi() {
     setSessionStatus("Save carregado.", "Defina a sala e senha para acessar.");
     return;
   }
-  setSessionStatus("Sessão ativa.", "Escolha troca ou batalha.");
+  
+  // Se entrou na sala agora e ainda está no setup, pula direto para a troca
+  if (isSetupTab) {
+    activateTab("trade");
+  }
+
+  setSessionStatus("Sessão ativa.", "Troca disponível.");
 }
 
 function activateTab(tabName) {
   // Oculta todos os painéis principais
-  ["tab-setup", "tab-trade", "tab-battle"].forEach(id => {
+  ["tab-setup", "tab-trade"].forEach(id => {
     document.getElementById(id)?.classList.add("setup-stage-hidden");
   });
   // Mostra apenas o selecionado
@@ -1100,12 +1018,8 @@ const wsClient = wsClientModule?.createWsClient({
     confirmButton.disabled = true;
     cancelButton.disabled = true;
     sendTradeOfferButton.disabled = true;
-    sendBattleTeamButton.disabled = true;
-    confirmBattleButton.disabled = true;
-    forfeitBattleButton.disabled = true;
     setStatus("Conexao encerrada.");
     setSessionStatus("Conexão encerrada.", "Reabra a sessão para continuar usando a mesma sala.");
-    battleFlowController?.handleBattleSocketClosed();
   }
 });
 
@@ -3049,8 +2963,6 @@ function updatePokemonOptions() {
     option.value = "";
     option.textContent = "Carregue um save";
     pokemonChoiceEl.append(option);
-    battleTeamCountEl.textContent = "0 Pokémon";
-    battleTeamPreviewEl.textContent = "";
     setupPartyPreviewEl.textContent = "";
     tradePartyPreviewEl.textContent = "";
     setupBagPreviewEl.className = "inventory-preview-body inventory-preview-empty";
@@ -3059,14 +2971,12 @@ function updatePokemonOptions() {
     setupPcPreviewEl.textContent = "Carregue um save para visualizar os itens guardados no PC.";
     setupPokemonPcPreviewEl.className = "inventory-preview-body inventory-preview-empty";
     setupPokemonPcPreviewEl.textContent = "Boxes/PC Pokémon ainda não foram carregados para este save.";
-    if (battleSaveStatusEl) battleSaveStatusEl.textContent = "Nenhum save carregado.";
     tradeSelectedSummaryEl.textContent = "Nenhum Pokémon selecionado.";
     if (setupSelectedSummaryEl) setupSelectedSummaryEl.textContent = "Nenhum Pokémon selecionado.";
-    if (setupStatusEl) setupStatusEl.textContent = "Carregue um save para liberar troca e batalha.";
+    if (setupStatusEl) setupStatusEl.textContent = "Carregue um save para liberar as funções.";
     saveManagementStatusEl.textContent = "Selecione um Pokémon para começar.";
     selectedInventoryItem = null;
     pendingMoveSourceLocation = null;
-    setBattleStatus("Carregue um save para montar o time.");
     setStatus("Carregue um save para começar.");
     refreshSessionUi();
     return;
@@ -3092,41 +3002,19 @@ function updatePokemonOptions() {
       (entry) => Number(entry.item_id) === Number(selectedInventoryItem.item_id) && entry.pocket_name === selectedInventoryItem.pocket_name && entry.storage === selectedInventoryItem.storage
     ) || null;
   }
-  if (battleSaveStatusEl) battleSaveStatusEl.textContent = `${loadedSave.label}: ${(loadedSave.party || []).length} Pokémon na party.`;
   if (setupStatusEl) {
     setupStatusEl.textContent = enabled
-      ? `${loadedSave.label} carregado. Abra ou sincronize a sessão e depois escolha troca ou batalha.`
+      ? `${loadedSave.label} carregado. Abra ou sincronize a sessão para liberar as funções.`
       : "Este save não possui Pokémon válidos na party nem no PC para troca.";
   }
   const selected = pokemonByLocation(loadedSave, selectedLocation);
   renderOfferCard(localOfferEl, localOfferDetailsEl, selected || null, "", { emptyMessage: "Escolha um Pokémon da party ou do PC." });
-  updateBattleTeamPreview();
   updateSetupPartyPreview();
   updateTradePartyPreview();
   updateInventoryPreview();
   updatePokemonPcPreview();
   updateSelectionUi();
   refreshSessionUi();
-}
-
-function updateBattleTeamPreview() {
-  battleTeamPreviewEl.textContent = "";
-  if (!loadedSave) return;
-  const team = loadedSave.party.filter((pokemon) => !pokemon.is_egg).slice(0, 6);
-  battleTeamCountEl.textContent = `${team.length} Pokémon`;
-  battleFormatEl.textContent = `Gen ${loadedSave.generation} local`;
-  setBattleStatus(team.length ? "Time pronto para batalha." : "Nenhum Pokémon válido na party.");
-  for (const pokemon of team) {
-    const item = document.createElement("div");
-    item.className = "team-preview-item";
-    const name = document.createElement("div");
-    name.className = "team-preview-name";
-    name.innerHTML = renderPokemonSummaryHtml(pokemon);
-    const meta = document.createElement("span");
-    meta.textContent = `${pokemon.moves?.length || 0} golpes exportados`;
-    item.append(name, meta);
-    battleTeamPreviewEl.append(item);
-  }
 }
 
 function updateSelectionUi() {
@@ -3229,16 +3117,9 @@ function resetSessionState() {
   sessionState.pending = false;
   sessionState.joined = false;
   sessionState.tradeJoined = false;
-  sessionState.battleJoined = false;
   tradeState.hasJoinedRoom = false;
   tradeState.roomReady = false;
   tradeFlowController?.resetTradeRoundUi();
-  battleState.hasJoinedBattleRoom = false;
-  battleState.roomReady = false;
-  battleState.readyToConfirm = false;
-  battleState.currentBattleId = null;
-  battleState.currentBattleRequest = null;
-  battleFlowController?.resetBattleUiForContextChange();
   refreshSessionUi();
 }
 
@@ -3247,9 +3128,7 @@ async function openPendingSession() {
   try {
     sessionState.joined = false;
     sessionState.tradeJoined = false;
-    sessionState.battleJoined = false;
     tradeFlowController?.resetTradeRoundUi();
-    battleFlowController?.resetBattleUiForContextChange();
     
     setSessionStatus("Conectando ao servidor...");
     await connect();
@@ -3257,7 +3136,6 @@ async function openPendingSession() {
     setSessionStatus("Entrando na sala...");
     log(`Tentando ${sessionState.action === "create" ? "criar" : "entrar na"} sala: ${roomNameEl.value}`);
     tradeFlowController?.joinTradeRoom(sessionState.action);
-    battleFlowController?.joinBattleRoom(sessionState.action);
     refreshSessionUi();
   } catch (error) {
     sessionState.pending = false;
@@ -3281,9 +3159,7 @@ async function startSession(action) {
   sessionState.pending = true;
   sessionState.joined = false;
   sessionState.tradeJoined = false;
-  sessionState.battleJoined = false;
   tradeFlowController?.resetTradeRoundUi();
-  battleFlowController?.resetBattleUiForContextChange();
   if (!loadedSave) {
     setSessionStatus("Sessão preparada. Carregue um save para concluir a entrada na sala.");
     refreshSessionUi();
@@ -3307,7 +3183,6 @@ function leaveSession() {
   clearLoadedSave();
   updatePokemonOptions();
   setStatus("Sessão encerrada.");
-  setBattleStatus("Sessão encerrada.");
   setSessionStatus("Sessão encerrada.", "Conexão encerrada.");
 }
 
@@ -3326,7 +3201,6 @@ function handleMessage(message) {
 
   // Filtra mensagens para os controladores específicos
   const handledByTrade = message.type !== "connected" && tradeFlowController?.handleTradeMessage(message);
-  const handledByBattle = message.type !== "connected" && battleFlowController?.handleBattleMessage(message);
 
   // Atualização dos nomes dos players na interface de troca
   if (message.room && message.room.players) {
@@ -3385,7 +3259,7 @@ function handleMessage(message) {
       }
     }
     
-    if (peerPlayer && peerPlayer.name && (message.type === "room_ready" || message.type === "room_joined" || message.type === "battle_room_ready")) {
+    if (peerPlayer && peerPlayer.name && (message.type === "room_ready" || message.type === "room_joined")) {
       // Só loga se o nome estiver disponível e for uma mensagem de entrada/prontidão
       log(`O treinador ${peerPlayer.name} está na sala.`);
     }
@@ -3427,18 +3301,6 @@ function handleMessage(message) {
     refreshSessionUi();
   }
 
-  if (handledByBattle) {
-    if (message.type === "battle_room_created" || message.type === "battle_room_joined" || message.type === "battle_room_ready") {
-      sessionState.battleJoined = true;
-      sessionState.pending = false;
-      sessionState.joined = true;
-      refreshSessionUi();
-    }
-    if (message.type === "battle_finished" || message.type === "battle_finished_received") {
-      // Batalha acabou, mas a sala de batalha ainda existe até o peer desconectar ou contexto mudar
-    }
-  }
-
   switch (message.type) {
     case "connected":
       log("Conectado ao servidor. Pronto para entrar na sala.");
@@ -3449,8 +3311,7 @@ function handleMessage(message) {
       sessionState.pending = false;
       sessionState.joined = true;
       sessionState.tradeJoined = Boolean(message.trade_room);
-      sessionState.battleJoined = Boolean(message.battle_room);
-      setSessionStatus("Sessão sincronizada.", "Troca e batalha disponíveis.");
+      setSessionStatus("Sessão sincronizada.", "Troca disponível.");
       log("Contexto do jogador atualizado.");
       refreshSessionUi();
       break;
@@ -3485,14 +3346,13 @@ function handleMessage(message) {
       }
 
       setStatus(message.message || "Erro no servidor.");
-      battleFlowController?.handleBattleServerError(message);
       setSessionStatus(message.message || "Erro na sessão.");
       log(`Erro (${message.code}): ${message.message}`);
       refreshSessionUi();
       break;
       
     default:
-      if (!handledByTrade && !handledByBattle) {
+      if (!handledByTrade) {
         log(`Evento: ${message.type}`);
       }
   }
@@ -3501,16 +3361,10 @@ function handleMessage(message) {
 accessSessionButton.addEventListener("click", () => {
   void startSession("join").catch((error) => setSessionStatus(error.message || String(error)));
 });
-openTradeTabButton?.addEventListener("click", () => {
+openTradeTabButton.addEventListener("click", () => {
   activateTab("trade");
 });
-openBattleTabButton?.addEventListener("click", () => {
-  activateTab("battle");
-});
 backToModeFromTradeButton?.addEventListener("click", () => {
-  activateTab("setup");
-});
-backToModeFromBattleButton?.addEventListener("click", () => {
   activateTab("setup");
 });
 roomNameEl.addEventListener("input", () => {
@@ -3544,22 +3398,6 @@ confirmButton.addEventListener("click", () => {
     type: "confirm_trade",
     resolved_moves: Object.keys(resolvedMoves).length > 0 ? resolvedMoves : null
   });
-});
-sendBattleTeamButton.addEventListener("click", () => {
-  try {
-    battleFlowController?.sendBattleTeam();
-  } catch (error) {
-    setBattleStatus(error.message || String(error));
-  }
-});
-confirmBattleButton.addEventListener("click", () => {
-  battleFlowController?.handleBattleConfirm();
-});
-forfeitBattleButton.addEventListener("click", () => {
-  battleFlowController?.handleBattleForfeit();
-});
-battleActionsEl.addEventListener("click", (event) => {
-  battleFlowController?.handleBattleActionClick(event);
 });
 cancelButton.addEventListener("click", () => {
   send({ type: "cancel_trade_round", reason: "user_cancelled" });
@@ -3679,7 +3517,6 @@ saveFileEl.addEventListener("change", async () => {
 });
 
 updatePokemonOptions();
-battleFlowController?.renderBattleActions(null);
 activateTab("setup");
 refreshSessionUi();
 log(`Frontend pronto em ${wsUrl()}`);

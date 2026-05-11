@@ -8,7 +8,6 @@ from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from .battles import BattleManager
 from .models import PlayerSlot, Room, RoomError
 from .rooms import RoomManager
 
@@ -17,12 +16,10 @@ logger = logging.getLogger("pokecable.websocket")
 
 
 class ConnectionHub:
-    def __init__(self, room_manager: RoomManager, battle_manager: BattleManager | None = None) -> None:
+    def __init__(self, room_manager: RoomManager) -> None:
         self.room_manager = room_manager
-        self.battle_manager = battle_manager or BattleManager()
         self.connections: dict[str, WebSocket] = {}
         self.room_clients: dict[str, dict[PlayerSlot, str]] = {}
-        self.battle_clients: dict[str, dict[PlayerSlot, str]] = {}
 
     async def handle(self, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -67,18 +64,6 @@ class ConnectionHub:
                 await self._update_player_context(client_id, message)
             elif message_type == "cancel_trade":
                 await self._cancel_trade(client_id, "cancelled")
-            elif message_type == "create_battle_room":
-                await self._create_battle_room(client_id, message)
-            elif message_type == "join_battle_room":
-                await self._join_battle_room(client_id, message)
-            elif message_type == "offer_battle_team":
-                await self._offer_battle_team(client_id, message)
-            elif message_type == "confirm_battle":
-                await self._confirm_battle(client_id)
-            elif message_type == "battle_action":
-                await self._battle_action(client_id, message)
-            elif message_type == "battle_forfeit":
-                await self._battle_forfeit(client_id)
             else:
                 raise RoomError("unknown_message", f"Mensagem desconhecida: {message_type}")
         except RoomError as exc:
@@ -335,15 +320,8 @@ class ConnectionHub:
             supported_trade_modes=supported_trade_modes,
             supported_protocols=supported_protocols,
         )
-        battle_result = await self.battle_manager.update_player_context(
-            client_id=client_id,
-            generation=generation,
-            game=game,
-        )
         trade_room = trade_result[0] if trade_result else None
         trade_slot = trade_result[1] if trade_result else None
-        battle_room = battle_result[0] if battle_result else None
-        battle_slot = battle_result[1] if battle_result else None
         await self._send(
             client_id,
             {
@@ -351,7 +329,6 @@ class ConnectionHub:
                 "generation": generation,
                 "game": game,
                 "trade_room": trade_room.to_public_dict() if trade_room else None,
-                "battle_room": battle_room.to_public_dict() if battle_room else None,
             },
         )
         if trade_room and trade_slot:
@@ -363,95 +340,6 @@ class ConnectionHub:
                     "room": trade_room.to_public_dict(),
                 },
             )
-        if battle_room and battle_slot:
-            await self._broadcast_battle(
-                battle_room.room_name,
-                {
-                    "type": "battle_room_updated",
-                    "slot": battle_slot,
-                    "room": battle_room.to_public_dict(),
-                },
-            )
-
-    async def _create_battle_room(self, client_id: str, message: dict[str, Any]) -> None:
-        room, slot = await self.battle_manager.create_room(
-            room_name=message.get("room_name"),
-            password=str(message.get("password") or ""),
-            client_id=client_id,
-            player_name=str(message.get("player_name") or "Treinador"),
-            generation=message.get("generation"),
-            game=message.get("game"),
-            format_id=message.get("format_id"),
-        )
-        self._remember_battle_client(room.room_name, slot, client_id)
-        await self._send(client_id, {"type": "battle_room_created", "client_id": client_id, "slot": slot, "room": room.to_public_dict()})
-        await self._send(client_id, {"type": "battle_waiting", "message": "Aguardando segundo jogador para batalha."})
-
-    async def _join_battle_room(self, client_id: str, message: dict[str, Any]) -> None:
-        room, slot = await self.battle_manager.join_room(
-            room_name=message.get("room_name"),
-            password=str(message.get("password") or ""),
-            client_id=client_id,
-            player_name=str(message.get("player_name") or "Treinador"),
-            generation=message.get("generation"),
-            game=message.get("game"),
-        )
-        self._remember_battle_client(room.room_name, slot, client_id)
-        await self._send(client_id, {"type": "battle_room_joined", "client_id": client_id, "slot": slot, "room": room.to_public_dict()})
-        await self._broadcast_battle(room.room_name, {"type": "battle_room_ready", "room": room.to_public_dict()})
-
-    async def _offer_battle_team(self, client_id: str, message: dict[str, Any]) -> None:
-        team = message.get("team")
-        if not isinstance(team, list):
-            raise RoomError("invalid_team", "offer_battle_team precisa conter team JSON.")
-        room, slot, ready = await self.battle_manager.offer_team(client_id=client_id, team=team)
-        await self._send(client_id, {"type": "battle_team_received", "slot": slot, "team_size": len(team), "room": room.to_public_dict()})
-        if ready:
-            await self._broadcast_battle(room.room_name, {"type": "battle_ready", "room": room.to_public_dict()})
-
-    async def _confirm_battle(self, client_id: str) -> None:
-        room, slot, started, result = await self.battle_manager.confirm_battle(client_id=client_id)
-        await self._send(client_id, {"type": "battle_confirmed", "slot": slot})
-        if started:
-            await self._broadcast_battle(
-                room.room_name,
-                {
-                    "type": "battle_started",
-                    "battle_id": room.battle_id,
-                    "logs": result.logs,
-                    "room": room.to_public_dict(),
-                },
-            )
-            await self._send_battle_action_requests(room.room_name, room.battle_id, result.requests)
-
-    async def _battle_action(self, client_id: str, message: dict[str, Any]) -> None:
-        room, _slot, result = await self.battle_manager.send_action(client_id=client_id, action=str(message.get("action") or "pass"))
-        await self._broadcast_battle(room.room_name, {"type": "battle_log", "battle_id": room.battle_id, "logs": result.logs})
-        if result.finished:
-            await self._broadcast_battle(
-                room.room_name, 
-                {
-                    "type": "battle_finished", 
-                    "battle_id": room.battle_id, 
-                    "logs": result.logs,
-                    "item_resolutions": result.item_resolutions
-                }
-            )
-        else:
-            await self._send_battle_action_requests(room.room_name, room.battle_id, result.requests)
-
-    async def _battle_forfeit(self, client_id: str) -> None:
-        room, _slot, result = await self.battle_manager.forfeit(client_id=client_id)
-        await self._broadcast_battle(room.room_name, {"type": "battle_log", "battle_id": room.battle_id, "logs": result.logs})
-        await self._broadcast_battle(
-            room.room_name, 
-            {
-                "type": "battle_finished", 
-                "battle_id": room.battle_id, 
-                "logs": result.logs,
-                "item_resolutions": result.item_resolutions
-            }
-        )
 
     async def _disconnect(self, client_id: str) -> None:
         self.connections.pop(client_id, None)
@@ -468,25 +356,10 @@ class ConnectionHub:
             else:
                 await self._broadcast_room_name(room_name, {"type": "trade_cancelled", "reason": "peer_disconnected"})
                 await self._broadcast_room_name(room_name, {"type": "room_waiting", "message": "Outro usuario desconectou. A sala continua aguardando."})
-        battle_known = self.battle_manager.client_rooms.get(client_id)
-        battle_room_name = battle_known[0] if battle_known else None
-        battle_slot = battle_known[1] if battle_known else None
-        battle_room = await self.battle_manager.disconnect(client_id)
-        if battle_room_name:
-            battle_clients = self.battle_clients.get(battle_room_name, {})
-            if battle_slot:
-                battle_clients.pop(battle_slot, None)
-            if battle_room is None or not battle_clients:
-                self.battle_clients.pop(battle_room_name, None)
-            else:
-                await self._broadcast_battle(battle_room_name, {"type": "battle_finished", "reason": "peer_disconnected"})
         logger.info("client_disconnected client_id=%s room=%s", client_id, room_name)
 
     def _remember_client(self, room_name: str, slot: PlayerSlot, client_id: str) -> None:
         self.room_clients.setdefault(room_name, {})[slot] = client_id
-
-    def _remember_battle_client(self, room_name: str, slot: PlayerSlot, client_id: str) -> None:
-        self.battle_clients.setdefault(room_name, {})[slot] = client_id
 
     def _safe_write_error_metadata(self, room: Room, slot: PlayerSlot) -> dict[str, Any]:
         metadata = dict(room.write_metadata.get(slot) or {})
@@ -504,37 +377,11 @@ class ConnectionHub:
         }
         return {key: metadata[key] for key in allowed if key in metadata}
 
-    async def _send_battle_action_requests(self, room_name: str, battle_id: str | None, requests: dict[str, dict[str, Any]]) -> None:
-        if not battle_id:
-            return
-        room = self.battle_manager.rooms.get(room_name)
-        if room is None:
-            return
-        clients = self.battle_clients.get(room_name, {})
-        for slot, client_id in clients.items():
-            request_payload = dict(requests.get(client_id) or {})
-            if not request_payload:
-                continue
-            await self._send(
-                client_id,
-                {
-                    "type": "battle_request_action",
-                    "battle_id": battle_id,
-                    "request": request_payload,
-                    "slot": slot,
-                },
-            )
-
     async def _broadcast(self, room: Room, payload: dict[str, Any]) -> None:
         await self._broadcast_room_name(room.room_name, payload)
 
     async def _broadcast_room_name(self, room_name: str, payload: dict[str, Any]) -> None:
         tasks = [self._safe_send(client_id, payload) for client_id in self.room_clients.get(room_name, {}).values()]
-        if tasks:
-            await asyncio.gather(*tasks)
-
-    async def _broadcast_battle(self, room_name: str, payload: dict[str, Any]) -> None:
-        tasks = [self._safe_send(client_id, payload) for client_id in self.battle_clients.get(room_name, {}).values()]
         if tasks:
             await asyncio.gather(*tasks)
 

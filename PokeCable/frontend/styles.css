@@ -961,13 +961,38 @@ pre {
   animation: battle-scene-bg-effect-asset var(--battle-bg-effect-duration, 520ms) steps(4, end) var(--battle-bg-effect-delay, 0ms) both;
 }
 
+.battle-scene-bg-layer-instance {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image: var(--battle-bg-effect-url, none);
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: cover;
+  image-rendering: pixelated;
+  opacity: 0;
+  animation: battle-scene-bg-effect-asset var(--battle-bg-effect-duration, 520ms) steps(4, end) var(--battle-bg-effect-delay, 0ms) both;
+}
+
 .battle-scene-gen2 .battle-scene-field.has-asset-bg .battle-scene-bg-layer::before {
   background-size: 64px 64px;
   background-repeat: repeat;
   --battle-bg-effect-opacity: 0.78;
 }
 
+.battle-scene-gen2 .battle-scene-bg-layer-instance {
+  background-size: 64px 64px;
+  background-repeat: repeat;
+  --battle-bg-effect-opacity: 0.78;
+}
+
 .battle-scene-gen3 .battle-scene-field.has-asset-bg .battle-scene-bg-layer::before {
+  background-size: 240px 160px;
+  --battle-bg-effect-opacity: 0.92;
+}
+
+.battle-scene-gen3 .battle-scene-bg-layer-instance {
   background-size: 240px 160px;
   --battle-bg-effect-opacity: 0.92;
 }
@@ -990,13 +1015,14 @@ pre {
 }
 
 .battle-scene-gen2 .battle-scene-field {
+  /* Gen 2 battle field is palette-first; keep it flat and avoid modern gradients. */
   background: #f8f7d8;
 }
 
 .battle-scene-gen2 .battle-scene-bg-layer {
   background:
-    repeating-linear-gradient(0deg, transparent 0 7px, rgba(70, 86, 60, 0.035) 7px 8px),
-    repeating-linear-gradient(90deg, transparent 0 7px, rgba(70, 86, 60, 0.025) 7px 8px);
+    repeating-linear-gradient(0deg, transparent 0 7px, rgba(92, 108, 78, 0.03) 7px 8px),
+    repeating-linear-gradient(90deg, transparent 0 7px, rgba(92, 108, 78, 0.02) 7px 8px);
 }
 
 .battle-scene-gen3 .battle-scene-field {
@@ -1115,19 +1141,19 @@ pre {
 }
 
 .battle-scene-gen2 .battle-scene-p2 .battle-scene-hud {
-  left: var(--gen2-enemy-hud-left);
-  top: var(--gen2-enemy-hud-top);
-  width: var(--gen2-enemy-hud-width);
-  height: var(--gen2-enemy-hud-height);
+  left: var(--gen2-enemy-hud-left-px, var(--gen2-enemy-hud-left));
+  top: var(--gen2-enemy-hud-top-px, var(--gen2-enemy-hud-top));
+  width: var(--gen2-enemy-hud-width-px, var(--gen2-enemy-hud-width));
+  height: var(--gen2-enemy-hud-height-px, var(--gen2-enemy-hud-height));
 }
 
 .battle-scene-gen2 .battle-scene-p1 .battle-scene-hud {
-  left: var(--gen2-player-hud-left);
+  left: var(--gen2-player-hud-left-px, var(--gen2-player-hud-left));
   right: auto;
-  top: var(--gen2-player-hud-top);
+  top: var(--gen2-player-hud-top-px, var(--gen2-player-hud-top));
   bottom: auto;
-  width: var(--gen2-player-hud-width);
-  height: var(--gen2-player-hud-height);
+  width: var(--gen2-player-hud-width-px, var(--gen2-player-hud-width));
+  height: var(--gen2-player-hud-height-px, var(--gen2-player-hud-height));
 }
 
 .battle-scene-gen3 .battle-scene-p2 .battle-scene-hud {
@@ -1187,8 +1213,15 @@ pre {
 
 .battle-scene-gen2 .battle-scene-hud .battle-scene-status {
   position: absolute;
-  left: calc(5 / 11 * 100%);
   top: 25%;
+}
+
+.battle-scene-gen2 .battle-scene-hud-side-p2 .battle-scene-status {
+  left: calc(8 / 11 * 100%);
+}
+
+.battle-scene-gen2 .battle-scene-hud-side-p1 .battle-scene-status {
+  left: calc(7 / 11 * 100%);
 }
 
 .battle-scene-hp-row {
@@ -1330,6 +1363,24 @@ pre {
   line-height: 1;
 }
 
+.battle-scene-status-gen2 {
+  min-width: 16px;
+  height: 8px;
+  padding: 0 1px;
+  border: var(--gen2-status-frame-border-px, 1px) solid #1e2630;
+  border-image-source: var(--battle-dialog-frame-url, none);
+  border-image-slice: var(--gen2-status-frame-slice, 4);
+  border-image-repeat: stretch;
+  border-image-width: 1;
+  background-image: none;
+  background-color: #f8f3cc;
+  color: #1b2632;
+  font-size: 0.48rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.4px;
+}
+
 .battle-scene-status-brn { background-position: 0 0%; background-color: #f28b3c; }
 .battle-scene-status-frz { background-position: 0 25%; background-color: #7dd3fc; }
 .battle-scene-status-par { background-position: 0 50%; background-color: #f8d04b; }
@@ -1359,15 +1410,15 @@ pre {
 }
 
 .battle-scene-gen2 .battle-scene-party-balls-p2 {
-  left: var(--gen2-enemy-balls-left);
-  top: var(--gen2-enemy-balls-top);
+  left: var(--gen2-enemy-balls-left-px, var(--gen2-enemy-balls-left));
+  top: var(--gen2-enemy-balls-top-px, var(--gen2-enemy-balls-top));
   flex-direction: row-reverse;
 }
 
 .battle-scene-gen2 .battle-scene-party-balls-p1 {
-  left: var(--gen2-player-balls-left);
+  left: var(--gen2-player-balls-left-px, var(--gen2-player-balls-left));
   right: auto;
-  top: var(--gen2-player-balls-top);
+  top: var(--gen2-player-balls-top-px, var(--gen2-player-balls-top));
   bottom: auto;
 }
 
@@ -1392,7 +1443,7 @@ pre {
 }
 
 .battle-scene-gen2 .battle-scene-party-balls span {
-  width: var(--gen2-ball-step);
+  width: var(--gen2-ball-step-px, var(--gen2-ball-step));
   height: 8px;
   border: 0;
   border-radius: 0;
@@ -1494,21 +1545,21 @@ pre {
 }
 
 .battle-scene-gen2 .battle-scene-p2 .battle-scene-sprite {
-  left: var(--gen2-enemy-sprite-left);
+  left: var(--gen2-enemy-sprite-left-px, var(--gen2-enemy-sprite-left));
   right: auto;
-  top: var(--gen2-enemy-sprite-top);
+  top: var(--gen2-enemy-sprite-top-px, var(--gen2-enemy-sprite-top));
   bottom: auto;
-  width: var(--gen2-enemy-sprite-width);
-  height: var(--gen2-enemy-sprite-height);
+  width: var(--gen2-enemy-sprite-width-px, var(--gen2-enemy-sprite-width));
+  height: var(--gen2-enemy-sprite-height-px, var(--gen2-enemy-sprite-height));
   max-height: none;
 }
 
 .battle-scene-gen2 .battle-scene-p1 .battle-scene-sprite {
-  left: var(--gen2-player-sprite-left);
-  top: var(--gen2-player-sprite-top);
+  left: var(--gen2-player-sprite-left-px, var(--gen2-player-sprite-left));
+  top: var(--gen2-player-sprite-top-px, var(--gen2-player-sprite-top));
   bottom: auto;
-  width: var(--gen2-player-sprite-width);
-  height: var(--gen2-player-sprite-height);
+  width: var(--gen2-player-sprite-width-px, var(--gen2-player-sprite-width));
+  height: var(--gen2-player-sprite-height-px, var(--gen2-player-sprite-height));
   max-height: none;
 }
 
@@ -1563,10 +1614,34 @@ pre {
 .battle-scene-gen2 .battle-scene-move-menu,
 .battle-scene-gen2 .battle-scene-move-detail,
 .battle-scene-gen2 .battle-scene-confirm-menu {
-  border: 8px solid #33485e;
-  border-image: var(--battle-dialog-frame-url, none) 8 fill repeat;
+  border: var(--gen2-frame-border-px, 8px) solid #33485e;
+  border-image-source: var(--battle-dialog-frame-url, none);
+  border-image-slice: var(--gen2-frame-slice, 8);
+  border-image-repeat: stretch;
+  border-image-width: 1;
   background-color: #fffde9;
   box-shadow: none;
+}
+
+.battle-scene-gen2 .battle-scene-dialog {
+  border-image-slice: var(--gen2-dialog-frame-slice, var(--gen2-frame-slice, 8));
+}
+
+.battle-scene-gen2 .battle-scene-command-menu,
+.battle-scene-gen2 .battle-scene-command-panel .battle-scene-dialog {
+  border-image-slice: var(--gen2-command-frame-slice, var(--gen2-frame-slice, 8));
+}
+
+.battle-scene-gen2 .battle-scene-move-menu {
+  border-image-slice: var(--gen2-move-frame-slice, var(--gen2-frame-slice, 8));
+}
+
+.battle-scene-gen2 .battle-scene-move-detail {
+  border-image-slice: var(--gen2-move-detail-frame-slice, var(--gen2-frame-slice, 8));
+}
+
+.battle-scene-gen2 .battle-scene-confirm-menu {
+  border-image-slice: var(--gen2-confirm-frame-slice, var(--gen2-frame-slice, 8));
 }
 
 .battle-scene-gen3 .battle-scene-dialog,
@@ -1595,7 +1670,7 @@ pre {
 }
 
 .battle-scene-gen2 .battle-scene-dialog-panel .battle-scene-dialog {
-  padding: 8px;
+  padding: 6px 8px 8px;
 }
 
 .battle-scene-command-panel {
@@ -1619,9 +1694,9 @@ pre {
   position: absolute;
   left: 0;
   top: 0;
-  width: var(--gen2-command-menu-left);
+  width: var(--gen2-command-menu-left-px, var(--gen2-command-menu-left));
   height: 100%;
-  padding: 8px;
+  padding: 6px 8px 8px;
   border-right: 0;
 }
 
@@ -1635,13 +1710,13 @@ pre {
 
 .battle-scene-gen2 .battle-scene-command-menu {
   position: absolute;
-  left: var(--gen2-command-menu-left);
+  left: var(--gen2-command-menu-left-px, var(--gen2-command-menu-left));
   top: 0;
-  width: var(--gen2-command-menu-width);
+  width: var(--gen2-command-menu-width-px, var(--gen2-command-menu-width));
   height: 100%;
   align-content: center;
   gap: 0 4px;
-  padding: 8px;
+  padding: 6px 8px 8px;
 }
 
 .battle-scene-command-menu button,
@@ -1775,13 +1850,13 @@ pre {
 
 .battle-scene-gen2 .battle-scene-move-menu {
   position: absolute;
-  left: var(--gen2-move-menu-left);
+  left: var(--gen2-move-menu-left-px, var(--gen2-move-menu-left));
   top: 0;
-  width: var(--gen2-move-menu-width);
-  height: var(--gen2-move-menu-height);
+  width: var(--gen2-move-menu-width-px, var(--gen2-move-menu-width));
+  height: var(--gen2-move-menu-height-px, var(--gen2-move-menu-height));
   grid-template-columns: 1fr;
   gap: 0;
-  padding: 8px 8px 4px 16px;
+  padding: 6px 8px 4px 16px;
   border-right: 2px solid #33485e;
 }
 
@@ -1834,13 +1909,13 @@ pre {
 
 .battle-scene-gen2 .battle-scene-move-detail {
   position: absolute;
-  left: var(--gen2-move-info-left);
-  top: var(--gen2-move-info-top-from-bottom);
-  width: var(--gen2-move-info-width);
-  height: var(--gen2-move-info-height);
+  left: var(--gen2-move-info-left-px, var(--gen2-move-info-left));
+  top: var(--gen2-move-info-top-px, var(--gen2-move-info-top-from-bottom));
+  width: var(--gen2-move-info-width-px, var(--gen2-move-info-width));
+  height: var(--gen2-move-info-height-px, var(--gen2-move-info-height));
   align-content: start;
   gap: 1px;
-  padding: 8px;
+  padding: 6px 8px 8px;
   text-align: left;
 }
 
@@ -1922,6 +1997,38 @@ pre {
   font-size: 0.72rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+[data-battle-palette="PAL_BATTLE_OB_RED"] .battle-scene-oam-tile {
+  filter: hue-rotate(-45deg) saturate(3.5) brightness(1.15);
+}
+
+[data-battle-palette="PAL_BATTLE_OB_BLUE"] .battle-scene-oam-tile {
+  filter: hue-rotate(180deg) saturate(2.8) brightness(1.05);
+}
+
+[data-battle-palette="PAL_BATTLE_OB_GRAY"] .battle-scene-oam-tile {
+  filter: grayscale(1) brightness(1.2);
+}
+
+[data-battle-palette="PAL_BATTLE_OB_GREEN"] .battle-scene-oam-tile {
+  filter: hue-rotate(45deg) saturate(3) brightness(1.05);
+}
+
+[data-battle-palette="PAL_BATTLE_OB_BROWN"] .battle-scene-oam-tile {
+  filter: hue-rotate(-60deg) saturate(1.2) brightness(0.9);
+}
+
+[data-battle-palette="PAL_BATTLE_OB_PURPLE"] .battle-scene-oam-tile {
+  filter: hue-rotate(240deg) saturate(2.5) brightness(1.1);
+}
+
+[data-battle-palette="PAL_BATTLE_OB_YELLOW"] .battle-scene-oam-tile {
+  filter: hue-rotate(15deg) saturate(3.5) brightness(1.2);
+}
+
+[data-battle-palette="PAL_BATTLE_OB_PINK"] .battle-scene-oam-tile {
+  filter: hue-rotate(-65deg) saturate(2.5) brightness(1.25);
 }
 
 .battle-scene-overlay-head button {
@@ -2137,10 +2244,54 @@ pre {
 }
 
 .battle-scene-gen2 .battle-scene-bag-art span {
-  border-radius: 4px;
-  background:
-    linear-gradient(180deg, #f0b64a 0 32%, #6aa15d 32% 100%);
+  width: 58%;
+  border: 0;
+  border-radius: 0;
+  background-image: var(--battle-pack-url, none);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  box-shadow: none;
+  image-rendering: pixelated;
 }
+
+.battle-scene-gen2 .battle-scene-bag-overlay {
+  background-image: var(--battle-pack-menu-url, none);
+  background-repeat: no-repeat;
+  background-position: left top;
+  background-size: 100% 100%;
+  image-rendering: pixelated;
+}
+
+.battle-scene-gen2 .battle-scene-party-overlay {
+  background-image: var(--battle-party-tiles-url, none);
+  background-repeat: no-repeat;
+  background-position: left top;
+  background-size: 100% 100%;
+  image-rendering: pixelated;
+}
+
+.battle-scene-gen2 .battle-scene-party-overlay.is-forced-switch .battle-scene-overlay-head button {
+  opacity: 0.45;
+}
+
+.battle-scene-gen2 .battle-scene-party-icon {
+  background-image: var(--battle-party-tiles-url, none);
+  background-repeat: no-repeat;
+  background-size: 800% 100%;
+  background-position: 0 0;
+  image-rendering: pixelated;
+}
+
+.battle-scene-gen2 .battle-scene-overlay-head,
+.battle-scene-gen2 .battle-scene-overlay-footer,
+.battle-scene-gen2 .battle-scene-party-list,
+.battle-scene-gen2 .battle-scene-bag-list,
+.battle-scene-gen2 .battle-scene-bag-detail,
+.battle-scene-gen2 .battle-scene-pocket-tabs button {
+  background-color: rgba(255, 253, 233, 0.92);
+}
+
 
 .battle-scene-bag-detail {
   grid-column: 1 / -1;

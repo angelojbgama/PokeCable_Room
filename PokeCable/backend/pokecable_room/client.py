@@ -38,7 +38,6 @@ from pokecable_room.backups import (
     update_backup_metadata,
 )
 from pokecable_room.saves import detect_parser, find_save_files, load_config, save_config
-from pokecable_room.battle_export import canonical_team_to_battle_text, format_id_for_generation
 from pokecable_room.trade import validate_payload_for_local_save
 from pokecable_room.ui import TerminalUI
 
@@ -803,121 +802,6 @@ def choose_pokemon(parser, ui: TerminalUI, requested_location: str | None) -> st
     return selected.location
 
 
-def _battle_canonical_dict(parser, location: str) -> dict:
-    canonical = parser.export_canonical(location).to_dict()
-    original_data = dict(canonical.get("original_data") or {})
-    if original_data:
-        original_data["raw_data_base64"] = None
-        canonical["original_data"] = original_data
-    return canonical
-
-
-def choose_battle_team(parser, ui: TerminalUI) -> list[dict]:
-    party = parser.list_party()
-    selected: list[dict] = []
-    ui.print("Escolha o time de batalha. Confirme cada Pokemon que deseja incluir.")
-    for item in party:
-        if len(selected) >= 6:
-            break
-        if ui.confirm(f"Incluir {item.display_summary}?", default=True):
-            selected.append(_battle_canonical_dict(parser, item.location))
-    if not selected:
-        raise RuntimeError("Escolha pelo menos um Pokemon para batalha.")
-    return selected
-
-
-async def run_battle(
-    *,
-    server_url: str,
-    action: str,
-    room_name: str,
-    password: str,
-    parser,
-    team: list[dict],
-    ui: TerminalUI,
-    auto_confirm: bool = False,
-) -> None:
-    generation = parser.get_generation()
-    game = parser.get_game_id()
-    format_id = format_id_for_generation(generation)
-    async with PokeCableNetworkClient(server_url) as network:
-        await network.send(
-            {
-                "type": "create_battle_room" if action == "create" else "join_battle_room",
-                "room_name": room_name,
-                "password": password,
-                "generation": generation,
-                "game": game,
-                "format_id": format_id,
-            }
-        )
-        if action == "create":
-            await network.wait_for({"battle_room_created"})
-            ui.print("Sala de batalha criada. Aguardando segundo jogador.")
-            await network.wait_for({"battle_room_ready"})
-        else:
-            await network.wait_for({"battle_room_joined"})
-            ui.print("Entrou na sala de batalha.")
-        await network.send({"type": "offer_battle_team", "team": team})
-        await network.wait_for({"battle_ready"})
-        ui.print("Os dois times estao prontos.")
-        if not auto_confirm and not ui.confirm("Confirmar batalha agora?", default=True):
-            await network.send({"type": "battle_forfeit"})
-            raise RuntimeError("Batalha cancelada pelo usuario.")
-        await network.send({"type": "confirm_battle"})
-        while True:
-            message = await network.wait_for({"battle_started", "battle_log", "battle_request_action", "battle_finished", "battle_confirmed"})
-            message_type = message.get("type")
-            if message_type in {"battle_started", "battle_log", "battle_finished"}:
-                for line in message.get("logs") or []:
-                    ui.print(str(line))
-            if message_type == "battle_request_action":
-                if auto_confirm:
-                    await network.send({"type": "battle_action", "action": _default_battle_action(dict(message.get("request") or {}))})
-                    continue
-                _print_battle_request(ui, dict(message.get("request") or {}))
-                action_text = ui.input_text("Acao de batalha (ex: move 1, switch 2, pass, forfeit)", "pass")
-                if action_text.lower() in {"forfeit", "desistir"}:
-                    await network.send({"type": "battle_forfeit"})
-                else:
-                    await network.send({"type": "battle_action", "action": action_text})
-            elif message_type == "battle_finished":
-                ui.print("Batalha finalizada.")
-                return
-
-
-async def automated_or_prompted_battle(args: argparse.Namespace) -> int:
-    config = load_config()
-    log_file = setup_logging(config["log_dir"])
-    ui = TerminalUI()
-    parser = build_parser_from_args(args, ui)
-    try:
-        team = choose_battle_team(parser, ui)
-        canonical_objects = [CanonicalPokemon.from_dict(item) for item in team]
-        ui.print("Time de batalha:")
-        ui.print(canonical_team_to_battle_text(canonical_objects, parser.get_generation()))
-        room_name = args.room or ui.input_text("Nome da sala de batalha")
-        password = args.password or ui.input_password("Senha da sala de batalha")
-        server_url = args.server or config["server_url"]
-        action = args.action or ui.choose("Escolha o fluxo:", ["create", "join"], ["Criar sala de batalha", "Entrar em sala de batalha"])
-        await run_battle(
-            server_url=server_url,
-            action=action,
-            room_name=room_name,
-            password=password,
-            parser=parser,
-            team=team,
-            ui=ui,
-            auto_confirm=args.auto_confirm,
-        )
-    except Exception as exc:
-        logger.exception("Battle failed")
-        ui.print(f"Erro: {exc}")
-        ui.print(f"Log: {log_file}")
-        return 1
-    return 0
-
-
 async def automated_or_prompted_trade(args: argparse.Namespace) -> int:
     config = load_config()
     log_file = setup_logging(config["log_dir"])
@@ -968,41 +852,6 @@ def configure_server(ui: TerminalUI) -> None:
     config.setdefault("cross_generation", {"policy": "auto_retrocompat"})
     save_config(config)
     ui.print("Servidor configurado.")
-
-
-def _print_battle_request(ui: TerminalUI, request: dict) -> None:
-    active = request.get("active") or []
-    if active and isinstance(active[0], dict):
-        moves = active[0].get("moves") or []
-        for index, move in enumerate(moves, start=1):
-            if move.get("disabled"):
-                continue
-            ui.print(f"- move {index}: {move.get('move')} ({move.get('pp')}/{move.get('maxpp')})")
-    if request.get("forceSwitch") and isinstance(request.get("side"), dict):
-        for index, pokemon in enumerate(request["side"].get("pokemon") or [], start=1):
-            if pokemon.get("active"):
-                continue
-            condition = str(pokemon.get("condition") or "")
-            if "fnt" in condition:
-                continue
-            ui.print(f"- switch {index}: {pokemon.get('details') or pokemon.get('ident')}")
-
-
-def _default_battle_action(request: dict) -> str:
-    active = request.get("active") or []
-    if active and isinstance(active[0], dict):
-        moves = active[0].get("moves") or []
-        for index, move in enumerate(moves, start=1):
-            if not move.get("disabled"):
-                return f"move {index}"
-    if request.get("forceSwitch") and isinstance(request.get("side"), dict):
-        for index, pokemon in enumerate(request["side"].get("pokemon") or [], start=1):
-            if pokemon.get("active"):
-                continue
-            if "fnt" in str(pokemon.get("condition") or ""):
-                continue
-            return f"switch {index}"
-    return "move 1"
 
 
 def show_logs(ui: TerminalUI) -> None:
@@ -1094,8 +943,6 @@ def interactive_menu() -> int:
                 "save",
                 "party",
                 "compatibility",
-                "battle_create",
-                "battle_join",
                 "server",
                 "restore",
                 "logs",
@@ -1107,8 +954,6 @@ def interactive_menu() -> int:
                 "Escolher save",
                 "Ver party",
                 "Testar compatibilidade",
-                "Criar sala de batalha",
-                "Entrar em sala de batalha",
                 "Configurar servidor VPS",
                 "Restaurar backup",
                 "Ver logs",
@@ -1143,28 +988,6 @@ def interactive_menu() -> int:
             view_party(ui)
         elif choice == "compatibility":
             test_compatibility(ui)
-        elif choice == "battle_create":
-            args = argparse.Namespace(
-                action="create",
-                server=None,
-                room=None,
-                password=None,
-                save=None,
-                pokemon_location=None,
-                auto_confirm=False,
-            )
-            return asyncio.run(automated_or_prompted_battle(args))
-        elif choice == "battle_join":
-            args = argparse.Namespace(
-                action="join",
-                server=None,
-                room=None,
-                password=None,
-                save=None,
-                pokemon_location=None,
-                auto_confirm=False,
-            )
-            return asyncio.run(automated_or_prompted_battle(args))
         elif choice == "server":
             configure_server(ui)
         elif choice == "restore":
@@ -1178,7 +1001,6 @@ def interactive_menu() -> int:
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="PokeCable Room R36S client")
     parser.add_argument("--action", choices=["create", "join"], help="Fluxo de sala para rodar sem menu.")
-    parser.add_argument("--mode", choices=["trade", "battle"], default="trade", help="Modo: troca por save ou batalha.")
     parser.add_argument("--server", help="URL WebSocket, exemplo ws://127.0.0.1:8000/ws")
     parser.add_argument("--room", help="Nome da sala.")
     parser.add_argument("--password", help="Senha da sala.")
@@ -1200,8 +1022,6 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps([asdict(item) for item in parser.list_party()], ensure_ascii=False))
         return 0
     if args.action:
-        if args.mode == "battle":
-            return asyncio.run(automated_or_prompted_battle(args))
         return asyncio.run(automated_or_prompted_trade(args))
     return interactive_menu()
 

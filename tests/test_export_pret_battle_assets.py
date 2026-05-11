@@ -89,6 +89,9 @@ PoundAnim:
     write_fake_png(reference / "pokecrystal" / "gfx" / "pokemon" / "abra" / "front.png")
     write_fake_png(reference / "pokecrystal" / "gfx" / "pokemon" / "abra" / "back.png")
     write_fake_png(reference / "pokecrystal" / "gfx" / "battle" / "hp_exp_bar_border.png")
+    write_fake_png(reference / "pokecrystal" / "gfx" / "pack" / "pack.png")
+    write_fake_png(reference / "pokecrystal" / "gfx" / "pack" / "pack_menu.png")
+    write_fake_png(reference / "pokecrystal" / "gfx" / "stats" / "stats_tiles.png")
     write_fake_png(reference / "pokecrystal" / "gfx" / "battle_anims" / "hit.png", width=16, height=104)
     (reference / "pokecrystal" / "engine" / "battle").mkdir(parents=True)
     (reference / "pokecrystal" / "engine" / "battle" / "core.asm").write_text("BattleCore:\n", encoding="utf-8")
@@ -206,4 +209,7 @@ Move_POUND:
     assert animation_map["generations"]["3"]["moves"]["pound"]["assets"][0]["frame"]["count"] == 5
     assert animation_map["generations"]["3"]["moves"]["pound"]["logic"]["loaded_tags"] == ["ANIM_TAG_IMPACT"]
     assert manifest["generations"]["3"]["pokemon"]["species"]["abra"]["anim_front"]["frame"]["count"] == 2
+    assert (output / "gen2" / "ui" / "pack" / "pack.png").exists()
+    assert (output / "gen2" / "ui" / "pack" / "pack_menu.png").exists()
+    assert (output / "gen2" / "ui" / "stats" / "stats_tiles.png").exists()
     assert (output / "gen1" / "pokemon" / "abra" / "front.png").exists()
