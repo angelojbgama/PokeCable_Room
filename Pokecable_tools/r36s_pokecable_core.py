@@ -163,50 +163,73 @@ class PokecableState:
                 logger.error(f"Save file does not exist: {save_path}")
                 return []
 
-            logger.info(f"Uploading save to backend: {save_path.name}")
+            logger.info(f"Uploading save to backend: {save_path.name} ({save_path.stat().st_size} bytes)")
 
             # Extract server URL (e.g., wss://9kernel.vps-kinghost.net/ws -> https://9kernel.vps-kinghost.net)
             server_base = self.server_url.replace("wss://", "https://").replace("ws://", "http://").replace("/ws", "")
             analyze_url = f"{server_base}/analyze-save"
 
-            logger.debug(f"POST {analyze_url}")
+            logger.info(f"Conectando a: {analyze_url}")
             with open(save_path, "rb") as f:
                 files = {"file": (save_path.name, f)}
+                logger.debug(f"Enviando POST com arquivo: {save_path.name}")
                 response = requests.post(analyze_url, files=files, timeout=30)
 
+            logger.info(f"Backend respondeu: HTTP {response.status_code}")
+
             if response.status_code != 200:
-                logger.error(f"Backend error: {response.status_code}")
-                logger.error(f"Response: {response.text}")
+                logger.error(f"ERRO: Status {response.status_code}")
+                logger.error(f"Response body: {response.text[:500]}")
                 return []
 
-            data = response.json()
-            logger.debug(f"Backend returned: Gen{data.get('generation')}, {data.get('game')}, {len(data.get('pokemon', []))} total pokémon")
+            try:
+                data = response.json()
+            except Exception as json_err:
+                logger.error(f"Erro ao fazer parse JSON: {json_err}")
+                logger.error(f"Response text: {response.text[:500]}")
+                return []
+
+            logger.info(f"Backend retornou: Gen{data.get('generation')}, {data.get('game')}, {len(data.get('pokemon', []))} pokémon total")
+            logger.debug(f"Pokemon list: {data.get('pokemon', [])[:3]}")  # Log first 3
 
             self.pokemon_list = []
+            pokemon_count = 0
 
             # Filter by source (party or boxes)
             for pokemon in data.get("pokemon", []):
-                if pokemon["source"] == source:
+                if pokemon.get("source") == source:
+                    pokemon_count += 1
                     self.pokemon_list.append({
-                        "index": pokemon["index"],
-                        "name": pokemon["species_name"],
-                        "level": pokemon["level"],
-                        "nickname": pokemon["nickname"],
-                        "location": pokemon["location"],
-                        "display": pokemon["display_summary"],
+                        "index": pokemon.get("index"),
+                        "name": pokemon.get("species_name", "Unknown"),
+                        "level": pokemon.get("level", 0),
+                        "nickname": pokemon.get("nickname", ""),
+                        "location": pokemon.get("location", f"{source}:{pokemon_count}"),
+                        "display": pokemon.get("display_summary", f"Pokémon {pokemon_count}"),
                         "object": None,
                     })
 
-            logger.info(f"Loaded {len(self.pokemon_list)} Pokémon from {source}")
+            logger.info(f"✓ Carregou {len(self.pokemon_list)} Pokémon de {source}")
+            if len(self.pokemon_list) == 0:
+                logger.warning(f"⚠️  Nenhum pokémon encontrado em {source}. Total no arquivo: {len(data.get('pokemon', []))}")
+                logger.debug(f"Sources disponíveis: {set(p.get('source') for p in data.get('pokemon', []))}")
+
             return self.pokemon_list
 
+        except requests.ConnectionError as e:
+            logger.error(f"ERRO DE CONEXÃO: {e}")
+            logger.error(f"Verifique se o backend está disponível: {self.server_url}")
+            return []
+        except requests.Timeout:
+            logger.error(f"TIMEOUT: Backend não respondeu em 30s")
+            return []
         except requests.RequestException as e:
-            logger.error(f"Network error: {e}")
+            logger.error(f"ERRO DE REDE: {e}")
             return []
         except Exception as e:
-            logger.error(f"Error loading pokémon: {e}")
+            logger.error(f"ERRO INESPERADO: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            logger.error(traceback.format_exc())
             return []
 
 
