@@ -19,7 +19,7 @@ from parsers.gen1 import Gen1Parser
 from parsers.gen2 import Gen2Parser
 from parsers.gen3 import Gen3Parser
 
-SAVE_ROOT = Path(__file__).parent.parent.parent.parent / "save"
+SAVE_ROOT = Path(__file__).parent.parent.parent / "test-saves"
 
 def get_save_path(relative: str) -> Path:
     path = SAVE_ROOT / relative
