@@ -1,17 +1,19 @@
 #!/bin/bash
 
 # Script de Teste Completo de Retrocompatibilidade
-# Testa TODOS os 251 Pokémon com TODAS as combinações de ataques
+# Sempre executa TODOS os 251 Pokémon com TODAS as combinações de ataques
 
 set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REPO_DIR="$( cd "$SCRIPT_DIR/.." && pwd )"
 TEST_DIR="/tmp/trade_tests"
 
 # Cores
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 print_header() {
@@ -24,20 +26,26 @@ print_success() {
     echo -e "${GREEN}✓ $1${NC}"
 }
 
+print_error() {
+    echo -e "${RED}✗ $1${NC}"
+}
+
+print_info() {
+    echo -e "${YELLOW}ℹ $1${NC}"
+}
+
 main() {
     print_header "TESTE COMPLETO DE RETROCOMPATIBILIDADE"
+    print_info "Modo: COMPLETE (sempre)"
     echo "Testando: 251 Pokémon × 9 combinações de gerações × 1-4 ataques"
     echo "Total esperado: ~9,000 casos de teste"
     echo ""
 
-    if [ ! -f "/tmp/test_complete_pokemon_coverage.py" ]; then
-        echo "Erro: test_complete_pokemon_coverage.py não encontrado"
-        echo "Verifique se foi criado em /tmp/"
-        exit 1
-    fi
+    mkdir -p "$TEST_DIR"
 
-    echo "Iniciando teste..."
-    python3 /tmp/test_complete_pokemon_coverage.py
+    print_info "Executando teste completo..."
+    cd "$REPO_DIR"
+    python3 tests/test_complete_pokemon_coverage.py
 
     echo ""
     print_header "RESULTADOS"
@@ -45,7 +53,7 @@ main() {
     if [ -f "$TEST_DIR/pokemon_complete_coverage_report.txt" ]; then
         cat "$TEST_DIR/pokemon_complete_coverage_report.txt"
     else
-        echo "Erro: Relatório não gerado"
+        print_error "Relatório não gerado"
         exit 1
     fi
 
