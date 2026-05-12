@@ -1,0 +1,28 @@
+{
+  "server_url": "wss://9kernel.vps-kinghost.net/ws",
+  "default_save_dirs": [
+    "/roms/gb",
+    "/roms/gbc",
+    "/roms/gba",
+    "/roms/saves",
+    "/roms2/gb",
+    "/roms2/gbc",
+    "/roms2/gba",
+    "/roms2/saves"
+  ],
+  "backup_dir": "/roms/tools/pokecable_room/backups",
+  "log_dir": "/roms/tools/pokecable_room/logs",
+  "auto_trade_evolution": true,
+  "item_trade_evolutions_enabled": true,
+  "cross_generation": {
+    "enabled": true,
+    "enabled_modes": [
+      "time_capsule_gen1_gen2",
+      "forward_transfer_to_gen3",
+      "legacy_downconvert_experimental"
+    ],
+    "policy": "safe_default",
+    "unsafe_auto_confirm_data_loss": false
+  },
+  "allow_cross_generation": false
+}

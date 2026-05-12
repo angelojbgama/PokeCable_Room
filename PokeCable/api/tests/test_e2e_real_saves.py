@@ -15,9 +15,9 @@ if BACKEND_PATH not in sys.path:
     sys.path.append(BACKEND_PATH)
 
 from app.main import app
-from pokecable_room.parsers.gen1 import Gen1Parser
-from pokecable_room.parsers.gen2 import Gen2Parser
-from pokecable_room.parsers.gen3 import Gen3Parser
+from parsers.gen1 import Gen1Parser
+from parsers.gen2 import Gen2Parser
+from parsers.gen3 import Gen3Parser
 
 SAVE_ROOT = Path(__file__).parent.parent.parent.parent / "save"
 
@@ -214,7 +214,7 @@ class TestE2ERealSaves:
         # Nota: O parser do backend lida com a conversão se usarmos o converter adequado, 
         # mas aqui testamos se o payload retornado pelo servidor é válido para importação cross-gen.
         # No client real (R36S), o converter é chamado antes do import_pokemon.
-        from pokecable_room.converters import get_converter
+        from converters import get_converter
         
         # Jogador A (Gen 1) converte o payload canônico recebido para sua Gen 1
         conv_3_to_1 = get_converter(3, 1)
