@@ -30,40 +30,81 @@ fi
 LOG_FILE="/tmp/pokecable_deps.log"
 rm -f "$LOG_FILE"
 
-# Check and install pygame
+# Display header
+printf "\033c" > /dev/tty1 2>/dev/null || true
+printf "=== PokeCable - Verificando Dependências ===\n\n" > /dev/tty1 2>/dev/null || true
+
+# Ensure apt-get is available
+if ! command -v apt-get >/dev/null 2>&1; then
+  printf "ERRO: apt-get não encontrado\n" > /dev/tty1 2>/dev/null || true
+  exit 1
+fi
+
+# Update package list
+printf "Atualizando repositórios..." > /dev/tty1 2>/dev/null || true
+apt-get update >> "$LOG_FILE" 2>&1 || {
+  printf " ERRO\n" > /dev/tty1 2>/dev/null || true
+  printf "Falha ao atualizar repositórios. Ver: cat %s\n" "$LOG_FILE" > /dev/tty1 2>/dev/null || true
+  sleep 3
+  exit 1
+}
+printf " OK\n" > /dev/tty1 2>/dev/null || true
+
+# Install pygame
+printf "Instalando pygame..." > /dev/tty1 2>/dev/null || true
 if ! python3 -c 'import pygame' >/dev/null 2>&1; then
-  printf "\033c=== Instalando dependências ===\n" > /dev/tty1 2>/dev/null || true
-  printf "pygame... " > /dev/tty1 2>/dev/null || true
-  if command -v apt-get >/dev/null 2>&1; then
-    apt-get update >> "$LOG_FILE" 2>&1 || true
-    apt-get install -y python3-pygame >> "$LOG_FILE" 2>&1 || true
-  fi
-  if python3 -c 'import pygame' >/dev/null 2>&1; then
-    printf "OK\n" > /dev/tty1 2>/dev/null || true
-  else
-    printf "ERRO\n" > /dev/tty1 2>/dev/null || true
-  fi
+  apt-get install -y python3-pygame >> "$LOG_FILE" 2>&1 || {
+    printf " ERRO\n" > /dev/tty1 2>/dev/null || true
+    printf "Falha ao instalar pygame. Ver: cat %s\n" "$LOG_FILE" > /dev/tty1 2>/dev/null || true
+    sleep 3
+    exit 1
+  }
+fi
+printf " OK\n" > /dev/tty1 2>/dev/null || true
+
+# Install pip3 if needed
+if ! command -v pip3 >/dev/null 2>&1; then
+  printf "Instalando pip3..." > /dev/tty1 2>/dev/null || true
+  apt-get install -y python3-pip >> "$LOG_FILE" 2>&1 || {
+    printf " ERRO\n" > /dev/tty1 2>/dev/null || true
+  }
+  printf " OK\n" > /dev/tty1 2>/dev/null || true
 fi
 
-# Check and install requests
+# Install requests via pip3
+printf "Instalando requests..." > /dev/tty1 2>/dev/null || true
 if ! python3 -c 'import requests' >/dev/null 2>&1; then
-  printf "requests... " > /dev/tty1 2>/dev/null || true
   if command -v pip3 >/dev/null 2>&1; then
-    pip3 install --quiet requests >> "$LOG_FILE" 2>&1 || true
-  elif command -v apt-get >/dev/null 2>&1; then
-    apt-get install -y python3-requests >> "$LOG_FILE" 2>&1 || true
-  fi
-  if python3 -c 'import requests' >/dev/null 2>&1; then
-    printf "OK\n" > /dev/tty1 2>/dev/null || true
+    pip3 install --quiet --no-cache-dir requests >> "$LOG_FILE" 2>&1 || {
+      printf " (tentando apt-get)..." > /dev/tty1 2>/dev/null || true
+      apt-get install -y python3-requests >> "$LOG_FILE" 2>&1 || {
+        printf " ERRO\n" > /dev/tty1 2>/dev/null || true
+        printf "Falha ao instalar requests. Ver: cat %s\n" "$LOG_FILE" > /dev/tty1 2>/dev/null || true
+        sleep 3
+        exit 1
+      }
+    }
   else
-    printf "ERRO\n" > /dev/tty1 2>/dev/null || true
+    printf " (tentando apt-get)..." > /dev/tty1 2>/dev/null || true
+    apt-get install -y python3-requests >> "$LOG_FILE" 2>&1 || {
+      printf " ERRO\n" > /dev/tty1 2>/dev/null || true
+      printf "Falha ao instalar requests. Ver: cat %s\n" "$LOG_FILE" > /dev/tty1 2>/dev/null || true
+      sleep 3
+      exit 1
+    }
   fi
 fi
+printf " OK\n" > /dev/tty1 2>/dev/null || true
 
-# Verify all dependencies are available
-if ! python3 -c 'import pygame; import requests' >/dev/null 2>&1; then
-  printf "\033c=== ERRO: Dependências ausentes ===\n" > /dev/tty1 2>/dev/null || true
-  printf "Necessário: pygame, requests\n" > /dev/tty1 2>/dev/null || true
+# Final verification
+printf "\nVerificando instalação..." > /dev/tty1 2>/dev/null || true
+if python3 -c 'import pygame; import requests' >/dev/null 2>&1; then
+  printf " OK\n\n" > /dev/tty1 2>/dev/null || true
+  printf "Todas as dependências instaladas!\n" > /dev/tty1 2>/dev/null || true
+  sleep 1
+else
+  printf " ERRO\n" > /dev/tty1 2>/dev/null || true
+  printf "ERRO: Não foi possível instalar as dependências\n" > /dev/tty1 2>/dev/null || true
   printf "Log: cat %s\n" "$LOG_FILE" > /dev/tty1 2>/dev/null || true
   printf "Pressione qualquer tecla para sair...\n" > /dev/tty1 2>/dev/null || true
   sleep 5
