@@ -435,10 +435,8 @@ def main():
             elif action == "down":
                 menu_index = (menu_index + 1) % 2
             elif action == "select":
-                if menu_index == 0:
-                    action = "create"
-                else:
-                    action = "join"
+                state.action = "create" if menu_index == 0 else "join"
+                logger.info(f"Action selected: {state.action}")
                 # Proceed to load save
                 current_screen = "load_save"
                 menu_index = 0
@@ -498,11 +496,11 @@ def main():
                         state.room_name = room_name
                         state.room_password = room_password
                         # Start the trade thread now that we have save, pokemon, room name and password
-                        # Use the action chosen in action_menu (create or join)
-                        trade_action = action or "join"
+                        trade_action = state.action or "join"
+                        logger.info(f"Starting trade: action={trade_action} room={room_name}")
                         trade_thread = start_trade_thread(state, trade_action, ui_queue, confirm_queue)
                         current_screen = "connecting"
-                        trade_status = "Conectando..."
+                        trade_status = f"Conectando como {trade_action}..."
                 elif keyboard_index == 43:  # SPACE
                     room_password += " "
                 else:
@@ -538,7 +536,8 @@ def main():
             elif action == "select":
                 source = "party" if menu_index == 0 else "boxes"
                 state.pokemon_source = source
-                state.load_pokemon(state.selected_save, source)
+                # New API: get_pokemon_list uploads (if not cached) and filters by source
+                state.get_pokemon_list(source)
                 current_screen = "select_pokemon"
                 menu_index = 0
             elif action == "back":
