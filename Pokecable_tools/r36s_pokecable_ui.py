@@ -211,6 +211,31 @@ def draw_select_save(screen, fonts, selected, saves):
     button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
 
 
+def draw_select_pokemon_source(screen, fonts, selected):
+    """Menu to choose between Party or Boxes (PC)"""
+    title_f, body_f, small_f, tiny_f = fonts
+    screen.fill(BG)
+    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
+    text(screen, title_f, "Fonte", 14, 10)
+
+    items = ["Party", "PC"]
+    list_panel = pygame.Rect(10, HEADER_H + 10, LIST_W - 18, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    rect(screen, PANEL, list_panel, 6)
+    text(screen, small_f, "Escolha", 22, HEADER_H + 22, MUTED)
+
+    for idx, item in enumerate(items):
+        y = HEADER_H + 54 + idx * 50
+        row = pygame.Rect(18, y, LIST_W - 34, 40)
+        color = (5, 11, 18) if idx == selected else TEXT
+        if idx == selected:
+            rect(screen, ACCENT, row, 4)
+        text(screen, small_f, item, row.x + 9, row.y + 9, color, row.w - 18)
+
+    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
+    button(screen, tiny_f, "A", "OK", 12, SCREEN_H - 48)
+    button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
+
+
 def draw_select_pokemon(screen, fonts, selected, pokemon_list):
     title_f, body_f, small_f, tiny_f = fonts
     screen.fill(BG)
@@ -498,11 +523,26 @@ def main():
                 menu_index = min(len(state.saves) - 1, menu_index + 1)
             elif action == "select" and state.saves:
                 state.selected_save = state.saves[menu_index]
-                state.load_pokemon(state.selected_save, "party")
-                current_screen = "select_pokemon"
+                # Go to source selection (Party vs PC) first
+                current_screen = "select_pokemon_source"
                 menu_index = 0
             elif action == "back":
                 current_screen = "menu"
+                menu_index = 0
+
+        elif current_screen == "select_pokemon_source" and action:
+            if action == "up":
+                menu_index = (menu_index - 1) % 2
+            elif action == "down":
+                menu_index = (menu_index + 1) % 2
+            elif action == "select":
+                source = "party" if menu_index == 0 else "boxes"
+                state.pokemon_source = source
+                state.load_pokemon(state.selected_save, source)
+                current_screen = "select_pokemon"
+                menu_index = 0
+            elif action == "back":
+                current_screen = "load_save"
                 menu_index = 0
 
         elif current_screen == "select_pokemon" and action:
@@ -518,7 +558,8 @@ def main():
                 keyboard_shift = False
                 room_name = ""
             elif action == "back":
-                current_screen = "load_save"
+                current_screen = "select_pokemon_source"
+                menu_index = 0
 
         elif current_screen == "connecting" and action:
             if action == "back":
@@ -542,6 +583,7 @@ def main():
                 room_password = ""
                 state.selected_save = None
                 state.selected_pokemon = None
+                state.pokemon_source = "party"
 
         elif current_screen == "trading" and action:
             pass
@@ -556,6 +598,7 @@ def main():
                 room_password = ""
                 state.selected_save = None
                 state.selected_pokemon = None
+                state.pokemon_source = "party"
 
         # Process queue messages
         try:
@@ -589,6 +632,8 @@ def main():
             draw_keyboard(screen, fonts, "Senha", room_password, keyboard_index, True, keyboard_shift)
         elif current_screen == "load_save":
             draw_select_save(screen, fonts, menu_index, state.saves)
+        elif current_screen == "select_pokemon_source":
+            draw_select_pokemon_source(screen, fonts, menu_index)
         elif current_screen == "select_pokemon":
             draw_select_pokemon(screen, fonts, menu_index, state.pokemon_list)
         elif current_screen == "connecting":
