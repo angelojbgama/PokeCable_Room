@@ -17,8 +17,16 @@ jobs:
       - name: Compile Python
         run: python -m compileall PokeCable/api PokeCable/backend
 
-      - name: Run server tests
+      - name: Run API tests
         run: PYTHONPATH=PokeCable/api python -m unittest discover -s PokeCable/api/tests -v
 
-      - name: Run R36S client tests
-        run: PYTHONPATH=PokeCable/backend python -m unittest discover -s PokeCable/backend/pokecable_room/tests -v
+      - name: Run backend tests
+        run: PYTHONPATH=PokeCable/backend python -m unittest discover -s PokeCable/backend/tests -v
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check JavaScript syntax
+        run: node --check PokeCable/frontend/app.js
