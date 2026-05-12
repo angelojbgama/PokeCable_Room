@@ -392,13 +392,13 @@ def save_results(results: List[Dict[str, Any]]) -> None:
 
     # TXT
     report_file = OUTPUT_DIR / "pokemon_complete_coverage_report.txt"
-    with open(report_file, "w") as f:
+    with open(report_file, "w", encoding="utf-8") as f:
         f.write(report)
     logger.info(f"Relatório salvo: {report_file}")
 
     # JSON
     json_file = OUTPUT_DIR / "pokemon_complete_coverage_detailed.json"
-    with open(json_file, "w") as f:
+    with open(json_file, "w", encoding="utf-8") as f:
         json.dump(
             {
                 "metadata": {
@@ -422,7 +422,7 @@ def save_results(results: List[Dict[str, Any]]) -> None:
     # Erros
     if stats.errors:
         errors_file = OUTPUT_DIR / "pokemon_complete_coverage_errors.txt"
-        with open(errors_file, "w") as f:
+        with open(errors_file, "w", encoding="utf-8") as f:
             f.write("ERROS - TESTE COMPLETO DE RETROCOMPATIBILIDADE\n")
             f.write("=" * 100 + "\n\n")
             for error in stats.errors:

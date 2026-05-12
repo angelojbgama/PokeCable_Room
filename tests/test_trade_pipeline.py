@@ -370,7 +370,7 @@ def save_detailed_results(results: List[Dict[str, Any]]) -> None:
     """Salva resultados detalhados em JSON"""
     output_file = OUTPUT_DIR / "trade_tests_detailed.json"
 
-    with open(output_file, "w") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(
             {
                 "metadata": {
@@ -409,7 +409,7 @@ def main():
 
         # Salvar relatório em arquivo
         report_file = OUTPUT_DIR / "trade_tests_report.txt"
-        with open(report_file, "w") as f:
+        with open(report_file, "w", encoding="utf-8") as f:
             f.write(report)
         logger.info(f"Relatório salvo em: {report_file}")
 
@@ -419,7 +419,7 @@ def main():
         # Salvar erros em arquivo separado
         if stats["errors"]:
             errors_file = OUTPUT_DIR / "trade_tests_errors.txt"
-            with open(errors_file, "w") as f:
+            with open(errors_file, "w", encoding="utf-8") as f:
                 f.write("ERROS ENCONTRADOS NOS TESTES\n")
                 f.write("=" * 80 + "\n\n")
                 for error in stats["errors"]:

@@ -411,13 +411,13 @@ def save_results(results: List[Dict[str, Any]]) -> None:
     # Relatório em texto
     report = generate_report(results)
     report_file = OUTPUT_DIR / "trade_tests_api_report.txt"
-    with open(report_file, "w") as f:
+    with open(report_file, "w", encoding="utf-8") as f:
         f.write(report)
     logger.info(f"Relatório salvo: {report_file}")
 
     # Resultados detalhados em JSON
     json_file = OUTPUT_DIR / "trade_tests_api_detailed.json"
-    with open(json_file, "w") as f:
+    with open(json_file, "w", encoding="utf-8") as f:
         json.dump(
             {
                 "metadata": {
@@ -439,7 +439,7 @@ def save_results(results: List[Dict[str, Any]]) -> None:
     # Erros em arquivo separado
     if stats.errors:
         errors_file = OUTPUT_DIR / "trade_tests_api_errors.txt"
-        with open(errors_file, "w") as f:
+        with open(errors_file, "w", encoding="utf-8") as f:
             f.write("ERROS DOS TESTES DE TROCA\n")
             f.write("=" * 80 + "\n\n")
             for error in stats.errors:
