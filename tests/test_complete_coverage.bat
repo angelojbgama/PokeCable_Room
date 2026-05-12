@@ -7,7 +7,7 @@ setlocal enabledelayedexpansion
 REM Determinar diretórios
 for %%I in ("%~dp0.") do set "SCRIPT_DIR=%%~fI"
 for %%I in ("%SCRIPT_DIR%..") do set "REPO_DIR=%%~fI"
-set "TEST_DIR=%TEMP%\trade_tests"
+set "TEST_DIR=%SCRIPT_DIR%\test_results"
 
 REM Criar diretório de testes
 if not exist "%TEST_DIR%" mkdir "%TEST_DIR%"

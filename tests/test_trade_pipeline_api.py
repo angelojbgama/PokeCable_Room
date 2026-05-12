@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # Config
 API_URL = "http://localhost:8000"
 SAVE_DIR = Path("/mnt/c/Users/USER/Documents/meu/PokeCable_Room/save")
-OUTPUT_DIR = Path(tempfile.gettempdir()) / "trade_tests"
+OUTPUT_DIR = Path(__file__).parent / "test_results"
 MAX_WORKERS = 4
 TIMEOUT = 10
 

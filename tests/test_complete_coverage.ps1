@@ -35,7 +35,7 @@ function Print-Info {
 # Determinar diretórios
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoDir = Split-Path -Parent $ScriptDir
-$TestDir = Join-Path $env:TEMP "trade_tests"
+$TestDir = Join-Path $ScriptDir "test_results"
 
 # Criar diretório de testes
 if (-not (Test-Path $TestDir)) {

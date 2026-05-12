@@ -11,7 +11,6 @@ Teste Completo de Retrocompatibilidade - 251 Pokémon com Todos os Ataques
 import json
 import sys
 import time
-import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -24,8 +23,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Usar caminho temporário do SO (Windows, Linux, macOS)
-OUTPUT_DIR = Path(tempfile.gettempdir()) / "trade_tests"
+# Salvar resultados na pasta de testes
+OUTPUT_DIR = Path(__file__).parent / "test_results"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Dados completos de Pokémon Gen1-3 com movesets

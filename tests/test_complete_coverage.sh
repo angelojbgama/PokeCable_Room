@@ -7,7 +7,7 @@ set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 REPO_DIR="$( cd "$SCRIPT_DIR/.." && pwd )"
-TEST_DIR="/tmp/trade_tests"
+TEST_DIR="$SCRIPT_DIR/test_results"
 
 # Cores
 GREEN='\033[0;32m'

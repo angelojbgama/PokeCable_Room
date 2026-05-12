@@ -26,6 +26,7 @@ r36s-client/.env
 .codex
 codex
 *.pid
+test_results/
 r36s-client/pokecable_room/config.json
 r36s-client/pokecable_room/backups/*
 r36s-client/pokecable_room/logs/*

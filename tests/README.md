@@ -57,9 +57,10 @@ test_complete_coverage.bat
 Todos os testes salvam resultados em:
 
 ```
-%TEMP%\trade_tests\   (Windows)
-/tmp/trade_tests/     (Linux/macOS)
+./test_results/
 ```
+
+(Local: `PokeCable_Room/tests/test_results/`)
 
 Arquivos gerados:
 - `pokemon_complete_coverage_report.txt` - Resumo dos testes
