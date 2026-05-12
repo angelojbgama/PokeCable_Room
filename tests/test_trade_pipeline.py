@@ -12,6 +12,7 @@ import asyncio
 import json
 import sys
 import time
+import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 # Config
 POKEMON_API_URL = "http://localhost:8000"
 SAVE_DIR = Path("/mnt/c/Users/USER/Documents/meu/PokeCable_Room/save")
-OUTPUT_DIR = Path("/tmp/trade_tests")
+OUTPUT_DIR = Path(tempfile.gettempdir()) / "trade_tests"
 MAX_WORKERS = 8
 
 # Criar diretório de saída
