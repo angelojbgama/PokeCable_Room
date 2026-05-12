@@ -13,6 +13,7 @@ import threading
 import queue
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+import requests
 
 DEBUG = os.getenv("POKECABLE_DEBUG", "0").lower() in ("1", "true", "yes")
 logger = logging.getLogger(__name__)
@@ -139,7 +140,7 @@ class PokecableState:
         return None
 
     def load_pokemon(self, save_path: Path, source: str = "party") -> List[Dict[str, Any]]:
-        """Load Pokémon from a save file using backend parser"""
+        """Load Pokémon from a save file using backend parser or remote server"""
         try:
             from saves import detect_parser
 
@@ -148,7 +149,7 @@ class PokecableState:
 
             if not parser:
                 logger.error(f"Cannot detect parser for: {save_path}")
-                return []
+                return self._load_pokemon_remote(save_path, source)
 
             # Load based on source
             if source == "party":
@@ -174,15 +175,59 @@ class PokecableState:
             return self.pokemon_list
 
         except ImportError as e:
-            logger.error(f"Import error: {e}")
-            logger.warning("Backend not available - returning dummy Pokémon")
-            self.pokemon_list = [
-                {"index": 0, "name": "Pikachu", "level": 50, "nickname": "", "location": "party:0", "display": "Pikachu - Lv. 50", "object": None},
-                {"index": 1, "name": "Charizard", "level": 55, "nickname": "", "location": "party:1", "display": "Charizard - Lv. 55", "object": None},
-            ]
-            return self.pokemon_list
+            logger.warning(f"Backend not available locally: {e}")
+            logger.info("Trying remote backend at " + self.server_url)
+            return self._load_pokemon_remote(save_path, source)
         except Exception as e:
             logger.error(f"Failed to load Pokémon: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return self._load_pokemon_remote(save_path, source)
+
+    def _load_pokemon_remote(self, save_path: Path, source: str = "party") -> List[Dict[str, Any]]:
+        """Load Pokémon by uploading to remote backend"""
+        try:
+            if not save_path.exists():
+                logger.error(f"Save file does not exist: {save_path}")
+                return []
+
+            logger.debug(f"Uploading save to remote backend: {save_path.name}")
+
+            # Extract server URL (e.g., wss://9kernel.vps-kinghost.net/ws -> https://9kernel.vps-kinghost.net)
+            server_base = self.server_url.replace("wss://", "https://").replace("ws://", "http://").replace("/ws", "")
+
+            with open(save_path, "rb") as f:
+                files = {"file": (save_path.name, f)}
+                response = requests.post(f"{server_base}/analyze-save", files=files, timeout=30)
+
+            if response.status_code != 200:
+                logger.error(f"Server error: {response.status_code} - {response.text}")
+                return []
+
+            data = response.json()
+            self.pokemon_list = []
+
+            # Filter by source (party or boxes)
+            for pokemon in data.get("pokemon", []):
+                if pokemon["source"] == source:
+                    self.pokemon_list.append({
+                        "index": pokemon["index"],
+                        "name": pokemon["species_name"],
+                        "level": pokemon["level"],
+                        "nickname": pokemon["nickname"],
+                        "location": pokemon["location"],
+                        "display": pokemon["display_summary"],
+                        "object": None,
+                    })
+
+            logger.info(f"Loaded {len(self.pokemon_list)} Pokémon from {source} (remote)")
+            return self.pokemon_list
+
+        except requests.RequestException as e:
+            logger.error(f"Network error loading from remote: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Failed to load from remote backend: {e}")
             import traceback
             logger.debug(traceback.format_exc())
             return []
