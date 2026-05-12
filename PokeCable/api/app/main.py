@@ -3,12 +3,13 @@ import logging
 import os
 
 from fastapi import FastAPI, WebSocket, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from .cleanup import cleanup_loop
 from .rooms import RoomManager
 from .websocket import ConnectionHub
 from .save_analyzer import analyze_save_file
+from .sprite_service import VALID_GENERATIONS, VALID_POSES, resolve_sprite_path
 
 
 def build_app() -> FastAPI:
@@ -22,6 +23,27 @@ def build_app() -> FastAPI:
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/sprites/{generation}/{species}.png")
+    async def sprite_default_pose(generation: int, species: str):
+        return await sprite_with_pose(generation, species, "front")
+
+    @app.get("/sprites/{generation}/{species}/{pose}.png")
+    async def sprite_with_pose(generation: int, species: str, pose: str):
+        if generation not in VALID_GENERATIONS:
+            raise HTTPException(status_code=422, detail=f"generation must be one of {sorted(VALID_GENERATIONS)}")
+        if pose not in VALID_POSES:
+            raise HTTPException(status_code=422, detail=f"pose must be one of {sorted(VALID_POSES)}")
+
+        sprite_path = resolve_sprite_path(generation, species, pose)
+        if not sprite_path:
+            raise HTTPException(status_code=404, detail="sprite not found")
+
+        return FileResponse(
+            path=sprite_path,
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
 
     @app.post("/analyze-save")
     async def analyze_save(file: UploadFile = File(...)) -> dict:
