@@ -140,71 +140,48 @@ class PokecableState:
         return None
 
     def load_pokemon(self, save_path: Path, source: str = "party") -> List[Dict[str, Any]]:
-        """Load Pokémon from a save file using backend parser or remote server"""
-        try:
-            from saves import detect_parser
-
-            logger.debug(f"Loading {save_path} with detect_parser (source={source})")
-            parser = detect_parser(save_path)
-
-            if not parser:
-                logger.error(f"Cannot detect parser for: {save_path}")
-                return self._load_pokemon_remote(save_path, source)
-
-            # Load based on source
-            if source == "party":
-                pokemon_list = parser.list_party()
-            elif source == "boxes":
-                pokemon_list = parser.list_boxes()
-            else:
-                pokemon_list = []
-
-            self.pokemon_list = []
-            for idx, pokemon in enumerate(pokemon_list):
-                self.pokemon_list.append({
-                    "index": idx,
-                    "name": getattr(pokemon, 'species_name', 'Unknown'),
-                    "level": getattr(pokemon, 'level', 0),
-                    "nickname": getattr(pokemon, 'nickname', ''),
-                    "location": getattr(pokemon, 'location', f"{source}:{idx}"),
-                    "display": getattr(pokemon, 'display_summary', f"Pokémon {idx+1}"),
-                    "object": pokemon,
-                })
-
-            logger.info(f"Loaded {len(self.pokemon_list)} Pokémon from {source} of {save_path.name}")
-            return self.pokemon_list
-
-        except ImportError as e:
-            logger.warning(f"Backend not available locally: {e}")
-            logger.info("Trying remote backend at " + self.server_url)
-            return self._load_pokemon_remote(save_path, source)
-        except Exception as e:
-            logger.error(f"Failed to load Pokémon: {e}")
-            import traceback
-            logger.debug(traceback.format_exc())
-            return self._load_pokemon_remote(save_path, source)
+        """Load Pokémon by uploading save to backend (same as web frontend does)"""
+        logger.debug(f"Loading {save_path} from backend (source={source})")
+        return self._load_pokemon_remote(save_path, source)
 
     def _load_pokemon_remote(self, save_path: Path, source: str = "party") -> List[Dict[str, Any]]:
-        """Load Pokémon by uploading to remote backend"""
+        """
+        Upload save file to backend and retrieve Pokémon list
+
+        This is the PRIMARY method - same as web frontend does.
+        Uploads .sav/.srm to backend for analysis.
+
+        Args:
+            save_path: Path to .sav or .srm file
+            source: "party" or "boxes"
+
+        Returns:
+            List of pokémon dicts from the specified source
+        """
         try:
             if not save_path.exists():
                 logger.error(f"Save file does not exist: {save_path}")
                 return []
 
-            logger.debug(f"Uploading save to remote backend: {save_path.name}")
+            logger.info(f"Uploading save to backend: {save_path.name}")
 
             # Extract server URL (e.g., wss://9kernel.vps-kinghost.net/ws -> https://9kernel.vps-kinghost.net)
             server_base = self.server_url.replace("wss://", "https://").replace("ws://", "http://").replace("/ws", "")
+            analyze_url = f"{server_base}/analyze-save"
 
+            logger.debug(f"POST {analyze_url}")
             with open(save_path, "rb") as f:
                 files = {"file": (save_path.name, f)}
-                response = requests.post(f"{server_base}/analyze-save", files=files, timeout=30)
+                response = requests.post(analyze_url, files=files, timeout=30)
 
             if response.status_code != 200:
-                logger.error(f"Server error: {response.status_code} - {response.text}")
+                logger.error(f"Backend error: {response.status_code}")
+                logger.error(f"Response: {response.text}")
                 return []
 
             data = response.json()
+            logger.debug(f"Backend returned: Gen{data.get('generation')}, {data.get('game')}, {len(data.get('pokemon', []))} total pokémon")
+
             self.pokemon_list = []
 
             # Filter by source (party or boxes)
@@ -220,14 +197,14 @@ class PokecableState:
                         "object": None,
                     })
 
-            logger.info(f"Loaded {len(self.pokemon_list)} Pokémon from {source} (remote)")
+            logger.info(f"Loaded {len(self.pokemon_list)} Pokémon from {source}")
             return self.pokemon_list
 
         except requests.RequestException as e:
-            logger.error(f"Network error loading from remote: {e}")
+            logger.error(f"Network error: {e}")
             return []
         except Exception as e:
-            logger.error(f"Failed to load from remote backend: {e}")
+            logger.error(f"Error loading pokémon: {e}")
             import traceback
             logger.debug(traceback.format_exc())
             return []
