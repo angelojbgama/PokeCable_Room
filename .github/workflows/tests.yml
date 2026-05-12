@@ -14,11 +14,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install API dependencies
+        run: pip install -r PokeCable/api/requirements.txt
+
       - name: Compile Python
         run: python -m compileall PokeCable/api PokeCable/backend
 
       - name: Run API tests
-        run: PYTHONPATH=PokeCable/api python -m unittest discover -s PokeCable/api/tests -v
+        run: PYTHONPATH=PokeCable/api pytest PokeCable/api/tests -v
 
       - name: Run backend tests
         run: PYTHONPATH=PokeCable/backend python -m unittest discover -s PokeCable/backend/tests -v
