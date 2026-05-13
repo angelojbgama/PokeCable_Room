@@ -31,9 +31,18 @@ if DEBUG:
     logger.setLevel(logging.DEBUG)
 
 
-DEFAULT_BACKEND_WS = "wss://9kernel.vps-kinghost.net/ws"
-SUPPORTED_TRADE_MODES = ["same_generation"]
-SUPPORTED_PROTOCOLS = ["raw_same_generation"]
+DEFAULT_BACKEND_WS = "ws://127.0.0.1:8000/ws"
+DEFAULT_LANGUAGE = "pt"
+DEFAULT_THEME = "pokedex_dark"
+SUPPORTED_LANGUAGES = {"pt", "en", "es"}
+SUPPORTED_THEMES = {"pokedex_dark", "pokedex_white"}
+SUPPORTED_TRADE_MODES = [
+    "same_generation",
+    "time_capsule_gen1_gen2",
+    "forward_transfer_to_gen3",
+    "legacy_downconvert_experimental",
+]
+SUPPORTED_PROTOCOLS = ["raw_same_generation", "canonical_cross_generation"]
 CONNECT_ATTEMPTS = 8
 CONNECT_OPEN_TIMEOUT = 20
 RUNTIME_HTTP_TIMEOUT = 10
@@ -60,6 +69,17 @@ def _runtime_http_base_url(server_url: str) -> str:
     return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, path.rstrip("/"), "", "", "")).rstrip("/")
 
 
+def _runtime_candidate_urls(server_url: str, path: str) -> List[str]:
+    base_url = _runtime_http_base_url(server_url)
+    if not base_url:
+        return []
+    clean_path = "/" + str(path or "").lstrip("/")
+    candidates = [f"{base_url}{clean_path}"]
+    if clean_path.startswith("/runtime/"):
+        candidates.append(f"{base_url}/api{clean_path}")
+    return candidates
+
+
 class PokecableState:
     """Manages application state and local save cache."""
 
@@ -80,6 +100,9 @@ class PokecableState:
 
         self.save_analysis: Dict[str, Dict[str, Any]] = {}
         self.server_url = self._load_server_url()
+        self.language = DEFAULT_LANGUAGE
+        self.theme = DEFAULT_THEME
+        self._load_ui_config()
 
     def _configured_save_dirs(self) -> List[Path]:
         value = os.getenv("POKECABLE_SAVE_DIRS", "").strip()
@@ -156,26 +179,64 @@ class PokecableState:
         except Exception as exc:
             logger.error(f"Failed to save server.conf: {exc}")
 
+    def _load_ui_config(self) -> None:
+        config_file = self.config_dir / "ui.conf"
+        if not config_file.exists():
+            return
+        try:
+            payload = json.loads(config_file.read_text())
+            language = str(payload.get("language", DEFAULT_LANGUAGE)).strip().lower()
+            theme = str(payload.get("theme", DEFAULT_THEME)).strip().lower()
+            if language in SUPPORTED_LANGUAGES:
+                self.language = language
+            if theme in SUPPORTED_THEMES:
+                self.theme = theme
+        except Exception as exc:
+            logger.warning("Failed to read ui.conf: %s", exc)
+
+    def save_ui_config(self, language: str, theme: str) -> None:
+        language = str(language or "").strip().lower()
+        theme = str(theme or "").strip().lower()
+        if language not in SUPPORTED_LANGUAGES:
+            language = DEFAULT_LANGUAGE
+        if theme not in SUPPORTED_THEMES:
+            theme = DEFAULT_THEME
+        payload = {"language": language, "theme": theme}
+        config_file = self.config_dir / "ui.conf"
+        try:
+            config_file.write_text(json.dumps(payload, ensure_ascii=True, indent=2))
+            self.language = language
+            self.theme = theme
+        except Exception as exc:
+            logger.error("Failed to save ui.conf: %s", exc)
+
     def runtime_http_base_url(self) -> str:
         return _runtime_http_base_url(self.server_url)
 
     def _runtime_post(self, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        base_url = self.runtime_http_base_url()
-        if not base_url:
+        urls = _runtime_candidate_urls(self.server_url, path)
+        if not urls:
             raise SaveError("URL HTTP da API indisponivel para validar dados.")
-        url = f"{base_url}{path}"
         body = json.dumps(payload).encode("utf-8")
-        request = urllib.request.Request(
-            url,
-            data=body,
-            headers={"Content-Type": "application/json", "User-Agent": "PokeCable-R36S/1.0"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=RUNTIME_HTTP_TIMEOUT) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
-            raise SaveError(f"API indisponivel para validar Pokemon: {exc}") from exc
+        errors: List[str] = []
+        for url in urls:
+            request = urllib.request.Request(
+                url,
+                data=body,
+                headers={"Content-Type": "application/json", "User-Agent": "PokeCable-R36S/1.0"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=RUNTIME_HTTP_TIMEOUT) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                errors.append(f"{url} -> HTTP {exc.code}")
+                continue
+            except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+                errors.append(f"{url} -> {exc}")
+                continue
+        detail = "; ".join(errors) if errors else "sem detalhes"
+        raise SaveError(f"API indisponivel para validar Pokemon: {detail}")
 
     def enrich_pokemon(self, save: SaveModel, pokemon_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not pokemon_list:
@@ -296,11 +357,14 @@ class PokecableState:
 
         self.pokemon_list = []
         for pokemon in source_pokemon:
+            species_id = int(pokemon.get("species_id") or 0)
+            if species_id <= 0:
+                continue
             self.pokemon_list.append(
                 {
                     "index": pokemon.get("index"),
                     "name": pokemon.get("species_name", "Pokemon"),
-                    "species_id": pokemon.get("species_id", 0),
+                    "species_id": species_id,
                     "species_name": pokemon.get("species_name", "Pokemon"),
                     "national_dex_id": pokemon.get("national_dex_id"),
                     "types": pokemon.get("types", []),
@@ -383,20 +447,11 @@ def _build_preflight(
         warnings.extend(str(warning) for warning in server_preflight.get("warnings", []) if warning)
     if not peer_payload:
         reasons.append("Oferta remota ausente.")
-    if int(peer_payload.get("generation", 0)) != save.generation:
-        reasons.append(
-            f"R36S suporta apenas mesma geração por enquanto: local Gen {save.generation}, recebido Gen {peer_payload.get('generation', '?')}."
-        )
-    raw_format = str(peer_payload.get("raw", {}).get("format") or peer_payload.get("metadata", {}).get("format") or "")
-    if not (peer_payload.get("raw_data_base64") or peer_payload.get("raw", {}).get("data_base64")):
-        reasons.append("Payload same-generation sem raw data.")
     if not state.selected_pokemon:
         reasons.append("Nenhum Pokémon local selecionado.")
-    elif save.target_requires_box_promotion_block(state.selected_pokemon.get("location", "party:0"), peer_payload):
-        reasons.append("Receber um Pokémon vindo do PC para a Party ainda não é suportado no R36S. Escolha um slot do PC como destino local para concluir a troca.")
     return {
         "compatible": not reasons,
-        "mode": "same_generation",
+        "mode": str(server_preflight.get("mode") or "same_generation"),
         "source_generation": save.generation,
         "target_generation": save.generation,
         "blocking_reasons": reasons,
@@ -433,19 +488,7 @@ def _peer_player_name(room: Dict[str, Any], client_id: str = "", slot: str = "")
 
 
 def _same_generation_room_error(room: Dict[str, Any], local_generation: int) -> str:
-    room = room or {}
-    compatibility = dict(room.get("compatibility_status") or {})
-    trade_mode = str(room.get("trade_mode") or compatibility.get("mode") or "").strip()
-    if trade_mode and trade_mode != "same_generation":
-        return "R36S suporta apenas trocas da mesma geração por enquanto."
-    generations = {
-        int(player.get("generation"))
-        for player in dict(room.get("players") or {}).values()
-        if str(player.get("generation", "")).isdigit()
-    }
-    if generations and generations != {int(local_generation)}:
-        listed = ", ".join(f"Gen {generation}" for generation in sorted(generations))
-        return f"Use saves da mesma geração nos dois lados. Sala atual: {listed}."
+    del room, local_generation
     return ""
 
 

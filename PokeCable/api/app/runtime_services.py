@@ -191,9 +191,6 @@ def build_trade_preflight(payload: dict[str, Any]) -> dict[str, Any]:
 
     if not received:
         reasons.append("Oferta remota ausente.")
-    if source_generation and target_generation and source_generation != target_generation:
-        reasons.append(f"R36S suporta apenas mesma geracao: recebido Gen {source_generation}, local Gen {target_generation}.")
-
     enriched = enrich_one_pokemon(received, default_generation=source_generation)
     if not enriched.get("species_valid"):
         reasons.append(str(enriched.get("species_error") or "Pokemon invalido."))
@@ -210,9 +207,10 @@ def build_trade_preflight(payload: dict[str, Any]) -> dict[str, Any]:
         item_based_evolutions_enabled=_item_trade_evolutions_enabled(payload),
     )
     compatible = not reasons
+    mode = "same_generation" if source_generation == target_generation else "cross_generation"
     return {
         "compatible": compatible,
-        "mode": "same_generation",
+        "mode": mode,
         "source_generation": source_generation,
         "target_generation": target_generation,
         "blocking_reasons": reasons,

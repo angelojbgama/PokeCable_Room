@@ -8,6 +8,7 @@ import os
 import sys
 import time
 import math
+import random
 import logging
 import queue
 import threading
@@ -65,20 +66,127 @@ JOY_MAP = {
     "right": {11},
 }
 
-BG = (13, 17, 22)
-PANEL = (24, 31, 39)
-PANEL_2 = (34, 43, 54)
-TEXT = (230, 236, 242)
-MUTED = (147, 158, 171)
-ACCENT = (72, 176, 255)
-OK = (82, 211, 143)
-RED = (245, 74, 91)
-WARN = (255, 190, 88)
+THEMES = {
+    "pokedex_dark": {
+        "bg": (15, 20, 24),
+        "panel": (29, 38, 45),
+        "panel_2": (43, 55, 65),
+        "text": (233, 239, 244),
+        "muted": (154, 166, 178),
+        "accent": (233, 70, 92),
+        "ok": (76, 206, 139),
+        "red": (245, 74, 91),
+        "warn": (255, 190, 88),
+    },
+    "pokedex_white": {
+        "bg": (236, 239, 243),
+        "panel": (251, 252, 254),
+        "panel_2": (218, 223, 230),
+        "text": (23, 31, 39),
+        "muted": (91, 105, 122),
+        "accent": (213, 56, 83),
+        "ok": (38, 166, 106),
+        "red": (211, 54, 73),
+        "warn": (196, 138, 44),
+    },
+}
+
+STRINGS = {
+    "pt": {
+        "menu_title": "Menu",
+        "menu_access_room": "Acessar Sala",
+        "menu_config": "Config",
+        "menu_exit": "Sair",
+        "config_title": "Configuracoes",
+        "config_language": "Idioma",
+        "config_theme": "Tema",
+        "lang_pt": "Portugues",
+        "lang_en": "English",
+        "lang_es": "Espanol",
+        "theme_dark": "Dark Pokedex",
+        "theme_white": "White Pokedex",
+        "btn_ok": "OK",
+        "btn_back": "VOLTAR",
+        "btn_change": "ALTERAR",
+    },
+    "en": {
+        "menu_title": "Menu",
+        "menu_access_room": "Enter Room",
+        "menu_config": "Config",
+        "menu_exit": "Exit",
+        "config_title": "Settings",
+        "config_language": "Language",
+        "config_theme": "Theme",
+        "lang_pt": "Portuguese",
+        "lang_en": "English",
+        "lang_es": "Spanish",
+        "theme_dark": "Dark Pokedex",
+        "theme_white": "White Pokedex",
+        "btn_ok": "OK",
+        "btn_back": "BACK",
+        "btn_change": "CHANGE",
+    },
+    "es": {
+        "menu_title": "Menu",
+        "menu_access_room": "Entrar en Sala",
+        "menu_config": "Config",
+        "menu_exit": "Salir",
+        "config_title": "Configuracion",
+        "config_language": "Idioma",
+        "config_theme": "Tema",
+        "lang_pt": "Portugues",
+        "lang_en": "Ingles",
+        "lang_es": "Espanol",
+        "theme_dark": "Dark Pokedex",
+        "theme_white": "White Pokedex",
+        "btn_ok": "OK",
+        "btn_back": "VOLVER",
+        "btn_change": "CAMBIAR",
+    },
+}
+
+BG = (0, 0, 0)
+PANEL = (0, 0, 0)
+PANEL_2 = (0, 0, 0)
+TEXT = (255, 255, 255)
+MUTED = (155, 155, 155)
+ACCENT = (255, 0, 0)
+OK = (0, 200, 0)
+RED = (255, 0, 0)
+WARN = (255, 200, 0)
+
+
+def apply_theme(theme_name):
+    global BG, PANEL, PANEL_2, TEXT, MUTED, ACCENT, OK, RED, WARN
+    palette = THEMES.get(str(theme_name or "").strip().lower(), THEMES["pokedex_dark"])
+    BG = palette["bg"]
+    PANEL = palette["panel"]
+    PANEL_2 = palette["panel_2"]
+    TEXT = palette["text"]
+    MUTED = palette["muted"]
+    ACCENT = palette["accent"]
+    OK = palette["ok"]
+    RED = palette["red"]
+    WARN = palette["warn"]
+
+
+def t(lang, key):
+    language = str(lang or "pt").strip().lower()
+    table = STRINGS.get(language, STRINGS["pt"])
+    return table.get(key, STRINGS["pt"].get(key, key))
 
 SPRITE_CACHE_DIR = Path.home() / ".pokecable" / "sprites"
 SPRITE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 SCROLL_STATE = {}
+KEYBOARD_GRID_W = 12
+POKEMON_ROOM_NAMES = [
+    "Pikachu", "Eevee", "Snorlax", "Charizard", "Bulbasaur", "Squirtle",
+    "Gengar", "Dragonite", "Lapras", "Mew", "Mewtwo", "Lucario",
+    "Garchomp", "Greninja", "Umbreon", "Espeon", "Jolteon", "Vaporeon",
+    "Flareon", "Sylveon", "Ditto", "Tyranitar", "Blaziken", "Sceptile",
+    "Swampert", "Rayquaza", "Gardevoir", "Arcanine", "Machamp", "Alakazam",
+]
 TYPE_LABELS = {
     "normal": "Normal",
     "fire": "Fogo",
@@ -210,7 +318,9 @@ def font(size, bold=False):
     return pygame.font.SysFont(None, size, bold=bold)
 
 
-def text(surface, fnt, value, x, y, color=TEXT, max_w=None):
+def text(surface, fnt, value, x, y, color=None, max_w=None):
+    if color is None:
+        color = TEXT
     value = str(value)
     if max_w is not None:
         while value and fnt.size(value)[0] > max_w:
@@ -484,16 +594,16 @@ def debounce_action(action, action_state):
     return action
 
 
-def draw_menu(screen, fonts, selected):
+def draw_menu(screen, fonts, selected, language):
     title_f, _, small_f, tiny_f = fonts
     screen.fill(BG)
     rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
     text(screen, title_f, "PokeCable", 14, 10)
 
-    items = ["Acessar Sala", "Config", "Sair"]
+    items = [t(language, "menu_access_room"), t(language, "menu_config"), t(language, "menu_exit")]
     list_panel = pygame.Rect(10, HEADER_H + 10, LIST_W - 18, SCREEN_H - HEADER_H - FOOTER_H - 20)
     rect(screen, PANEL, list_panel, 6)
-    text(screen, small_f, "Menu", 22, HEADER_H + 22, MUTED)
+    text(screen, small_f, t(language, "menu_title"), 22, HEADER_H + 22, MUTED)
 
     for idx, item in enumerate(items):
         y = HEADER_H + 54 + idx * 50
@@ -504,8 +614,37 @@ def draw_menu(screen, fonts, selected):
         text(screen, small_f, item, row.x + 9, row.y + 9, color, row.w - 18)
 
     rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "OK", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
+    button(screen, tiny_f, "A", t(language, "btn_ok"), 12, SCREEN_H - 48)
+    button(screen, tiny_f, "B", t(language, "btn_back"), 112, SCREEN_H - 48)
+
+
+def draw_config_menu(screen, fonts, selected, language, theme):
+    title_f, body_f, small_f, tiny_f = fonts
+    screen.fill(BG)
+    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
+    text(screen, title_f, t(language, "config_title"), 14, 10)
+
+    items = [
+        (t(language, "config_language"), t(language, f"lang_{language}")),
+        (t(language, "config_theme"), t(language, "theme_dark" if theme == "pokedex_dark" else "theme_white")),
+    ]
+    list_panel = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    rect(screen, PANEL, list_panel, 6)
+    for idx, (label, value) in enumerate(items):
+        y = HEADER_H + 44 + idx * 64
+        row = pygame.Rect(18, y, SCREEN_W - 36, 50)
+        color = (5, 11, 18) if idx == selected else TEXT
+        if idx == selected:
+            rect(screen, ACCENT, row, 4)
+        text(screen, small_f, label, row.x + 9, row.y + 8, color, row.w - 18)
+        text(screen, body_f, value, row.x + 9, row.y + 25, color, row.w - 18)
+
+    helper = "< >"
+    text(screen, tiny_f, helper, SCREEN_W - 62, HEADER_H + 14, MUTED)
+    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
+    button(screen, tiny_f, "A", t(language, "btn_ok"), 12, SCREEN_H - 48)
+    button(screen, tiny_f, "B", t(language, "btn_back"), 112, SCREEN_H - 48)
+    button(screen, tiny_f, "<>", t(language, "btn_change"), 238, SCREEN_H - 48)
 
 
 def draw_action_menu(screen, fonts, selected):
@@ -532,11 +671,26 @@ def draw_action_menu(screen, fonts, selected):
     button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
 
 
+def keyboard_chars(shift=False):
+    base = "`1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./"
+    shifted = '~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:"ZXCVBNM<>?'
+    return list(shifted if shift else base)
+
+
+def keyboard_limits(shift=False):
+    total = len(keyboard_chars(shift)) + 4
+    return total - 1
+
+
+def random_room_name():
+    return f"{random.choice(POKEMON_ROOM_NAMES)}-{random.randint(10, 99)}"
+
+
 def draw_keyboard(screen, fonts, title, value, grid_index, is_password=False, shift=False):
     title_f, body_f, small_f, tiny_f = fonts
     screen.fill(BG)
     rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    shift_label = "SHIFT" if shift else "shift"
+    shift_label = "SHIFT ON" if shift else "SHIFT OFF"
     text(screen, title_f, f"{title} [{shift_label}]", 14, 10)
 
     display_value = "*" * len(value) if is_password else value
@@ -544,33 +698,32 @@ def draw_keyboard(screen, fonts, title, value, grid_index, is_password=False, sh
     rect(screen, PANEL, input_panel, 6)
     text(screen, body_f, display_value if display_value else "(vazio)", 20, HEADER_H + 20, ACCENT, SCREEN_W - 40)
 
-    if shift:
-        keyboard = "ABCDEFGHIJ KLMNOPQRST UVWXYZ      !@#$%^&*"
-    else:
-        keyboard = "abcdefghij klmnopqrst uvwxyz0123 456789.-_"
+    chars = keyboard_chars(shift)
+    key_w, key_h = 48, 34
+    start_x, start_y = 18, HEADER_H + 74
 
-    chars = [c for c in keyboard if c != " "]
-    grid_w, key_w, key_h = 10, 50, 40
-    start_x, start_y = 20, HEADER_H + 80
-
-    for idx, char in enumerate(chars[:40]):
-        col, row = idx % grid_w, idx // grid_w
+    for idx, char in enumerate(chars):
+        col, row = idx % KEYBOARD_GRID_W, idx // KEYBOARD_GRID_W
         x, y = start_x + col * key_w, start_y + row * key_h
         selected = idx == grid_index
-        rect(screen, ACCENT if selected else PANEL, pygame.Rect(x, y, key_w - 5, key_h - 5), 4)
-        text(screen, small_f, char, x + 10, y + 10, TEXT if selected else MUTED)
+        key_rect = pygame.Rect(x, y, key_w - 6, key_h - 5)
+        rect(screen, ACCENT if selected else PANEL_2, key_rect, 5)
+        text(screen, tiny_f, char, key_rect.x + 6, key_rect.y + 8, (5, 11, 18) if selected else TEXT)
 
-    specials = [("DEL", 40), ("SHIFT", 41), ("OK", 42), ("SPC", 43)]
+    specials_row = math.ceil(len(chars) / KEYBOARD_GRID_W)
+    special_start = len(chars)
+    specials = [("DEL", special_start), ("SHIFT", special_start + 1), ("SPACE", special_start + 2), ("OK", special_start + 3)]
     for offset, (label, idx) in enumerate(specials):
-        x = start_x + offset * key_w
-        y = start_y + 4 * key_h
+        x = start_x + offset * (key_w * 2)
+        y = start_y + specials_row * key_h + 8
         selected = idx == grid_index
-        rect(screen, ACCENT if selected else PANEL, pygame.Rect(x, y, key_w - 5, key_h - 5), 4)
-        text(screen, small_f, label, x + 5, y + 10, TEXT if selected else MUTED)
+        key_rect = pygame.Rect(x, y, key_w * 2 - 12, key_h - 3)
+        rect(screen, ACCENT if selected else PANEL_2, key_rect, 5)
+        text(screen, tiny_f, label, key_rect.x + 8, key_rect.y + 8, (5, 11, 18) if selected else TEXT)
 
     rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
     button(screen, tiny_f, "A", "SELECT", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "DEL/BACK", 112, SCREEN_H - 48)
+    button(screen, tiny_f, "B", "DEL/VOLTAR", 112, SCREEN_H - 48)
 
 
 def draw_select_save(screen, fonts, selected, saves):
@@ -762,7 +915,7 @@ def draw_waiting_partner(screen, fonts, status):
     text(screen, tiny_f, "Aguarde...", 250, SCREEN_H - 45, MUTED)
 
 
-def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon):
+def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon, sprite_loader):
     title_f, body_f, small_f, tiny_f = fonts
     screen.fill(BG)
     rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
@@ -771,12 +924,56 @@ def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon):
     content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
     rect(screen, PANEL, content, 6)
 
-    mine = my_pokemon.get("display", "???")
+    mine = my_pokemon.get("display") or my_pokemon.get("display_summary") or "???"
     peer = opponent_pokemon.get("display_summary") or opponent_pokemon.get("nickname") or opponent_pokemon.get("species_name") or "???"
-    text(screen, small_f, "Seu Pokemon:", 30, HEADER_H + 60, TEXT)
-    text(screen, body_f, mine, 30, HEADER_H + 90, OK)
-    text(screen, small_f, "Pokemon do Oponente:", 30, HEADER_H + 200, TEXT)
-    text(screen, body_f, peer, 30, HEADER_H + 230, ACCENT)
+
+    my_entry = {
+        "generation": int(my_pokemon.get("generation") or 0),
+        "species_id": int(my_pokemon.get("species_id") or 0),
+        "species_name": my_pokemon.get("species_name") or "Pokemon",
+    }
+    peer_entry = {
+        "generation": int(opponent_pokemon.get("generation") or opponent_pokemon.get("source_generation") or 0),
+        "species_id": int(opponent_pokemon.get("species_id") or 0),
+        "species_name": opponent_pokemon.get("species_name") or "Pokemon",
+    }
+    sprite_loader.request_for(my_entry)
+    sprite_loader.request_for(peer_entry)
+    my_sprite, my_loading, _ = sprite_loader.snapshot_for(my_entry)
+    peer_sprite, peer_loading, _ = sprite_loader.snapshot_for(peer_entry)
+
+    left_card = pygame.Rect(26, HEADER_H + 44, 286, 222)
+    right_card = pygame.Rect(328, HEADER_H + 44, 286, 222)
+    rect(screen, PANEL_2, left_card, 8)
+    rect(screen, PANEL_2, right_card, 8)
+    text(screen, small_f, "Seu Pokemon", left_card.x + 12, left_card.y + 10, OK)
+    text(screen, small_f, "Oponente", right_card.x + 12, right_card.y + 10, ACCENT)
+
+    my_sprite_box = pygame.Rect(left_card.x + 78, left_card.y + 36, 128, 128)
+    peer_sprite_box = pygame.Rect(right_card.x + 78, right_card.y + 36, 128, 128)
+    rect(screen, BG, my_sprite_box, 8)
+    rect(screen, BG, peer_sprite_box, 8)
+    if my_sprite:
+        scaled = pygame.transform.smoothscale(my_sprite, (108, 108))
+        screen.blit(scaled, (my_sprite_box.x + 10, my_sprite_box.y + 10))
+    elif my_loading:
+        text(screen, tiny_f, "Carregando...", my_sprite_box.x + 18, my_sprite_box.y + 56, MUTED)
+    else:
+        text(screen, tiny_f, "Sem sprite", my_sprite_box.x + 28, my_sprite_box.y + 56, MUTED)
+    if peer_sprite:
+        scaled = pygame.transform.smoothscale(peer_sprite, (108, 108))
+        screen.blit(scaled, (peer_sprite_box.x + 10, peer_sprite_box.y + 10))
+    elif peer_loading:
+        text(screen, tiny_f, "Carregando...", peer_sprite_box.x + 18, peer_sprite_box.y + 56, MUTED)
+    else:
+        text(screen, tiny_f, "Sem sprite", peer_sprite_box.x + 28, peer_sprite_box.y + 56, MUTED)
+
+    text(screen, tiny_f, mine, left_card.x + 12, left_card.y + 176, TEXT, left_card.w - 24)
+    text(screen, tiny_f, peer, right_card.x + 12, right_card.y + 176, TEXT, right_card.w - 24)
+    my_level = int(my_pokemon.get("level") or 0)
+    peer_level = int(opponent_pokemon.get("level") or 0)
+    text(screen, tiny_f, f"Nivel {my_level}" if my_level else "Nivel ?", left_card.x + 12, left_card.y + 198, MUTED)
+    text(screen, tiny_f, f"Nivel {peer_level}" if peer_level else "Nivel ?", right_card.x + 12, right_card.y + 198, MUTED)
 
     rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
     button(screen, tiny_f, "A", "CONFIRMAR", 12, SCREEN_H - 48)
@@ -961,10 +1158,12 @@ def main():
     state = PokecableState()
     state.find_saves()
     state.action = "access"
+    apply_theme(state.theme)
     logger.info("UI boot complete: saves=%s server=%s", len(state.saves), state.server_url)
 
     current_screen = "menu"
     menu_index = 0
+    config_dirty = False
     keyboard_index = 0
     keyboard_shift = False
     room_name = ""
@@ -1050,12 +1249,44 @@ def main():
                     logger.info("Menu select: access room")
                     switch_screen("load_save", "menu_access_room")
                     menu_index = 0
+                elif menu_index == 1:
+                    logger.info("Menu select: config")
+                    switch_screen("config", "menu_config")
+                    menu_index = 0
                 elif menu_index == 2:
                     logger.info("Menu select: exit")
                     running = False
             elif action == "back":
                 logger.info("Menu back: exit")
                 running = False
+
+        elif current_screen == "config" and action:
+            if action == "up":
+                menu_index = (menu_index - 1) % 2
+            elif action == "down":
+                menu_index = (menu_index + 1) % 2
+            elif action in ("left", "right"):
+                if menu_index == 0:
+                    order = ["pt", "en", "es"]
+                    index = order.index(state.language) if state.language in order else 0
+                    direction = -1 if action == "left" else 1
+                    state.language = order[(index + direction) % len(order)]
+                    config_dirty = True
+                else:
+                    state.theme = "pokedex_white" if state.theme == "pokedex_dark" else "pokedex_dark"
+                    apply_theme(state.theme)
+                    config_dirty = True
+            elif action == "select":
+                state.save_ui_config(state.language, state.theme)
+                config_dirty = False
+                switch_screen("menu", "config_saved")
+                menu_index = 0
+            elif action == "back":
+                if config_dirty:
+                    state.save_ui_config(state.language, state.theme)
+                    config_dirty = False
+                switch_screen("menu", "back_from_config")
+                menu_index = 0
 
         elif current_screen == "load_save" and action:
             if action == "up":
@@ -1070,7 +1301,7 @@ def main():
                 switch_screen("enter_room_name", "save_selected")
                 keyboard_index = 0
                 keyboard_shift = False
-                room_name = ""
+                room_name = random_room_name()
                 menu_index = 0
             elif action == "back":
                 switch_screen("menu", "back_from_load_save")
@@ -1113,30 +1344,33 @@ def main():
                 menu_index = 0
 
         elif current_screen == "enter_room_name" and action:
+            max_key_index = keyboard_limits(keyboard_shift)
+            char_count = len(keyboard_chars(keyboard_shift))
             if action == "up":
-                keyboard_index = max(0, keyboard_index - 10)
+                keyboard_index = max(0, keyboard_index - KEYBOARD_GRID_W)
             elif action == "down":
-                keyboard_index = min(43, keyboard_index + 10)
+                keyboard_index = min(max_key_index, keyboard_index + KEYBOARD_GRID_W)
             elif action == "left":
                 keyboard_index = max(0, keyboard_index - 1)
             elif action == "right":
-                keyboard_index = min(43, keyboard_index + 1)
+                keyboard_index = min(max_key_index, keyboard_index + 1)
             elif action == "select":
-                if keyboard_index == 40:
+                if keyboard_index == char_count:
                     room_name = room_name[:-1]
-                elif keyboard_index == 41:
+                elif keyboard_index == char_count + 1:
                     keyboard_shift = not keyboard_shift
-                elif keyboard_index == 42:
+                    keyboard_index = min(keyboard_index, keyboard_limits(keyboard_shift))
+                elif keyboard_index == char_count + 2:
+                    room_name += " "
+                elif keyboard_index == char_count + 3:
                     if room_name:
                         logger.info("Room name submitted: %s", room_name)
                         switch_screen("enter_password", "room_name_submitted")
                         keyboard_index = 0
                         keyboard_shift = False
                         room_password = ""
-                elif keyboard_index == 43:
-                    room_name += " "
                 else:
-                    chars = "abcdefghijklmnopqrstuvwxyz0123456789.-_" if not keyboard_shift else "ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*()"
+                    chars = keyboard_chars(keyboard_shift)
                     if keyboard_index < len(chars):
                         room_name += chars[keyboard_index]
             elif action == "back":
@@ -1147,20 +1381,25 @@ def main():
                     menu_index = 0
 
         elif current_screen == "enter_password" and action:
+            max_key_index = keyboard_limits(keyboard_shift)
+            char_count = len(keyboard_chars(keyboard_shift))
             if action == "up":
-                keyboard_index = max(0, keyboard_index - 10)
+                keyboard_index = max(0, keyboard_index - KEYBOARD_GRID_W)
             elif action == "down":
-                keyboard_index = min(43, keyboard_index + 10)
+                keyboard_index = min(max_key_index, keyboard_index + KEYBOARD_GRID_W)
             elif action == "left":
                 keyboard_index = max(0, keyboard_index - 1)
             elif action == "right":
-                keyboard_index = min(43, keyboard_index + 1)
+                keyboard_index = min(max_key_index, keyboard_index + 1)
             elif action == "select":
-                if keyboard_index == 40:
+                if keyboard_index == char_count:
                     room_password = room_password[:-1]
-                elif keyboard_index == 41:
+                elif keyboard_index == char_count + 1:
                     keyboard_shift = not keyboard_shift
-                elif keyboard_index == 42:
+                    keyboard_index = min(keyboard_index, keyboard_limits(keyboard_shift))
+                elif keyboard_index == char_count + 2:
+                    room_password += " "
+                elif keyboard_index == char_count + 3:
                     if room_name and room_password:
                         state.room_name = room_name
                         state.room_password = room_password
@@ -1170,10 +1409,8 @@ def main():
                         trade_thread = start_trade_thread(state, state.action or "access", ui_queue, confirm_queue)
                         switch_screen("connecting", "trade_thread_started")
                         trade_status = "Conectando..."
-                elif keyboard_index == 43:
-                    room_password += " "
                 else:
-                    chars = "abcdefghijklmnopqrstuvwxyz0123456789.-_" if not keyboard_shift else "ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*()"
+                    chars = keyboard_chars(keyboard_shift)
                     if keyboard_index < len(chars):
                         room_password += chars[keyboard_index]
             elif action == "back":
@@ -1224,7 +1461,9 @@ def main():
             reset_flow_state(state)
 
         if current_screen == "menu":
-            draw_menu(screen, fonts, menu_index)
+            draw_menu(screen, fonts, menu_index, state.language)
+        elif current_screen == "config":
+            draw_config_menu(screen, fonts, menu_index, state.language, state.theme)
         elif current_screen == "load_save":
             draw_select_save(screen, fonts, menu_index, state.saves)
         elif current_screen == "select_pokemon_source":
@@ -1241,7 +1480,13 @@ def main():
         elif current_screen == "waiting_partner":
             draw_waiting_partner(screen, fonts, trade_status)
         elif current_screen == "trade_confirm":
-            draw_trade_confirm(screen, fonts, state.selected_pokemon or {}, result_data if isinstance(result_data, dict) else {})
+            draw_trade_confirm(
+                screen,
+                fonts,
+                state.selected_pokemon or {},
+                result_data if isinstance(result_data, dict) else {},
+                sprite_loader,
+            )
         elif current_screen == "evolution_cancel_prompt":
             draw_evolution_cancel_prompt(screen, fonts, result_data if isinstance(result_data, dict) else {}, sprite_loader, frame)
         elif current_screen == "evolution_cancel_confirm":

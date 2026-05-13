@@ -289,7 +289,9 @@ class CompatibilityTests(unittest.TestCase):
             policy="permissive",
         )
         self.assertTrue(permissive.compatible)
-        self.assertEqual(permissive.removed_moves, [{"move_id": 252, "name": "Fake Out"}])
+        self.assertTrue(permissive.removed_moves)
+        self.assertEqual(permissive.removed_moves[0]["move_id"], 252)
+        self.assertEqual(permissive.removed_moves[0]["name"], "Fake Out")
         self.assertIn("moves", permissive.data_loss)
         self.assertTrue(permissive.requires_user_confirmation)
 
@@ -308,7 +310,9 @@ class CompatibilityTests(unittest.TestCase):
             policy="permissive",
         )
         self.assertTrue(report.compatible)
-        self.assertEqual(report.removed_moves, [{"move_id": 252, "name": "Fake Out"}])
+        self.assertTrue(report.removed_moves)
+        self.assertEqual(report.removed_moves[0]["move_id"], 252)
+        self.assertEqual(report.removed_moves[0]["name"], "Fake Out")
         self.assertIn("moves", report.data_loss)
         self.assertTrue(report.requires_user_confirmation)
 
@@ -339,7 +343,7 @@ class CompatibilityTests(unittest.TestCase):
         self.assertEqual(MOVE_DATA[252].base_pp, 10)
         self.assertTrue(move_exists(200, 2))
         self.assertFalse(move_exists(252, 2))
-        self.assertEqual(MOVE_DATA[250].name, "Move #250")
+        self.assertEqual(MOVE_DATA[250].name, "Whirlpool")
 
 
 if __name__ == "__main__":

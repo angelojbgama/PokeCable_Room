@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 SPECIES_NAMES_BY_NATIONAL: dict[int, str] = {species_id: f"Species #{species_id}" for species_id in range(1, 252)}
 SPECIES_NAMES_BY_NATIONAL.update(
     {
@@ -177,6 +180,30 @@ SPECIES_NAMES_BY_NATIONAL.update(
         386: "Deoxys",
     }
 )
+
+
+def _load_species_names_from_frontend() -> dict[int, str]:
+    frontend_file = Path(__file__).resolve().parents[2] / "frontend" / "species-data.js"
+    if not frontend_file.exists():
+        return {}
+    try:
+        content = frontend_file.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    start = content.find("const speciesNames = {")
+    if start < 0:
+        return {}
+    end = content.find("\n  };", start)
+    if end < 0:
+        return {}
+    block = content[start:end]
+    names: dict[int, str] = {}
+    for match in re.finditer(r'^\s*(\d+):\s*"([^"]+)"', block, flags=re.MULTILINE):
+        names[int(match.group(1))] = match.group(2).strip()
+    return names
+
+
+SPECIES_NAMES_BY_NATIONAL.update(_load_species_names_from_frontend())
 
 GEN1_INTERNAL_TO_NATIONAL: dict[int, int] = {
     1: 112, 2: 115, 3: 32, 4: 35, 5: 21, 6: 100, 7: 34, 8: 80, 9: 2, 10: 103,

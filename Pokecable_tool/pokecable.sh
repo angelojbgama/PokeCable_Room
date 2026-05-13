@@ -4,6 +4,7 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PYTHON_SCRIPT="$SCRIPT_DIR/r36s_pokecable_ui.py"
 LOG_ROOT="$SCRIPT_DIR/logs"
 ERROR_LOG="$LOG_ROOT/error.log"
@@ -22,6 +23,7 @@ export PYTHONDONTWRITEBYTECODE=1
 export POKECABLE_LOG_ROOT="$LOG_ROOT"
 export POKECABLE_ERROR_LOG="$ERROR_LOG"
 export POKECABLE_DEBUG_LOG="$DEBUG_LOG"
+export POKECABLE_SAVE_DIRS="${POKECABLE_SAVE_DIRS:-$PROJECT_DIR/roms/test-saves}"
 
 . /usr/local/bin/darkos-console-normalize.sh --clear 2>/dev/null || true
 

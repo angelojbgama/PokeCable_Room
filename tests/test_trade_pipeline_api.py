@@ -10,6 +10,7 @@ Teste integrado de pipeline de troca Pokémon com API real
 
 import asyncio
 import json
+import os
 import sys
 import time
 import tempfile
@@ -29,8 +30,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Config
-API_URL = "http://localhost:8000"
-SAVE_DIR = Path("/mnt/c/Users/USER/Documents/meu/PokeCable_Room/save")
+API_URL = os.getenv("POKECABLE_TEST_API_URL", "http://localhost:8000")
+SAVE_DIR = Path(os.getenv("POKECABLE_TEST_SAVE_DIR", "/mnt/c/Users/USER/Documents/meu/PokeCable_Room/save"))
 OUTPUT_DIR = Path(__file__).parent / "test_results"
 MAX_WORKERS = 4
 TIMEOUT = 10

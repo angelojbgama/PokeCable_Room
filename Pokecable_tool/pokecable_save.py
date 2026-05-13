@@ -13,6 +13,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import logging
+import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -23,6 +25,30 @@ class SaveError(Exception):
 
 
 logger = logging.getLogger("pokecable_save")
+
+
+def _ensure_backend_import_path() -> None:
+    backend_dir = Path(__file__).resolve().parent.parent / "PokeCable" / "backend"
+    backend_path = str(backend_dir)
+    if backend_dir.exists() and backend_path not in sys.path:
+        sys.path.insert(0, backend_path)
+
+
+def _resolve_national_dex_id(generation: int, species_id: int, pokemon: Dict[str, Any]) -> int:
+    national = int(pokemon.get("national_dex_id") or 0)
+    if national > 0:
+        return national
+    if generation == 2 and species_id > 0:
+        return species_id
+    if species_id <= 0:
+        return 0
+    try:
+        _ensure_backend_import_path()
+        from data.species import native_to_national  # type: ignore
+
+        return int(native_to_national(int(generation), int(species_id)))
+    except Exception:
+        return 0
 
 
 GEN1 = {
@@ -603,6 +629,17 @@ class SaveModel:
             raise SaveError("Pokémon não encontrado.")
         if pokemon.get("is_egg"):
             raise SaveError("Ovos ainda não são suportados para troca real.")
+        species_id = int(pokemon.get("species_id") or 0)
+        if species_id <= 0:
+            raise SaveError("Pokemon selecionado possui species_id invalido. Escolha outro slot.")
+        national_dex_id = _resolve_national_dex_id(self.generation, species_id, pokemon)
+        level = int(pokemon.get("level") or 0)
+        # Box/PC entries in older generations may not carry a resolved level locally.
+        # Keep payload valid for backend validation; enrichment can provide a more precise level.
+        if level < 1:
+            level = 1
+        elif level > 100:
+            level = 100
         if self.generation == 1:
             if parsed["kind"] == "party":
                 mon, ot, nick = self._read_gen1_party_data(parsed["index"])
@@ -659,10 +696,10 @@ class SaveModel:
             "source_generation": self.generation,
             "source_game": self.game,
             "target_generation": self.generation,
-            "species_id": pokemon.get("species_id", 0),
+            "species_id": species_id,
             "species_name": pokemon.get("species_name", "Pokemon"),
             "types": pokemon.get("types", []),
-            "level": pokemon.get("level", 0),
+            "level": level,
             "nickname": pokemon.get("nickname", pokemon.get("species_name", "")),
             "ot_name": pokemon.get("ot_name", ""),
             "trainer_id": pokemon.get("trainer_id", 0),
@@ -674,10 +711,10 @@ class SaveModel:
             "raw_data_base64": raw_b64,
             "display_summary": display,
             "summary": {
-                "species_id": pokemon.get("species_id", 0),
+                "species_id": species_id,
                 "species_name": pokemon.get("species_name", "Pokemon"),
                 "types": pokemon.get("types", []),
-                "level": pokemon.get("level", 0),
+                "level": level,
                 "nickname": pokemon.get("nickname", pokemon.get("species_name", "")),
                 "held_item_id": pokemon.get("held_item_id"),
                 "held_item_name": pokemon.get("held_item_name"),
@@ -694,10 +731,11 @@ class SaveModel:
             "canonical": {
                 "source_generation": self.generation,
                 "source_game": self.game,
+                "species_national_id": national_dex_id if national_dex_id > 0 else species_id,
                 "species_name": pokemon.get("species_name", "Pokemon"),
                 "nickname": pokemon.get("nickname", pokemon.get("species_name", "")),
                 "types": pokemon.get("types", []),
-                "level": pokemon.get("level", 0),
+                "level": level,
                 "experience": experience,
                 "ot_name": pokemon.get("ot_name", ""),
                 "trainer_id": pokemon.get("trainer_id", 0),
@@ -712,7 +750,18 @@ class SaveModel:
                     None if pokemon.get("ability_index") is None
                     else f"Index {pokemon['ability_index']}"
                 ),
-                "metadata": {"is_shiny": bool(pokemon.get("is_shiny"))},
+                "metadata": {
+                    "is_shiny": bool(pokemon.get("is_shiny")),
+                    "is_egg": bool(pokemon.get("is_egg")),
+                    "source_species_id": species_id,
+                    "source_species_id_space": "gen1_internal" if self.generation == 1 else ("national_dex" if self.generation == 2 else "gen3_internal"),
+                },
+                "species": {
+                    "national_dex_id": national_dex_id if national_dex_id > 0 else species_id,
+                    "source_species_id": species_id,
+                    "source_species_id_space": "gen1_internal" if self.generation == 1 else ("national_dex" if self.generation == 2 else "gen3_internal"),
+                    "name": pokemon.get("species_name", "Pokemon"),
+                },
             },
             "raw": {"format": raw_format, "data_base64": raw_b64},
             "compatibility_report": preflight_report(True, self.generation),
@@ -727,8 +776,65 @@ class SaveModel:
         cancel_trade_evolution: bool = False,
     ) -> Dict[str, Any]:
         parsed = parse_location(location)
-        if int(payload.get("generation", 0)) != self.generation:
-            raise SaveError("Cross-generation ainda não é suportado no R36S.")
+        payload_generation = int(payload.get("generation", 0))
+        canonical_payload = payload.get("canonical") if isinstance(payload.get("canonical"), dict) else None
+        is_cross_generation = payload_generation != self.generation
+        if is_cross_generation:
+            if not canonical_payload:
+                raise SaveError("Payload cross-generation sem dados canonical.")
+            if parsed["kind"] != "party":
+                raise SaveError("Cross-generation no R36S exige destino local na Party.")
+            try:
+                _ensure_backend_import_path()
+                from canonical import CanonicalPokemon
+                from converters import get_converter
+                from parsers import Gen1Parser, Gen2Parser, Gen3Parser
+            except Exception as exc:
+                raise SaveError(f"Conversores cross-generation indisponiveis localmente: {exc}") from exc
+            try:
+                canonical = CanonicalPokemon.from_dict(canonical_payload)
+            except Exception as exc:
+                raise SaveError(f"Canonical invalido para cross-generation: {exc}") from exc
+            if self.generation == 1:
+                national_id = int(getattr(canonical.species, "national_dex_id", 0) or 0)
+                if national_id < 1 or national_id > 151:
+                    raise SaveError(
+                        f"Pokemon National Dex #{national_id} nao existe na Gen 1 e nao pode ser transferido para esse save."
+                    )
+            parser = {1: Gen1Parser, 2: Gen2Parser, 3: Gen3Parser}.get(self.generation)
+            if parser is None:
+                raise SaveError("Geração de destino não suportada para conversão.")
+            try:
+                with tempfile.TemporaryDirectory(prefix="pokecable_xgen_") as tmpdir:
+                    tmp_path = Path(tmpdir) / f"trade{self.path.suffix or '.sav'}"
+                    tmp_path.write_bytes(bytes(self.bytes))
+                    target_parser = parser()
+                    target_parser.load(tmp_path)
+                    converter = get_converter(int(canonical.source_generation), self.generation)
+                    converter.apply_to_save(
+                        target_parser,
+                        location,
+                        canonical,
+                        policy="auto_retrocompat",
+                    )
+                    target_parser.save(tmp_path)
+                    self.bytes = bytearray(tmp_path.read_bytes())
+                evolution = self._apply_trade_evolution_decision(parsed, trade_evolution or {}, cancel_trade_evolution)
+                self.refresh()
+                result = self.pokemon_by_location(location) or {}
+                if evolution:
+                    result["trade_evolution"] = evolution
+                logger.info(
+                    "Apply payload complete (cross-generation): target=%s result=%s evolution=%s",
+                    location,
+                    result.get("display_summary"),
+                    evolution,
+                )
+                return result
+            except SaveError:
+                raise
+            except Exception as exc:
+                raise SaveError(f"Falha ao converter/aplicar Pokemon cross-generation: {exc}") from exc
         raw_format = str(payload.get("raw", {}).get("format") or payload.get("metadata", {}).get("format") or "")
         source_kind = "box" if "-box-" in raw_format else "party" if "-party-" in raw_format else ""
         if source_kind not in ("party", "box"):

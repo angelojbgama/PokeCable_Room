@@ -497,19 +497,6 @@ class RoomManager:
         room.derived_modes = {"A": mode_for_a, "B": mode_for_b}
         required_cross_modes = {mode for mode in room.derived_modes.values() if mode != SAME_GENERATION}
         if required_cross_modes:
-            if not self.enabled_trade_modes:
-                raise RoomError("game_mismatch", "O servidor nao habilitou troca entre geracoes.")
-            for slot, mode in room.derived_modes.items():
-                if mode == SAME_GENERATION:
-                    continue
-                if mode not in self.enabled_trade_modes:
-                    peer_slot = room.peer_slot(slot)
-                    source_generation = room.players[peer_slot].generation
-                    target_generation = room.players[slot].generation
-                    raise RoomError(
-                        "game_mismatch",
-                        f"O modo necessario Gen {source_generation} -> Gen {target_generation} nao esta habilitado no servidor.",
-                    )
             for player in room.players.values():
                 if CANONICAL_CROSS_GENERATION not in player.supported_protocols:
                     raise RoomError(
