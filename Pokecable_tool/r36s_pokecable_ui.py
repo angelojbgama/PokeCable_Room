@@ -7,12 +7,12 @@ Interface para trading de Pokemon via WebSocket.
 import os
 import sys
 import time
+import math
 import logging
 import queue
 import threading
 import urllib.request
 from pathlib import Path
-from datetime import datetime
 from urllib.parse import urlparse
 
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
@@ -22,23 +22,22 @@ DEBUG = os.getenv("POKECABLE_DEBUG", "0").lower() in ("1", "true", "yes")
 try:
     import pygame
 except ImportError:
-    print("python3-pygame required: sudo apt install python3-pygame", file=sys.stderr)
+    print("pygame required: run ./pokecable.sh", file=sys.stderr)
     sys.exit(1)
 
 from pokecable_logging import configure_logging
+from pokecable_save import SaveError
 from r36s_pokecable_core import PokecableState, start_trade_thread
 
 
 LOG_PATHS = configure_logging()
-SESSION_DIR = Path(str(LOG_PATHS["session_dir"]))
-LOG_FILE = SESSION_DIR / "ui.log"
+ERROR_LOG = Path(str(LOG_PATHS["error_log"]))
 
 logger = logging.getLogger("r36s_pokecable_ui")
 
 logger.info("=" * 80)
 logger.info("PokeCable Room - R36S UI")
-logger.info(f"Log: {LOG_FILE}")
-logger.info(f"Session dir: {SESSION_DIR}")
+logger.info("Error log: %s", ERROR_LOG)
 logger.info("=" * 80)
 
 SCREEN_W, SCREEN_H = 640, 480
@@ -51,6 +50,8 @@ ACTION_DEBOUNCE = 0.14
 QUIT_COMBO_WINDOW = 0.35
 JOY_BUTTON_START = 13
 JOY_BUTTON_SELECT = 12
+ROW_H = 45
+ROW_VISIBLE = 8
 
 # GO-Super Gamepad mapping from /opt/inttools/gamecontrollerdb.txt
 JOY_MAP = {
@@ -76,6 +77,126 @@ WARN = (255, 190, 88)
 
 SPRITE_CACHE_DIR = Path.home() / ".pokecable" / "sprites"
 SPRITE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+SCROLL_STATE = {}
+TYPE_LABELS = {
+    "normal": "Normal",
+    "fire": "Fogo",
+    "water": "Agua",
+    "electric": "Eletrico",
+    "grass": "Grama",
+    "ice": "Gelo",
+    "fighting": "Lutador",
+    "poison": "Veneno",
+    "ground": "Terra",
+    "flying": "Voador",
+    "psychic": "Psiquico",
+    "bug": "Inseto",
+    "rock": "Pedra",
+    "ghost": "Fantasma",
+    "dragon": "Dragao",
+    "dark": "Sombrio",
+    "steel": "Aco",
+    "fairy": "Fada",
+}
+TYPE_COLORS = {
+    "normal": (168, 167, 122),
+    "fire": (238, 129, 48),
+    "water": (99, 144, 240),
+    "electric": (247, 208, 44),
+    "grass": (122, 199, 76),
+    "ice": (150, 217, 214),
+    "fighting": (194, 46, 40),
+    "poison": (163, 62, 161),
+    "ground": (226, 191, 101),
+    "flying": (169, 143, 243),
+    "psychic": (249, 85, 135),
+    "bug": (166, 185, 26),
+    "rock": (182, 161, 54),
+    "ghost": (115, 87, 151),
+    "dragon": (111, 53, 252),
+    "dark": (112, 87, 70),
+    "steel": (183, 183, 206),
+    "fairy": (214, 133, 173),
+}
+
+def held_item_label(pokemon):
+    raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
+    item_id = (pokemon or {}).get("held_item_id") or raw.get("held_item_id")
+    item_name = (pokemon or {}).get("held_item_name") or raw.get("held_item_name")
+    if not item_id:
+        return "Item: nenhum"
+    return f"Item: {item_name or f'#{item_id}'}"
+
+
+def held_item_info(pokemon):
+    raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
+    item_id = (pokemon or {}).get("held_item_id") or raw.get("held_item_id")
+    if not item_id:
+        return None
+    item_id = int(item_id)
+    return {
+        "id": item_id,
+        "name": (pokemon or {}).get("held_item_name") or raw.get("held_item_name") or f"#{item_id}",
+        "category": (pokemon or {}).get("held_item_category") or raw.get("held_item_category") or "item",
+    }
+
+
+def move_labels(pokemon):
+    raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
+    names = (pokemon or {}).get("move_names") or raw.get("move_names") or []
+    if names:
+        return [str(name) for name in names[:4] if name]
+    moves = (pokemon or {}).get("moves") or raw.get("moves") or []
+    labels = []
+    for move_id in moves[:4]:
+        if not move_id:
+            continue
+        move_id = int(move_id)
+        labels.append(f"Move #{move_id}")
+    return labels
+
+
+def pokemon_types(pokemon):
+    raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
+    types = (pokemon or {}).get("types") or raw.get("types") or []
+    return [str(type_name).lower() for type_name in types if type_name]
+
+
+def draw_type_badges(surface, font_obj, type_names, x, y, max_width):
+    cursor_x = x
+    for type_name in type_names[:2]:
+        label = TYPE_LABELS.get(type_name, type_name.title())
+        badge_w = min(62, max(42, font_obj.size(label)[0] + 14))
+        if cursor_x + badge_w > x + max_width:
+            break
+        badge = pygame.Rect(cursor_x, y, badge_w, 18)
+        rect(surface, TYPE_COLORS.get(type_name, MUTED), badge, 4)
+        text(surface, font_obj, label, badge.x + 7, badge.y + 4, (8, 12, 16), badge.w - 12)
+        cursor_x += badge_w + 6
+
+
+def draw_item_icon(surface, area, item_info, selected=False):
+    category_colors = {
+        "ball": (239, 68, 68),
+        "berry": (34, 197, 94),
+        "key_item": (245, 158, 11),
+        "tm": (59, 130, 246),
+        "hm": (37, 99, 235),
+        "tmhm": (59, 130, 246),
+        "badge": (139, 92, 246),
+        "hold_item": (251, 191, 36),
+        "system": (148, 163, 184),
+        "unused": (100, 116, 139),
+        "item": (251, 191, 36),
+    }
+    rect(surface, BG if selected else PANEL, area, 4)
+    if not item_info:
+        pygame.draw.line(surface, MUTED, (area.x + 7, area.centery), (area.right - 7, area.centery), 2)
+        return
+    color = category_colors.get(str(item_info.get("category") or "item"), category_colors["item"])
+    pygame.draw.circle(surface, color, area.center, min(area.w, area.h) // 3)
+    pygame.draw.circle(surface, TEXT, (area.centerx - 3, area.centery - 3), 2)
 
 
 def font(size, bold=False):
@@ -107,6 +228,33 @@ def button(surface, fnt, label, desc, x, y):
     text(surface, fnt, desc, x + 31, y + 4, MUTED)
 
 
+def list_scroll_offset(key, selected, total, visible=ROW_VISIBLE):
+    if total <= visible:
+        SCROLL_STATE[key] = 0.0
+        return 0.0
+    max_start = max(0, total - visible)
+    target = min(max(0, int(selected) - visible // 2), max_start)
+    current = min(max(0.0, float(SCROLL_STATE.get(key, target))), float(max_start))
+    if abs(target - current) > visible:
+        current = float(target)
+    current += (target - current) * 0.35
+    if abs(target - current) < 0.03:
+        current = float(target)
+    SCROLL_STATE[key] = current
+    return current
+
+
+def draw_scrollbar(surface, panel, offset, total, visible=ROW_VISIBLE):
+    if total <= visible:
+        return
+    track = pygame.Rect(panel.right - 10, panel.y + 12, 4, panel.h - 24)
+    rect(surface, PANEL_2, track, 3)
+    thumb_h = max(24, int(track.h * visible / total))
+    max_offset = max(1, total - visible)
+    thumb_y = track.y + int((track.h - thumb_h) * min(max(offset, 0), max_offset) / max_offset)
+    rect(surface, ACCENT, pygame.Rect(track.x, thumb_y, track.w, thumb_h), 3)
+
+
 def pokemon_sprite_slug(name):
     value = str(name or "").strip().lower()
     replacements = {
@@ -130,11 +278,8 @@ class SpriteLoader:
     def __init__(self, server_url: str):
         self.lock = threading.Lock()
         self.http_base_url = self._http_base_url(server_url)
-        self.request_key = ""
-        self.request_id = 0
-        self.surface = None
-        self.loading = False
-        self.error = ""
+        self.current_key = ""
+        self.entries = {}
 
     @staticmethod
     def _http_base_url(server_url: str) -> str:
@@ -150,70 +295,97 @@ class SpriteLoader:
             return candidate.rstrip("/")
         return ""
 
+    def _identity(self, pokemon):
+        species_name = pokemon.get("species_name") if pokemon else ""
+        species_id = int((pokemon or {}).get("species_id") or 0)
+        if not pokemon or (not species_name and not species_id) or species_name.lower() == "egg":
+            return "", {}
+
+        generation = int((pokemon or {}).get("generation") or 0)
+        raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
+        national_dex_id = int((pokemon or {}).get("national_dex_id") or raw.get("national_dex_id") or 0)
+        slug = pokemon_sprite_slug(species_name)
+        if not slug and not national_dex_id:
+            return "", {}
+        key = f"national-{national_dex_id or slug}-front"
+        lookup = {
+            "generation": generation,
+            "species_slug": slug,
+            "species_id": species_id,
+            "national_dex_id": national_dex_id,
+        }
+        return key, lookup
+
     def request(self, pokemon):
+        self.request_for(pokemon)
+
+    def request_for(self, pokemon):
         species_name = pokemon.get("species_name") if pokemon else ""
         species_id = int((pokemon or {}).get("species_id") or 0)
         logger.debug("Sprite request: species_id=%s species_name=%s", species_id, species_name)
-        if not pokemon or (not species_name and not species_id) or species_name.lower() == "egg":
-            with self.lock:
-                self.request_key = ""
-                self.request_id += 1
-                self.surface = None
-                self.loading = False
-                self.error = ""
-            return
-
-        generation = int((pokemon or {}).get("generation") or 0)
-        slug = pokemon_sprite_slug(species_name)
-        if not slug:
-            with self.lock:
-                self.request_key = ""
-                self.request_id += 1
-                self.surface = None
-                self.loading = False
-                self.error = ""
-            return
-        key = f"gen{generation}-{slug}-front"
-        lookup = {"generation": generation, "species_slug": slug}
+        key, lookup = self._identity(pokemon)
         with self.lock:
-            if self.request_key == key and (self.loading or self.surface is not None):
+            self.current_key = key
+            if not key:
                 return
-            self.request_key = key
-            self.request_id += 1
-            request_id = self.request_id
-            self.surface = None
-            self.loading = True
-            self.error = ""
-        threading.Thread(target=self._load, args=(request_id, key, lookup), daemon=True).start()
+            entry = self.entries.get(key)
+            if entry and (entry.get("loading") or entry.get("surface") is not None):
+                return
+            self.entries[key] = {"surface": None, "loading": True, "error": ""}
+        threading.Thread(target=self._load, args=(key, lookup), daemon=True).start()
 
-    def _load(self, request_id, key, lookup):
+    def _sprite_urls(self, lookup):
+        generation = int(lookup.get("generation") or 0)
+        species_slug = str(lookup.get("species_slug") or "")
+        national_dex_id = int(lookup.get("national_dex_id") or 0)
+        urls = []
+        if national_dex_id:
+            urls.append(f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{national_dex_id}.png")
+        if self.http_base_url and generation and species_slug:
+            urls.append(f"{self.http_base_url}/sprites/{generation}/{species_slug}/front.png")
+        if species_slug:
+            urls.append(f"https://img.pokemondb.net/sprites/home/normal/{species_slug}.png")
+        return urls
+
+    def _load(self, key, lookup):
         try:
-            if not self.http_base_url:
-                raise RuntimeError("invalid backend URL")
             cache_file = SPRITE_CACHE_DIR / f"{key}.png"
             if not cache_file.exists():
                 logger.debug("Sprite cache miss: key=%s", key)
-                generation = int(lookup.get("generation") or 0)
-                species_slug = str(lookup.get("species_slug") or "")
-                sprite_url = f"{self.http_base_url}/sprites/{generation}/{species_slug}/front.png"
-                with urllib.request.urlopen(sprite_url, timeout=6) as response:
-                    cache_file.write_bytes(response.read())
-                logger.info("Sprite downloaded: key=%s", key)
+                errors = []
+                for sprite_url in self._sprite_urls(lookup):
+                    try:
+                        request = urllib.request.Request(sprite_url, headers={"User-Agent": "PokeCable/1.0"})
+                        with urllib.request.urlopen(request, timeout=8) as response:
+                            cache_file.write_bytes(response.read())
+                        logger.info("Sprite downloaded: key=%s url=%s", key, sprite_url)
+                        break
+                    except Exception as exc:
+                        errors.append(f"{sprite_url}: {exc}")
+                        logger.debug("Sprite source failed: key=%s url=%s error=%s", key, sprite_url, exc)
+                if not cache_file.exists():
+                    raise RuntimeError("; ".join(errors) or "no sprite URL available")
             surface = pygame.image.load(str(cache_file)).convert_alpha()
             error = ""
         except Exception as exc:
             surface = None
             error = str(exc)
             logger.warning("Sprite load failed: key=%s error=%s", key, exc)
+
         with self.lock:
-            if request_id == self.request_id:
-                self.surface = surface
-                self.loading = False
-                self.error = error
+            self.entries[key] = {"surface": surface, "loading": False, "error": error}
 
     def snapshot(self):
+        return self.snapshot_key(self.current_key)
+
+    def snapshot_for(self, pokemon):
+        key, _ = self._identity(pokemon)
+        return self.snapshot_key(key)
+
+    def snapshot_key(self, key):
         with self.lock:
-            return self.surface, self.loading, self.error
+            entry = self.entries.get(key or "", {})
+            return entry.get("surface"), bool(entry.get("loading")), str(entry.get("error") or "")
 
 
 def translate_joy_button(button_id):
@@ -416,24 +588,34 @@ def draw_select_save(screen, fonts, selected, saves):
     list_panel = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
     rect(screen, PANEL, list_panel, 6)
 
-    for idx, save_path in enumerate(saves[:8]):
-        y = HEADER_H + 30 + idx * 45
+    scroll = list_scroll_offset("saves", selected, len(saves))
+    first = max(0, int(scroll) - 1)
+    last = min(len(saves), int(scroll) + ROW_VISIBLE + 2)
+    previous_clip = screen.get_clip()
+    screen.set_clip(list_panel.inflate(-8, -8))
+    for idx in range(first, last):
+        save_path = saves[idx]
+        y = HEADER_H + 30 + int((idx - scroll) * ROW_H)
         row = pygame.Rect(18, y, SCREEN_W - 36, 40)
         color = (5, 11, 18) if idx == selected else TEXT
         if idx == selected:
             rect(screen, ACCENT, row, 4)
         text(screen, small_f, save_path.name[:50], row.x + 9, row.y + 9, color, row.w - 18)
+    screen.set_clip(previous_clip)
+    draw_scrollbar(screen, list_panel, scroll, len(saves))
 
     rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
     button(screen, tiny_f, "A", "OK", 12, SCREEN_H - 48)
     button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
 
 
-def draw_select_pokemon_source(screen, fonts, selected):
+def draw_select_pokemon_source(screen, fonts, selected, status=""):
     title_f, _, small_f, tiny_f = fonts
     screen.fill(BG)
     rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
     text(screen, title_f, "Escolher Origem", 14, 10)
+    helper = status or "Escolha de onde sair o Pokemon para a troca."
+    text(screen, tiny_f, helper, max(230, SCREEN_W - tiny_f.size(helper)[0] - 14), 14, MUTED, SCREEN_W - 244)
 
     items = ["Party", "PC"]
     list_panel = pygame.Rect(10, HEADER_H + 10, LIST_W - 18, SCREEN_H - HEADER_H - FOOTER_H - 20)
@@ -448,17 +630,19 @@ def draw_select_pokemon_source(screen, fonts, selected):
             rect(screen, ACCENT, row, 4)
         text(screen, small_f, item, row.x + 9, row.y + 9, color, row.w - 18)
 
-    text(screen, tiny_f, "Escolha de onde sair o Pokemon para a troca.", 22, SCREEN_H - FOOTER_H - 24, MUTED)
     rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
     button(screen, tiny_f, "A", "OK", 12, SCREEN_H - 48)
     button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
 
 
-def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, sprite_loader):
+def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, sprite_loader, status=""):
     title_f, body_f, small_f, tiny_f = fonts
     screen.fill(BG)
     rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Escolher Pokemon", 14, 10)
+    title = "Escolher Pokemon"
+    waiting = status or "Aguardando segundo jogador"
+    text(screen, title_f, title, 14, 10)
+    text(screen, small_f, waiting, max(250, SCREEN_W - small_f.size(waiting)[0] - 14), 14, MUTED, 376)
 
     if not pokemon_list:
         text(screen, body_f, "No Pokemon found!", 50, HEADER_H + 100, RED)
@@ -469,13 +653,36 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
     list_panel = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
     rect(screen, PANEL, list_panel, 6)
 
-    for idx, pokemon in enumerate(pokemon_list[:8]):
-        y = HEADER_H + 30 + idx * 45
+    scroll = list_scroll_offset("pokemon", selected, len(pokemon_list))
+    first = max(0, int(scroll) - 1)
+    last = min(len(pokemon_list), int(scroll) + ROW_VISIBLE + 2)
+    previous_clip = screen.get_clip()
+    screen.set_clip(pygame.Rect(list_panel.x + 4, list_panel.y + 4, 304, list_panel.h - 8))
+    for idx in range(first, last):
+        pokemon = pokemon_list[idx]
+        y = HEADER_H + 30 + int((idx - scroll) * ROW_H)
         row = pygame.Rect(18, y, 292, 40)
         color = (5, 11, 18) if idx == selected else TEXT
         if idx == selected:
             rect(screen, ACCENT, row, 4)
-        text(screen, small_f, pokemon.get("display", f"Pokemon {idx+1}")[:48], row.x + 9, row.y + 9, color, row.w - 18)
+        sprite_loader.request_for(pokemon)
+        sprite, loading, _ = sprite_loader.snapshot_for(pokemon)
+        sprite_slot = pygame.Rect(row.x + 5, row.y + 4, 32, 32)
+        rect(screen, BG if idx == selected else PANEL_2, sprite_slot, 4)
+        if sprite:
+            scaled = pygame.transform.smoothscale(sprite, (30, 30))
+            screen.blit(scaled, (sprite_slot.x + 1, sprite_slot.y + 1))
+        elif loading:
+            text(screen, tiny_f, "...", sprite_slot.x + 8, sprite_slot.y + 8, MUTED)
+        item_info = held_item_info(pokemon)
+        item_slot = pygame.Rect(row.right - 29, row.y + 8, 22, 22)
+        draw_item_icon(screen, item_slot, item_info, idx == selected)
+        text(screen, small_f, pokemon.get("display", f"Pokemon {idx+1}")[:42], row.x + 44, row.y + 4, color, row.w - 52)
+        item_name = item_info["name"] if item_info else "nenhum"
+        text(screen, tiny_f, f"Item: {item_name}", row.x + 44, row.y + 23, color if idx == selected else MUTED, 118)
+        draw_type_badges(screen, tiny_f, pokemon_types(pokemon), row.right - 124, row.y + 22, 88)
+    screen.set_clip(previous_clip)
+    draw_scrollbar(screen, pygame.Rect(10, list_panel.y, 308, list_panel.h), scroll, len(pokemon_list))
 
     selected_pokemon = pokemon_list[selected] if 0 <= selected < len(pokemon_list) else None
     sprite_loader.request(selected_pokemon)
@@ -497,17 +704,31 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
 
         text(screen, body_f, selected_pokemon.get("name", "Pokemon"), detail_panel.x + 164, detail_panel.y + 54, TEXT, 110)
         text(screen, small_f, f"Nivel: {selected_pokemon.get('level', 0)}", detail_panel.x + 164, detail_panel.y + 86, ACCENT)
+        draw_type_badges(screen, tiny_f, pokemon_types(selected_pokemon), detail_panel.x + 164, detail_panel.y + 108, 112)
+        item_info = held_item_info(selected_pokemon)
+        item_icon = pygame.Rect(detail_panel.x + 164, detail_panel.y + 132, 20, 20)
+        draw_item_icon(screen, item_icon, item_info)
+        text(screen, tiny_f, item_info["name"] if item_info else "Sem item", detail_panel.x + 190, detail_panel.y + 134, MUTED, 86)
         location = selected_pokemon.get("location", "")
         if location.startswith("box:"):
             parts = location.split(":")
             box_name = selected_pokemon.get("raw", {}).get("box_name") or f"Box {int(parts[1]) + 1}"
-            text(screen, tiny_f, box_name, detail_panel.x + 164, detail_panel.y + 112, MUTED, 110)
+            text(screen, tiny_f, box_name, detail_panel.x + 164, detail_panel.y + 158, MUTED, 110)
         else:
-            text(screen, tiny_f, "Party", detail_panel.x + 164, detail_panel.y + 112, MUTED, 110)
+            text(screen, tiny_f, "Party", detail_panel.x + 164, detail_panel.y + 158, MUTED, 110)
 
-        detail_y = detail_panel.y + 194
-        text(screen, small_f, "Resumo", detail_panel.x + 14, detail_y, TEXT)
-        text(screen, tiny_f, selected_pokemon.get("display", ""), detail_panel.x + 14, detail_y + 26, MUTED, detail_panel.w - 28)
+        detail_y = detail_panel.y + 190
+        text(screen, small_f, "Ataques", detail_panel.x + 14, detail_y, TEXT)
+        moves = move_labels(selected_pokemon)
+        if moves:
+            for move_idx, move_name in enumerate(moves[:4]):
+                move_x = detail_panel.x + 14 + (move_idx % 2) * 136
+                move_y = detail_y + 28 + (move_idx // 2) * 28
+                move_rect = pygame.Rect(move_x, move_y, 126, 22)
+                rect(screen, BG, move_rect, 4)
+                text(screen, tiny_f, move_name, move_rect.x + 6, move_rect.y + 5, TEXT, move_rect.w - 12)
+        else:
+            text(screen, tiny_f, "Sem ataques", detail_panel.x + 14, detail_y + 28, MUTED)
         if error and DEBUG:
             text(screen, tiny_f, error[:40], detail_panel.x + 14, detail_panel.bottom - 30, WARN, detail_panel.w - 28)
 
@@ -533,10 +754,10 @@ def draw_waiting_partner(screen, fonts, status):
     title_f, body_f, _, tiny_f = fonts
     screen.fill(BG)
     rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Aguardando", 14, 10)
+    text(screen, title_f, "Aguardando segundo jogador", 14, 10)
     content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
     rect(screen, PANEL, content, 6)
-    text(screen, body_f, status or "Aguardando outro jogador...", 40, HEADER_H + 150, MUTED, SCREEN_W - 80)
+    text(screen, body_f, status or "Aguardando segundo jogador...", 40, HEADER_H + 150, MUTED, SCREEN_W - 80)
     rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
     text(screen, tiny_f, "Aguarde...", 250, SCREEN_H - 45, MUTED)
 
@@ -562,6 +783,98 @@ def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon):
     button(screen, tiny_f, "B", "CANCELAR", 112, SCREEN_H - 48)
 
 
+def evolution_sprite_entry(evolution, side):
+    return {
+        "generation": int(evolution.get("generation") or 0),
+        "species_id": int(evolution.get(f"{side}_species_id") or 0),
+        "species_name": evolution.get(f"{side}_name") or "Pokemon",
+    }
+
+
+def draw_scaled_sprite(surface, sprite, center, size, alpha=255):
+    if not sprite:
+        return
+    scaled = pygame.transform.smoothscale(sprite, (size, size)).convert_alpha()
+    scaled.set_alpha(max(0, min(255, int(alpha))))
+    surface.blit(scaled, (center[0] - size // 2, center[1] - size // 2))
+
+
+def draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, final_form="loop"):
+    _, _, small_f, tiny_f = fonts
+    source = evolution_sprite_entry(evolution, "source")
+    target = evolution_sprite_entry(evolution, "target")
+    sprite_loader.request_for(source)
+    sprite_loader.request_for(target)
+    source_sprite, source_loading, _ = sprite_loader.snapshot_for(source)
+    target_sprite, target_loading, _ = sprite_loader.snapshot_for(target)
+
+    stage = pygame.Rect(190, HEADER_H + 44, 260, 142)
+    rect(screen, BG, stage, 8)
+    progress = (math.sin(frame * 0.16) + 1.0) / 2.0
+    if final_form == "source":
+        progress = 0.0
+    elif final_form == "target":
+        progress = 1.0
+
+    glow = int(65 + 70 * progress)
+    pygame.draw.circle(screen, (glow, 176, 255), stage.center, 62, 3)
+    pygame.draw.circle(screen, (255, 255, 255), stage.center, 34 + int(14 * progress), 1)
+
+    if source_sprite or target_sprite:
+        draw_scaled_sprite(screen, source_sprite, stage.center, 104, 255 * (1.0 - progress))
+        draw_scaled_sprite(screen, target_sprite, stage.center, 104, 255 * progress)
+        if final_form == "loop" and 0.42 < progress < 0.58:
+            flash = pygame.Surface((stage.w, stage.h), pygame.SRCALPHA)
+            flash.fill((255, 255, 255, 60))
+            screen.blit(flash, stage.topleft)
+    else:
+        label = "Carregando sprites..." if source_loading or target_loading else "Sem sprite"
+        text(screen, small_f, label, stage.x + 58, stage.y + 58, MUTED)
+
+    text(screen, tiny_f, source["species_name"], stage.x + 8, stage.bottom - 24, MUTED, 100)
+    text(screen, tiny_f, target["species_name"], stage.right - 108, stage.bottom - 24, ACCENT, 100)
+
+
+def draw_evolution_cancel_prompt(screen, fonts, evolution, sprite_loader, frame):
+    title_f, body_f, small_f, tiny_f = fonts
+    screen.fill(BG)
+    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
+    text(screen, title_f, "Evolucao por Troca", 14, 10)
+
+    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    rect(screen, PANEL, content, 6)
+    source = evolution.get("source_name", "Pokemon")
+    target = evolution.get("target_name", "evolucao")
+    draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame)
+    text(screen, body_f, f"{source} quer evoluir para {target}.", 30, HEADER_H + 210, TEXT, SCREEN_W - 60)
+    text(screen, small_f, "Deseja cancelar essa evolucao?", 30, HEADER_H + 246, WARN, SCREEN_W - 60)
+    text(screen, tiny_f, "B deixa a animacao terminar na forma evoluida.", 30, HEADER_H + 282, MUTED, SCREEN_W - 60)
+
+    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
+    button(screen, tiny_f, "A", "CANCELAR EVO", 12, SCREEN_H - 48)
+    button(screen, tiny_f, "B", "DEIXAR EVOLUIR", 172, SCREEN_H - 48)
+
+
+def draw_evolution_cancel_confirm(screen, fonts, evolution, sprite_loader, frame):
+    title_f, body_f, small_f, tiny_f = fonts
+    screen.fill(BG)
+    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
+    text(screen, title_f, "Confirmar Cancelamento", 14, 10)
+
+    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    rect(screen, PANEL, content, 6)
+    source = evolution.get("source_name", "Pokemon")
+    target = evolution.get("target_name", "evolucao")
+    draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, final_form="source")
+    text(screen, body_f, "Tem certeza?", 30, HEADER_H + 210, WARN, SCREEN_W - 60)
+    text(screen, small_f, f"Isso ira interromper a evolucao de {source} para {target}.", 30, HEADER_H + 246, TEXT, SCREEN_W - 60)
+    text(screen, tiny_f, "A troca continua, mas o Pokemon recebido fica sem evoluir.", 30, HEADER_H + 282, MUTED, SCREEN_W - 60)
+
+    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
+    button(screen, tiny_f, "A", "SIM, INTERROMPER", 12, SCREEN_H - 48)
+    button(screen, tiny_f, "B", "NAO", 218, SCREEN_H - 48)
+
+
 def draw_trading(screen, fonts, status):
     title_f, body_f, _, tiny_f = fonts
     screen.fill(BG)
@@ -585,7 +898,15 @@ def draw_trade_result(screen, fonts, success, data):
     if success:
         text(screen, body_f, "Trade Completo!", 50, HEADER_H + 100, OK)
         peer = data.get("peer", {}) if isinstance(data, dict) else {}
-        pokemon_display = peer.get("display_summary") or peer.get("nickname") or peer.get("species_name") or "Pokemon"
+        received = data.get("received", {}) if isinstance(data, dict) else {}
+        evolution = received.get("trade_evolution", {}) if isinstance(received, dict) else {}
+        pokemon_display = (
+            f"{evolution.get('source_name')} -> {evolution.get('target_name')}"
+            if evolution.get("evolved")
+            else f"{evolution.get('source_name')} sem evoluir"
+            if evolution.get("cancelled")
+            else received.get("display_summary") or peer.get("display_summary") or peer.get("nickname") or peer.get("species_name") or "Pokemon"
+        )
         backup_name = Path(data.get("backup", "")).name if isinstance(data, dict) and data.get("backup") else "nenhum"
         text(screen, small_f, f"Recebido: {pokemon_display}", 50, HEADER_H + 170, TEXT)
         text(screen, tiny_f, f"Backup: {backup_name}", 50, HEADER_H + 210, MUTED)
@@ -693,6 +1014,10 @@ def main():
                     result_data = payload if isinstance(payload, dict) else {}
                     logger.info("QUEUE confirm_prompt: %s", result_data)
                     switch_screen("trade_confirm", "confirm_prompt")
+                elif msg_type == "evolution_cancel_prompt":
+                    result_data = payload if isinstance(payload, dict) else {}
+                    logger.info("QUEUE evolution_cancel_prompt: %s", result_data)
+                    switch_screen("evolution_cancel_prompt", "evolution_cancel_prompt")
                 elif msg_type == "result":
                     result_data = payload if isinstance(payload, dict) else {"success": True}
                     logger.info("QUEUE result: %s", result_data)
@@ -758,7 +1083,14 @@ def main():
                 menu_index = (menu_index + 1) % 2
             elif action == "select":
                 state.pokemon_source = "party" if menu_index == 0 else "boxes"
-                state.get_pokemon_list(state.pokemon_source)
+                try:
+                    state.get_pokemon_list(state.pokemon_source)
+                except SaveError as exc:
+                    logger.error("Pokemon enrichment failed: %s", exc)
+                    trade_status = str(exc)
+                    result_data = {"success": False, "error": str(exc)}
+                    switch_screen("trade_result", "api_enrichment_failed")
+                    continue
                 logger.info("Pokemon source selected: %s count=%s", state.pokemon_source, len(state.pokemon_list))
                 switch_screen("select_pokemon", "pokemon_source_selected")
                 menu_index = 0
@@ -864,6 +1196,25 @@ def main():
                 result_data = {}
                 reset_flow_state(state)
 
+        elif current_screen == "evolution_cancel_prompt" and action:
+            if action == "select":
+                logger.info("Evolution cancellation requested")
+                switch_screen("evolution_cancel_confirm", "evolution_cancel_requested")
+            elif action == "back":
+                logger.info("Evolution cancellation skipped")
+                confirm_queue.put(False)
+                switch_screen("trading", "evolution_cancel_no")
+
+        elif current_screen == "evolution_cancel_confirm" and action:
+            if action == "select":
+                logger.info("Evolution cancellation confirmed")
+                confirm_queue.put(True)
+                switch_screen("trading", "evolution_cancel_yes")
+            elif action == "back":
+                logger.info("Evolution cancellation rejected")
+                confirm_queue.put(False)
+                switch_screen("trading", "evolution_cancel_rejected")
+
         elif current_screen == "trade_result" and action in ("select", "back"):
             logger.info("Trade result acknowledged: %s", result_data)
             switch_screen("menu", "trade_result_ack")
@@ -877,10 +1228,10 @@ def main():
         elif current_screen == "load_save":
             draw_select_save(screen, fonts, menu_index, state.saves)
         elif current_screen == "select_pokemon_source":
-            draw_select_pokemon_source(screen, fonts, menu_index)
+            draw_select_pokemon_source(screen, fonts, menu_index, trade_status)
         elif current_screen == "select_pokemon":
             source_label = "Sua Party" if state.pokemon_source == "party" else "Seu PC"
-            draw_select_pokemon(screen, fonts, menu_index, state.pokemon_list, source_label, sprite_loader)
+            draw_select_pokemon(screen, fonts, menu_index, state.pokemon_list, source_label, sprite_loader, trade_status)
         elif current_screen == "enter_room_name":
             draw_keyboard(screen, fonts, "Nome da Sala", room_name, keyboard_index, False, keyboard_shift)
         elif current_screen == "enter_password":
@@ -891,6 +1242,10 @@ def main():
             draw_waiting_partner(screen, fonts, trade_status)
         elif current_screen == "trade_confirm":
             draw_trade_confirm(screen, fonts, state.selected_pokemon or {}, result_data if isinstance(result_data, dict) else {})
+        elif current_screen == "evolution_cancel_prompt":
+            draw_evolution_cancel_prompt(screen, fonts, result_data if isinstance(result_data, dict) else {}, sprite_loader, frame)
+        elif current_screen == "evolution_cancel_confirm":
+            draw_evolution_cancel_confirm(screen, fonts, result_data if isinstance(result_data, dict) else {}, sprite_loader, frame)
         elif current_screen == "trading":
             draw_trading(screen, fonts, trade_status)
         elif current_screen == "trade_result":
@@ -898,7 +1253,16 @@ def main():
             data = result_data if success else result_data.get("error", trade_status) if isinstance(result_data, dict) else trade_status
             draw_trade_result(screen, fonts, success, data)
 
-        if trade_status and current_screen in ("load_save", "select_pokemon_source", "select_pokemon"):
+        lowered_status = trade_status.lower()
+        show_footer_status = (
+            trade_status
+            and not lowered_status.startswith("aguardando")
+            and not lowered_status.startswith("sala pronta")
+            and "escolha pokemon" not in lowered_status
+            and "escolha o pokemon" not in lowered_status
+            and "escolha o seu" not in lowered_status
+        )
+        if show_footer_status and current_screen in ("load_save", "select_pokemon_source", "select_pokemon"):
             text(screen, fonts[3], trade_status, 20, SCREEN_H - 78, WARN, SCREEN_W - 40)
 
         pygame.display.flip()
@@ -917,5 +1281,5 @@ if __name__ == "__main__":
         logger.info("Interrupted by user")
     except Exception as exc:
         logger.exception(f"Fatal error: {exc}")
-        print("\nErro fatal. Veja os logs da sessão em logs/latest.", file=sys.stderr)
+        print(f"\nErro fatal. Veja {ERROR_LOG}.", file=sys.stderr)
         sys.exit(1)

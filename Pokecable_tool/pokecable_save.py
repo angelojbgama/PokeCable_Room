@@ -147,7 +147,6 @@ GEN3_NATURES = [
     "Calm", "Gentle", "Sassy", "Careful", "Quirky",
 ]
 
-
 def clean_name(value: Any) -> str:
     return str(value or "").replace("\x00", "").strip()
 
@@ -225,6 +224,52 @@ def decode_gen3_text(blob: bytes | bytearray) -> str:
     return "".join(chars).strip()
 
 
+def encode_gbc_text(value: str, size: int) -> bytes:
+    encoded = bytearray([0x50] * size)
+    for index, char in enumerate(str(value or "")[: max(0, size - 1)]):
+        if "A" <= char <= "Z":
+            encoded[index] = 0x80 + ord(char) - ord("A")
+        elif "a" <= char <= "z":
+            encoded[index] = 0xA0 + ord(char) - ord("a")
+        elif "0" <= char <= "9":
+            encoded[index] = 0xF6 + ord(char) - ord("0")
+        elif char == " ":
+            encoded[index] = 0x7F
+        elif char == "-":
+            encoded[index] = 0xE3
+        else:
+            encoded[index] = 0x7F
+    return bytes(encoded)
+
+
+def encode_gen3_text(value: str, size: int) -> bytes:
+    encoded = bytearray([0xFF] * size)
+    for index, char in enumerate(str(value or "")[: max(0, size - 1)]):
+        if "A" <= char <= "Z":
+            encoded[index] = 0xBB + ord(char) - ord("A")
+        elif "a" <= char <= "z":
+            encoded[index] = 0xD5 + ord(char) - ord("a")
+        elif "0" <= char <= "9":
+            encoded[index] = 0xA1 + ord(char) - ord("0")
+        elif char == " ":
+            encoded[index] = 0x00
+        elif char == ".":
+            encoded[index] = 0xAD
+        elif char == "-":
+            encoded[index] = 0xAE
+        elif char == ",":
+            encoded[index] = 0xB8
+        else:
+            encoded[index] = 0x00
+    return bytes(encoded)
+
+
+def nickname_matches_species(nickname: str, species_name: str) -> bool:
+    left = clean_name(nickname).lower().replace(" ", "")
+    right = clean_name(species_name).lower().replace(" ", "")
+    return bool(left and right and left == right)
+
+
 def sum_range(data: bytes | bytearray, start: int, end: int) -> int:
     total = 0
     for index in range(start, end + 1):
@@ -293,6 +338,22 @@ def decrypt_gen3_secure(raw: bytes | bytearray) -> bytearray:
     for offset in range(0, GEN3["secure_size"], 4):
         write_u32(secure, offset, (read_u32(raw, GEN3["secure_offset"] + offset) ^ key) & 0xFFFFFFFF)
     return secure
+
+
+def encrypt_gen3_secure(raw: bytearray, secure: bytes | bytearray) -> None:
+    key = (read_u32(raw, 0) ^ read_u32(raw, 4)) & 0xFFFFFFFF
+    for offset in range(0, GEN3["secure_size"], 4):
+        write_u32(raw, GEN3["secure_offset"] + offset, (read_u32(secure, offset) ^ key) & 0xFFFFFFFF)
+
+
+def set_gen3_raw_species(raw: bytes, species_id: int) -> bytes:
+    updated = bytearray(raw)
+    secure = decrypt_gen3_secure(updated)
+    growth = GEN3["substruct_orders"][read_u32(updated, 0) % 24][0] * 12
+    write_u16(secure, growth, int(species_id))
+    write_u16(updated, 0x1C, gen3_box_checksum(secure))
+    encrypt_gen3_secure(updated, secure)
+    return bytes(updated)
 
 
 def parse_location(location: str) -> Dict[str, Any]:
@@ -378,6 +439,7 @@ def parse_gen3_pokemon(raw: bytes) -> Dict[str, Any]:
     return {
         "species_id": species_id,
         "species_name": species_name,
+        "types": [],
         "level": int(raw[0x54]),
         "nickname": nickname or species_name,
         "ot_name": decode_gen3_text(raw[0x14:0x1B]),
@@ -413,10 +475,12 @@ def parse_gen3_box_pokemon(raw: bytes) -> Dict[str, Any]:
     nickname = decode_gen3_text(raw[0x08:0x12])
     is_egg = species_id == 412 or bool(raw[0x13] & 0x04)
     species_name = "Egg" if is_egg else safe_species_name(species_id, nickname)
+    experience = read_u32(secure, growth + 4)
     return {
         "species_id": species_id,
         "species_name": species_name,
-        "level": 1,
+        "types": [],
+        "level": 1 if is_egg else 0,
         "nickname": nickname or species_name,
         "ot_name": decode_gen3_text(raw[0x14:0x1B]),
         "trainer_id": trainer_id,
@@ -425,7 +489,7 @@ def parse_gen3_box_pokemon(raw: bytes) -> Dict[str, Any]:
         "held_item_id": read_u16(secure, growth + 2) or None,
         "moves": moves,
         "is_egg": is_egg,
-        "experience": read_u32(secure, growth + 4),
+        "experience": experience,
     }
 
 
@@ -597,17 +661,29 @@ class SaveModel:
             "target_generation": self.generation,
             "species_id": pokemon.get("species_id", 0),
             "species_name": pokemon.get("species_name", "Pokemon"),
+            "types": pokemon.get("types", []),
             "level": pokemon.get("level", 0),
             "nickname": pokemon.get("nickname", pokemon.get("species_name", "")),
             "ot_name": pokemon.get("ot_name", ""),
             "trainer_id": pokemon.get("trainer_id", 0),
+            "held_item_id": pokemon.get("held_item_id"),
+            "held_item_name": pokemon.get("held_item_name"),
+            "held_item_category": pokemon.get("held_item_category"),
+            "moves": pokemon.get("moves", []),
+            "move_names": pokemon.get("move_names", []),
             "raw_data_base64": raw_b64,
             "display_summary": display,
             "summary": {
                 "species_id": pokemon.get("species_id", 0),
                 "species_name": pokemon.get("species_name", "Pokemon"),
+                "types": pokemon.get("types", []),
                 "level": pokemon.get("level", 0),
                 "nickname": pokemon.get("nickname", pokemon.get("species_name", "")),
+                "held_item_id": pokemon.get("held_item_id"),
+                "held_item_name": pokemon.get("held_item_name"),
+                "held_item_category": pokemon.get("held_item_category"),
+                "moves": pokemon.get("moves", []),
+                "move_names": pokemon.get("move_names", []),
                 "display_summary": display,
                 "nature": pokemon.get("nature"),
                 "ability": (
@@ -620,12 +696,17 @@ class SaveModel:
                 "source_game": self.game,
                 "species_name": pokemon.get("species_name", "Pokemon"),
                 "nickname": pokemon.get("nickname", pokemon.get("species_name", "")),
+                "types": pokemon.get("types", []),
                 "level": pokemon.get("level", 0),
                 "experience": experience,
                 "ot_name": pokemon.get("ot_name", ""),
                 "trainer_id": pokemon.get("trainer_id", 0),
                 "moves": [{"move_id": move_id, "source_generation": self.generation} for move_id in pokemon.get("moves", [])],
-                "held_item": None,
+                "held_item": {
+                    "item_id": pokemon.get("held_item_id"),
+                    "name": pokemon.get("held_item_name"),
+                    "category": pokemon.get("held_item_category"),
+                } if pokemon.get("held_item_id") else None,
                 "nature": pokemon.get("nature"),
                 "ability": (
                     None if pokemon.get("ability_index") is None
@@ -638,7 +719,13 @@ class SaveModel:
             "metadata": {"format": raw_format, "source": "r36s-local-save", "location": location},
         }
 
-    def apply_payload(self, location: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def apply_payload(
+        self,
+        location: str,
+        payload: Dict[str, Any],
+        trade_evolution: Optional[Dict[str, Any]] = None,
+        cancel_trade_evolution: bool = False,
+    ) -> Dict[str, Any]:
         parsed = parse_location(location)
         if int(payload.get("generation", 0)) != self.generation:
             raise SaveError("Cross-generation ainda não é suportado no R36S.")
@@ -668,15 +755,100 @@ class SaveModel:
             self._apply_gen3_payload(parsed, source_kind, raw, payload)
         else:
             raise SaveError("Geração não suportada.")
+        evolution = self._apply_trade_evolution_decision(parsed, trade_evolution or {}, cancel_trade_evolution)
         self.refresh()
-        logger.info("Apply payload complete: target=%s result=%s", location, (self.pokemon_by_location(location) or {}).get("display_summary"))
-        return self.pokemon_by_location(location) or {}
+        result = self.pokemon_by_location(location) or {}
+        if evolution:
+            result["trade_evolution"] = evolution
+        logger.info(
+            "Apply payload complete: target=%s result=%s evolution=%s",
+            location,
+            result.get("display_summary"),
+            evolution,
+        )
+        return result
 
     def target_requires_box_promotion_block(self, target_location: str, peer_payload: Dict[str, Any]) -> bool:
         parsed = parse_location(target_location)
         raw_format = str(peer_payload.get("raw", {}).get("format") or peer_payload.get("metadata", {}).get("format") or "")
         source_kind = "box" if "-box-" in raw_format else "party" if "-party-" in raw_format else ""
         return parsed["kind"] == "party" and source_kind == "box"
+
+    def _apply_trade_evolution_decision(
+        self,
+        parsed: Dict[str, Any],
+        evolution: Dict[str, Any],
+        cancel_trade_evolution: bool,
+    ) -> Optional[Dict[str, Any]]:
+        if not evolution or not evolution.get("evolved"):
+            return None
+        if cancel_trade_evolution:
+            return {
+                **evolution,
+                "evolved": False,
+                "cancelled": True,
+                "reason": "cancelled_by_user",
+            }
+        target_id = int(evolution.get("target_species_id") or 0)
+        consume_item = bool(evolution.get("consumed_item_id"))
+        if target_id <= 0:
+            raise SaveError("API retornou evolução sem target_species_id válido.")
+        source_name = str(evolution.get("source_name") or "")
+        target_name = str(evolution.get("target_name") or "")
+        if self.generation == 1:
+            mon, ot, nick = (
+                self._read_gen1_party_data(parsed["index"])
+                if parsed["kind"] == "party"
+                else self._read_gen1_box_data(parsed["box_index"], parsed["slot_index"])
+            )
+            updated = bytearray(mon)
+            updated[0] = target_id
+            if source_name and target_name and nickname_matches_species(decode_gbc_text(nick), source_name):
+                nick = encode_gbc_text(target_name.upper(), GEN1["name_size"])
+            if parsed["kind"] == "party":
+                self._write_gen1_party_data(parsed["index"], bytes(updated), ot, nick)
+            else:
+                self._write_gen1_box_data(parsed["box_index"], parsed["slot_index"], bytes(updated), ot, nick)
+        elif self.generation == 2:
+            mon, ot, nick = (
+                self._read_gen2_party_data(parsed["index"])
+                if parsed["kind"] == "party"
+                else self._read_gen2_box_data(parsed["box_index"], parsed["slot_index"])
+            )
+            updated = bytearray(mon)
+            updated[0] = target_id
+            if consume_item and len(updated) > 1:
+                updated[1] = 0
+            if source_name and target_name and nickname_matches_species(decode_gbc_text(nick), source_name):
+                nick = encode_gbc_text(target_name.upper(), self.layout["name_size"])
+            if parsed["kind"] == "party":
+                self._write_gen2_party_data(parsed["index"], bytes(updated), ot, nick)
+            else:
+                self._write_gen2_box_data(parsed["box_index"], parsed["slot_index"], bytes(updated), ot, nick)
+        elif self.generation == 3:
+            raw = (
+                self._read_gen3_party_data(parsed["index"])
+                if parsed["kind"] == "party"
+                else self._read_gen3_box_data(parsed["box_index"], parsed["slot_index"])
+            )
+            updated = bytearray(set_gen3_raw_species(raw, target_id))
+            if consume_item:
+                secure = decrypt_gen3_secure(updated)
+                growth = GEN3["substruct_orders"][read_u32(updated, 0) % 24][0] * 12
+                write_u16(secure, growth + 2, 0)
+                write_u16(updated, 0x1C, gen3_box_checksum(secure))
+                encrypt_gen3_secure(updated, secure)
+            if source_name and target_name and nickname_matches_species(decode_gen3_text(updated[0x08:0x12]), source_name):
+                updated[0x08:0x12] = encode_gen3_text(target_name.upper(), 10)
+            updated = bytes(updated)
+            if parsed["kind"] == "party":
+                self._write_gen3_party_data(parsed["index"], updated)
+            else:
+                self._write_gen3_box_data(parsed["box_index"], parsed["slot_index"], updated)
+        else:
+            return None
+
+        return evolution
 
     def _parse_gen1_party(self) -> List[Dict[str, Any]]:
         party = []
@@ -696,6 +868,7 @@ class SaveModel:
                 "source_game": self.game,
                 "species_id": species_id,
                 "species_name": species_name,
+                "types": [],
                 "level": int(mon[0x21]),
                 "experience": (mon[0x0E] << 16) | (mon[0x0F] << 8) | mon[0x10],
                 "nickname": nickname or species_name,
@@ -719,6 +892,7 @@ class SaveModel:
                 species_id = int(mon[0])
                 nickname = decode_gbc_text(nick)
                 species_name = safe_species_name(species_id, nickname)
+                experience = (mon[0x0E] << 16) | (mon[0x0F] << 8) | mon[0x10]
                 pokemon = {
                     "location": f"box:{box_index}:{slot_index}",
                     "source": "boxes",
@@ -728,7 +902,9 @@ class SaveModel:
                     "source_game": self.game,
                     "species_id": species_id,
                     "species_name": species_name,
+                    "types": [],
                     "level": 0,
+                    "experience": experience,
                     "nickname": nickname or species_name,
                     "ot_name": decode_gbc_text(ot),
                     "trainer_id": (mon[0x0C] << 8) | mon[0x0D] if len(mon) > 0x0D else 0,
@@ -762,11 +938,13 @@ class SaveModel:
                 "source_game": self.game,
                 "species_id": species_id,
                 "species_name": species_name,
+                "types": [],
                 "level": int(mon[0x1F]),
                 "experience": (mon[0x08] << 16) | (mon[0x09] << 8) | mon[0x0A],
                 "nickname": nickname or species_name,
                 "ot_name": decode_gbc_text(ot),
                 "trainer_id": (mon[0x06] << 8) | mon[0x07],
+                "held_item_id": int(mon[0x01]) or None,
                 "moves": [move for move in mon[0x02:0x06] if move],
                 "is_egg": is_egg,
             }
@@ -790,6 +968,7 @@ class SaveModel:
                 species_id = int(mon[0])
                 nickname = decode_gbc_text(nick)
                 species_name = safe_species_name(species_id, nickname)
+                experience = (mon[0x08] << 16) | (mon[0x09] << 8) | mon[0x0A]
                 pokemon = {
                     "location": f"box:{box_index}:{slot_index}",
                     "source": "boxes",
@@ -799,10 +978,13 @@ class SaveModel:
                     "source_game": self.game,
                     "species_id": species_id,
                     "species_name": species_name,
+                    "types": [],
                     "level": 0,
+                    "experience": experience,
                     "nickname": nickname or species_name,
                     "ot_name": decode_gbc_text(ot),
                     "trainer_id": (mon[0x06] << 8) | mon[0x07] if len(mon) > 0x07 else 0,
+                    "held_item_id": int(mon[0x01]) or None,
                     "moves": [move for move in mon[0x02:0x06] if move],
                     "is_egg": False,
                     "box_index": box_index,
@@ -832,6 +1014,7 @@ class SaveModel:
                 "source_game": self.game,
                 "species_id": details["species_id"],
                 "species_name": details["species_name"],
+                "types": details["types"],
                 "level": details["level"],
                 "nickname": details["nickname"],
                 "ot_name": details["ot_name"],
@@ -877,6 +1060,7 @@ class SaveModel:
                     "source_game": self.game,
                     "species_id": details["species_id"],
                     "species_name": details["species_name"],
+                    "types": details["types"],
                     "level": details["level"],
                     "nickname": details["nickname"],
                     "ot_name": details["ot_name"],

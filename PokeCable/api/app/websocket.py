@@ -10,6 +10,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from .models import PlayerSlot, Room, RoomError
 from .rooms import RoomManager
+from .runtime_services import build_trade_preflight
 
 
 logger = logging.getLogger("pokecable.websocket")
@@ -154,7 +155,7 @@ class ConnectionHub:
                 },
             )
         elif ready:
-            await self._broadcast(room, {"type": "preflight_ready", "reports": reports, "room": room.to_public_dict()})
+            await self._send_preflight_ready(room, reports)
 
     async def _confirm_trade(self, client_id: str, message: dict[str, Any]) -> None:
         resolved_moves = message.get("resolved_moves")
@@ -174,12 +175,15 @@ class ConnectionHub:
         clients = self.room_clients.get(room.room_name, {})
         for slot, client_id in clients.items():
             peer_slot = room.peer_slot(slot)
+            server_preflight = self._server_preflight_for_slot(room, slot)
             await self._send(
                 client_id,
                 {
                     "type": "prepare_write",
                     "received_payload": offers[peer_slot],
                     "sent_payload": offers[slot],
+                    "server_preflight": server_preflight,
+                    "trade_evolution": server_preflight.get("trade_evolution"),
                     "message": "Troca confirmada pelos dois jogadores. Prepare o backup local antes da escrita.",
                     "room": room.to_public_dict(),
                 },
@@ -189,12 +193,15 @@ class ConnectionHub:
         clients = self.room_clients.get(room.room_name, {})
         for slot, client_id in clients.items():
             peer_slot = room.peer_slot(slot)
+            server_preflight = self._server_preflight_for_slot(room, slot)
             await self._send(
                 client_id,
                 {
                     "type": "trade_commit_write",
                     "received_payload": offers[peer_slot],
                     "sent_payload": offers[slot],
+                    "server_preflight": server_preflight,
+                    "trade_evolution": server_preflight.get("trade_evolution"),
                     "message": "Os dois jogadores prepararam backup. Pode gravar o save local.",
                     "room": room.to_public_dict(),
                 },
@@ -283,7 +290,32 @@ class ConnectionHub:
         for slot, payload in requests.items():
             client_id = clients.get(slot)
             if client_id:
+                server_preflight = self._server_preflight_for_slot(room, slot)
+                payload = {
+                    **payload,
+                    "server_preflight": server_preflight,
+                    "trade_evolution": server_preflight.get("trade_evolution"),
+                }
                 await self._send(client_id, payload)
+
+    async def _send_preflight_ready(self, room: Room, reports: dict[str, dict[str, Any]]) -> None:
+        clients = self.room_clients.get(room.room_name, {})
+        offers = {slot_name: offer.to_public_dict() for slot_name, offer in room.offers.items() if offer is not None}
+        for slot, client_id in clients.items():
+            peer_slot = room.peer_slot(slot)
+            server_preflight = self._server_preflight_for_slot(room, slot)
+            await self._send(
+                client_id,
+                {
+                    "type": "preflight_ready",
+                    "reports": reports,
+                    "received_payload": offers.get(peer_slot, {}),
+                    "sent_payload": offers.get(slot, {}),
+                    "server_preflight": server_preflight,
+                    "trade_evolution": server_preflight.get("trade_evolution"),
+                    "room": room.to_public_dict(),
+                },
+            )
 
     async def _cancel_trade(self, client_id: str, reason: str) -> None:
         known = self.room_manager.client_rooms.get(client_id)
@@ -376,6 +408,22 @@ class ConnectionHub:
             "rollback_ok",
         }
         return {key: metadata[key] for key in allowed if key in metadata}
+
+    def _server_preflight_for_slot(self, room: Room, slot: PlayerSlot) -> dict[str, Any]:
+        peer_slot = room.peer_slot(slot)
+        peer_offer = room.offers.get(peer_slot)
+        player = room.players.get(slot)
+        peer = room.players.get(peer_slot)
+        if peer_offer is None or player is None:
+            return build_trade_preflight({"received_payload": {}, "target_generation": player.generation if player else 0})
+        return build_trade_preflight(
+            {
+                "received_payload": peer_offer.to_public_dict(),
+                "source_generation": peer.generation if peer else peer_offer.generation,
+                "target_generation": player.generation,
+                "target_game": player.game,
+            }
+        )
 
     async def _broadcast(self, room: Room, payload: dict[str, Any]) -> None:
         await self._broadcast_room_name(room.room_name, payload)

@@ -9,6 +9,7 @@ from .cleanup import cleanup_loop
 from .rooms import RoomManager
 from .websocket import ConnectionHub
 from .save_analyzer import analyze_save_file
+from .runtime_services import build_trade_preflight, enrich_pokemon_payload
 from .sprite_service import VALID_GENERATIONS, VALID_POSES, resolve_sprite_path
 
 
@@ -81,6 +82,22 @@ def build_app() -> FastAPI:
         except Exception as e:
             logging.exception(f"Error analyzing save: {e}")
             raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
+    @app.post("/runtime/enrich-pokemon")
+    async def runtime_enrich_pokemon(payload: dict) -> dict:
+        try:
+            return enrich_pokemon_payload(payload)
+        except Exception as e:
+            logging.exception("Error enriching pokemon: %s", e)
+            raise HTTPException(status_code=422, detail=str(e))
+
+    @app.post("/runtime/trade-preflight")
+    async def runtime_trade_preflight(payload: dict) -> dict:
+        try:
+            return build_trade_preflight(payload)
+        except Exception as e:
+            logging.exception("Error building trade preflight: %s", e)
+            raise HTTPException(status_code=422, detail=str(e))
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:

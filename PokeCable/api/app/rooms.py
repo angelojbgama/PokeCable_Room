@@ -40,7 +40,12 @@ class RoomManager:
     ) -> None:
         self.room_timeout_seconds = room_timeout_seconds or int(os.getenv("ROOM_TIMEOUT_SECONDS", "900"))
         self.max_rooms = max_rooms or int(os.getenv("MAX_ROOMS", "200"))
-        self.enabled_trade_modes = {TIME_CAPSULE_GEN1_GEN2, FORWARD_TRANSFER_TO_GEN3, LEGACY_DOWNCONVERT_EXPERIMENTAL}
+        configured_modes = enabled_trade_modes
+        if configured_modes is None:
+            configured_modes = os.getenv("ENABLED_TRADE_MODES", "")
+            if not configured_modes and os.getenv("ALLOW_CROSS_GENERATION", "false").lower() in {"1", "true", "yes", "on"}:
+                configured_modes = [TIME_CAPSULE_GEN1_GEN2, FORWARD_TRANSFER_TO_GEN3, LEGACY_DOWNCONVERT_EXPERIMENTAL]
+        self.enabled_trade_modes = self._normalize_enabled_trade_modes(configured_modes)
         self.rooms: dict[str, Room] = {}
         self.client_rooms: dict[str, tuple[str, PlayerSlot]] = {}
         self._lock = asyncio.Lock()
@@ -492,6 +497,8 @@ class RoomManager:
         room.derived_modes = {"A": mode_for_a, "B": mode_for_b}
         required_cross_modes = {mode for mode in room.derived_modes.values() if mode != SAME_GENERATION}
         if required_cross_modes:
+            if not self.enabled_trade_modes:
+                raise RoomError("game_mismatch", "O servidor nao habilitou troca entre geracoes.")
             for slot, mode in room.derived_modes.items():
                 if mode == SAME_GENERATION:
                     continue

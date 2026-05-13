@@ -11,7 +11,11 @@ import logging
 import os
 import queue
 import shutil
+import socket
 import threading
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -28,13 +32,32 @@ if DEBUG:
 
 
 DEFAULT_BACKEND_WS = "wss://9kernel.vps-kinghost.net/ws"
-SUPPORTED_TRADE_MODES = [
-    "same_generation",
-    "time_capsule_gen1_gen2",
-    "forward_transfer_to_gen3",
-    "legacy_downconvert_experimental",
-]
-SUPPORTED_PROTOCOLS = ["raw_same_generation", "canonical_cross_generation"]
+SUPPORTED_TRADE_MODES = ["same_generation"]
+SUPPORTED_PROTOCOLS = ["raw_same_generation"]
+CONNECT_ATTEMPTS = 8
+CONNECT_OPEN_TIMEOUT = 20
+RUNTIME_HTTP_TIMEOUT = 10
+
+
+def _enabled(value: str | None) -> bool:
+    return str(value or "").lower() in ("1", "true", "yes", "on")
+
+
+def _runtime_http_base_url(server_url: str) -> str:
+    candidate = str(server_url or "").strip()
+    if not candidate:
+        return ""
+    if candidate.startswith("ws://"):
+        candidate = "http://" + candidate[len("ws://"):]
+    elif candidate.startswith("wss://"):
+        candidate = "https://" + candidate[len("wss://"):]
+    parsed = urllib.parse.urlparse(candidate)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return ""
+    path = parsed.path.rstrip("/")
+    if path.endswith("/ws"):
+        path = path[:-3]
+    return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, path.rstrip("/"), "", "", "")).rstrip("/")
 
 
 class PokecableState:
@@ -58,6 +81,61 @@ class PokecableState:
         self.save_analysis: Dict[str, Dict[str, Any]] = {}
         self.server_url = self._load_server_url()
 
+    def _configured_save_dirs(self) -> List[Path]:
+        value = os.getenv("POKECABLE_SAVE_DIRS", "").strip()
+        if not value:
+            return []
+        return [Path(part).expanduser() for part in value.split(os.pathsep) if part.strip()]
+
+    def _default_save_dirs(self) -> List[Path]:
+        tool_dir = Path(__file__).resolve().parent
+        project_dir = tool_dir.parent
+        home = Path.home()
+        production_dirs = [
+            tool_dir / "saves",
+            home / "saves",
+            home / "roms",
+            home / "Saved Games",
+            Path("/roms"),
+            Path("/roms/gbc"),
+            Path("/roms/gba"),
+            Path("/roms2"),
+            Path("/roms2/gbc"),
+            Path("/roms2/gba"),
+            Path("/opt/system"),
+            Path("/opt/roms"),
+            Path("/storage/roms"),
+        ]
+        dev_dirs = []
+        if _enabled(os.getenv("POKECABLE_DEV")):
+            dev_dirs = [
+                project_dir / "roms" / "test-saves",
+                project_dir / "roms",
+                tool_dir,
+                project_dir,
+                Path.cwd(),
+                home / "Downloads",
+                home / "Documents",
+                home / "Desktop",
+                Path("/tmp"),
+            ]
+        return self._dedupe_paths(self._configured_save_dirs() + dev_dirs + production_dirs)
+
+    @staticmethod
+    def _dedupe_paths(paths: List[Path]) -> List[Path]:
+        deduped: List[Path] = []
+        seen = set()
+        for path in paths:
+            try:
+                key = str(path.expanduser().resolve())
+            except OSError:
+                key = str(path.expanduser().absolute())
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(path.expanduser())
+        return deduped
+
     def _load_server_url(self) -> str:
         config_file = self.config_dir / "server.conf"
         if config_file.exists():
@@ -78,46 +156,67 @@ class PokecableState:
         except Exception as exc:
             logger.error(f"Failed to save server.conf: {exc}")
 
+    def runtime_http_base_url(self) -> str:
+        return _runtime_http_base_url(self.server_url)
+
+    def _runtime_post(self, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        base_url = self.runtime_http_base_url()
+        if not base_url:
+            raise SaveError("URL HTTP da API indisponivel para validar dados.")
+        url = f"{base_url}{path}"
+        body = json.dumps(payload).encode("utf-8")
+        request = urllib.request.Request(
+            url,
+            data=body,
+            headers={"Content-Type": "application/json", "User-Agent": "PokeCable-R36S/1.0"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=RUNTIME_HTTP_TIMEOUT) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+            raise SaveError(f"API indisponivel para validar Pokemon: {exc}") from exc
+
+    def enrich_pokemon(self, save: SaveModel, pokemon_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not pokemon_list:
+            return []
+        response = self._runtime_post(
+            "/runtime/enrich-pokemon",
+            {
+                "generation": save.generation,
+                "game": save.game,
+                "pokemon": pokemon_list,
+            },
+        )
+        enriched = response.get("pokemon")
+        if not isinstance(enriched, list) or len(enriched) != len(pokemon_list):
+            raise SaveError("API retornou enriquecimento de Pokemon invalido.")
+        for original, remote in zip(pokemon_list, enriched):
+            if isinstance(remote, dict):
+                original.update(remote)
+        return pokemon_list
+
     def find_saves(self) -> List[Path]:
         self.saves = []
         seen = set()
-        search_dirs = [
-            Path("/roms"),
-            Path("/roms/gbc"),
-            Path("/roms/gba"),
-            Path("/roms2"),
-            Path("/roms2/gbc"),
-            Path("/roms2/gba"),
-            Path("/opt/system"),
-            Path("/opt/roms"),
-            Path.home() / "saves",
-            Path.home() / "roms",
-            Path.home() / "Downloads",
-            Path("/tmp"),
-            Path("/storage/roms"),
-        ]
+        search_dirs = self._default_save_dirs()
         patterns = ["*.sav", "*.srm", "*.SAV", "*.SRM"]
         for search_dir in search_dirs:
             if not search_dir.exists():
                 continue
             try:
                 for pattern in patterns:
-                    for save_file in search_dir.glob(pattern):
-                        if save_file.is_file():
-                            key = str(save_file.resolve())
-                            if key not in seen:
-                                seen.add(key)
-                                self.saves.append(save_file)
-                    for save_file in search_dir.glob(f"*/{pattern}"):
-                        if save_file.is_file():
-                            key = str(save_file.resolve())
-                            if key not in seen:
-                                seen.add(key)
-                                self.saves.append(save_file)
+                    for scoped_pattern in (pattern, f"*/{pattern}", f"*/*/{pattern}"):
+                        for save_file in search_dir.glob(scoped_pattern):
+                            if save_file.is_file():
+                                key = str(save_file.resolve())
+                                if key not in seen:
+                                    seen.add(key)
+                                    self.saves.append(save_file)
             except (PermissionError, OSError) as exc:
                 logger.debug(f"Cannot access {search_dir}: {exc}")
         self.saves.sort()
-        logger.info("Found %s save file(s)", len(self.saves))
+        logger.info("Found %s save file(s) in %s search dir(s)", len(self.saves), len(search_dirs))
         return self.saves
 
     def analyze_save(self, save_path: Path) -> Optional[Dict[str, Any]]:
@@ -191,14 +290,25 @@ class PokecableState:
             self.pokemon_list = []
             return []
 
+        save: SaveModel = analysis["save"]
+        source_pokemon = save.get_pokemon(source)
+        self.enrich_pokemon(save, source_pokemon)
+
         self.pokemon_list = []
-        for pokemon in analysis["save"].get_pokemon(source):
+        for pokemon in source_pokemon:
             self.pokemon_list.append(
                 {
                     "index": pokemon.get("index"),
                     "name": pokemon.get("species_name", "Pokemon"),
                     "species_id": pokemon.get("species_id", 0),
                     "species_name": pokemon.get("species_name", "Pokemon"),
+                    "national_dex_id": pokemon.get("national_dex_id"),
+                    "types": pokemon.get("types", []),
+                    "held_item_id": pokemon.get("held_item_id"),
+                    "held_item_name": pokemon.get("held_item_name"),
+                    "held_item_category": pokemon.get("held_item_category"),
+                    "moves": pokemon.get("moves", []),
+                    "move_names": pokemon.get("move_names", []),
                     "level": pokemon.get("level", 0),
                     "nickname": pokemon.get("nickname", ""),
                     "location": pokemon.get("location", "party:0"),
@@ -259,12 +369,24 @@ def _save_unchanged_on_disk(expected: Dict[str, Any], path: Path) -> bool:
     return expected.get("sha256") == hashlib.sha256(current).hexdigest()
 
 
-def _build_preflight(state: PokecableState, peer_payload: Dict[str, Any], save: SaveModel) -> Dict[str, Any]:
+def _build_preflight(
+    state: PokecableState,
+    peer_payload: Dict[str, Any],
+    save: SaveModel,
+    server_preflight: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     reasons: List[str] = []
+    warnings: List[str] = []
+    server_preflight = server_preflight or {}
+    if server_preflight:
+        reasons.extend(str(reason) for reason in server_preflight.get("blocking_reasons", []) if reason)
+        warnings.extend(str(warning) for warning in server_preflight.get("warnings", []) if warning)
     if not peer_payload:
         reasons.append("Oferta remota ausente.")
     if int(peer_payload.get("generation", 0)) != save.generation:
-        reasons.append("Cross-generation ainda não é suportado no R36S.")
+        reasons.append(
+            f"R36S suporta apenas mesma geração por enquanto: local Gen {save.generation}, recebido Gen {peer_payload.get('generation', '?')}."
+        )
     raw_format = str(peer_payload.get("raw", {}).get("format") or peer_payload.get("metadata", {}).get("format") or "")
     if not (peer_payload.get("raw_data_base64") or peer_payload.get("raw", {}).get("data_base64")):
         reasons.append("Payload same-generation sem raw data.")
@@ -278,10 +400,53 @@ def _build_preflight(state: PokecableState, peer_payload: Dict[str, Any], save: 
         "source_generation": save.generation,
         "target_generation": save.generation,
         "blocking_reasons": reasons,
-        "warnings": [],
+        "warnings": warnings,
         "data_loss": [],
         "suggested_actions": [],
+        "server_preflight": server_preflight,
+        "trade_evolution": server_preflight.get("trade_evolution") or {},
     }
+
+
+def _peer_player_name(room: Dict[str, Any], client_id: str = "", slot: str = "") -> str:
+    players = dict((room or {}).get("players") or {})
+    if not players:
+        return ""
+    local_slot = ""
+    for player_slot, player in players.items():
+        if client_id and str(player.get("client_id", "")) == str(client_id):
+            local_slot = str(player_slot)
+            break
+        if slot and str(player_slot) == str(slot):
+            local_slot = str(player_slot)
+            break
+    if local_slot:
+        for player_slot, player in players.items():
+            if str(player_slot) != local_slot:
+                return str(player.get("name") or player.get("player_name") or "").strip()
+    if len(players) == 2:
+        for player in players.values():
+            name = str(player.get("name") or player.get("player_name") or "").strip()
+            if name:
+                return name
+    return ""
+
+
+def _same_generation_room_error(room: Dict[str, Any], local_generation: int) -> str:
+    room = room or {}
+    compatibility = dict(room.get("compatibility_status") or {})
+    trade_mode = str(room.get("trade_mode") or compatibility.get("mode") or "").strip()
+    if trade_mode and trade_mode != "same_generation":
+        return "R36S suporta apenas trocas da mesma geração por enquanto."
+    generations = {
+        int(player.get("generation"))
+        for player in dict(room.get("players") or {}).values()
+        if str(player.get("generation", "")).isdigit()
+    }
+    if generations and generations != {int(local_generation)}:
+        listed = ", ".join(f"Gen {generation}" for generation in sorted(generations))
+        return f"Use saves da mesma geração nos dois lados. Sala atual: {listed}."
+    return ""
 
 
 async def _websocket_trade(
@@ -312,11 +477,35 @@ async def _websocket_trade(
         state.selected_pokemon.get("location") if state.selected_pokemon else None,
     )
 
+    ws = None
     try:
-        async with websockets.connect(state.server_url, ping_interval=20, ping_timeout=10) as ws:
-            connected = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
-            logger.info(f"WS connected: {connected}")
+        last_connect_error: Optional[BaseException] = None
+        for attempt in range(1, CONNECT_ATTEMPTS + 1):
+            try:
+                if attempt > 1:
+                    ui.status(f"Tentando reconectar ao servidor... ({attempt}/{CONNECT_ATTEMPTS})")
+                    await asyncio.sleep(1.5)
+                logger.info("Opening websocket attempt=%s/%s url=%s", attempt, CONNECT_ATTEMPTS, state.server_url)
+                ws = await websockets.connect(
+                    state.server_url,
+                    ping_interval=20,
+                    ping_timeout=10,
+                    open_timeout=CONNECT_OPEN_TIMEOUT,
+                    family=socket.AF_INET,
+                )
+                logger.info("WebSocket handshake completed attempt=%s", attempt)
+                break
+            except (asyncio.TimeoutError, OSError, websockets.exceptions.WebSocketException) as exc:
+                last_connect_error = exc
+                logger.warning("WebSocket connect failed attempt=%s/%s error=%s", attempt, CONNECT_ATTEMPTS, exc)
 
+        if ws is None:
+            detail = f"{type(last_connect_error).__name__}: {last_connect_error}" if last_connect_error else "sem detalhe"
+            logger.error("WebSocket handshake failed after retries: %s", detail)
+            ui.error("Servidor WebSocket inacessível. Verifique internet/VPN/firewall e tente novamente.")
+            return
+
+        try:
             room_msg = {
                 "type": "join_room" if action == "access" else ("create_room" if action == "create" else "join_room"),
                 "room_name": state.room_name,
@@ -327,22 +516,40 @@ async def _websocket_trade(
                 "supported_trade_modes": SUPPORTED_TRADE_MODES,
                 "supported_protocols": SUPPORTED_PROTOCOLS,
             }
+
+            try:
+                connected = json.loads(await asyncio.wait_for(ws.recv(), timeout=2))
+                logger.info(f"WS initial message: {connected}")
+                if connected.get("type") not in ("connected", "heartbeat"):
+                    logger.info("WS initial message before room join: %s", connected.get("type"))
+            except asyncio.TimeoutError:
+                logger.warning("WS initial connected message not received; continuing with room message")
+
             logger.debug("Sending room message: %s", room_msg)
             await ws.send(json.dumps(room_msg))
             ui.screen("waiting_partner")
             ui.status("Acessando sala..." if action == "access" else ("Criando sala..." if action == "create" else "Entrando na sala..."))
 
             peer_offer: Dict[str, Any] = {}
+            saved_pokemon: Dict[str, Any] = {}
             backup_path: Optional[Path] = None
             our_offer_sent = False
             room_ready = False
             selection_opened = False
+            cancel_trade_evolution = False
+            trade_evolution: Dict[str, Any] = {}
+            client_id = ""
+            local_slot = ""
 
             while True:
                 try:
                     raw_msg = await asyncio.wait_for(ws.recv(), timeout=1.0)
                     msg = json.loads(raw_msg)
                     mtype = msg.get("type")
+                    if msg.get("client_id"):
+                        client_id = str(msg.get("client_id"))
+                    if msg.get("slot"):
+                        local_slot = str(msg.get("slot"))
                     logger.info(f"WS recv: {mtype}")
                     logger.debug(f"WS payload: {json.dumps(msg)[:500]}")
                 except asyncio.TimeoutError:
@@ -412,6 +619,10 @@ async def _websocket_trade(
                     return
 
                 if mtype == "room_created":
+                    room_error = _same_generation_room_error(msg.get("room", {}), save.generation)
+                    if room_error:
+                        ui.error(room_error)
+                        return
                     if not selection_opened:
                         ui.screen("select_pokemon_source")
                         selection_opened = True
@@ -419,6 +630,10 @@ async def _websocket_trade(
                     continue
 
                 if mtype == "room_joined":
+                    room_error = _same_generation_room_error(msg.get("room", {}), save.generation)
+                    if room_error:
+                        ui.error(room_error)
+                        return
                     if not selection_opened:
                         ui.screen("select_pokemon_source")
                         selection_opened = True
@@ -430,12 +645,17 @@ async def _websocket_trade(
                     continue
 
                 if mtype == "room_ready":
+                    room_error = _same_generation_room_error(msg.get("room", {}), save.generation)
+                    if room_error:
+                        ui.error(room_error)
+                        return
                     room_ready = True
                     if not selection_opened:
                         ui.screen("select_pokemon_source")
                         selection_opened = True
                     if not state.selected_pokemon:
-                        ui.status("Sala pronta. Agora escolha o Pokemon para enviar.")
+                        peer_name = _peer_player_name(msg.get("room", {}), client_id, local_slot)
+                        ui.status(f"{peer_name}: escolha Pokemon" if peer_name else "Escolha Pokemon")
                     continue
 
                 if mtype == "offer_received":
@@ -446,8 +666,14 @@ async def _websocket_trade(
                 if mtype == "peer_offer_received":
                     peer_offer = msg.get("offer", {}) or {}
                     summary = peer_offer.get("display_summary") or peer_offer.get("nickname") or peer_offer.get("species_name") or "Pokémon"
-                    ui.screen("trading")
-                    ui.status(f"Oferta recebida: {summary}")
+                    if state.selected_pokemon:
+                        ui.screen("trading")
+                        ui.status(f"Oferta recebida: {summary}")
+                    else:
+                        if not selection_opened:
+                            ui.screen("select_pokemon_source")
+                            selection_opened = True
+                        ui.status(f"{summary} recebido. Escolha o seu.")
                     continue
 
                 if mtype == "offers_ready":
@@ -456,7 +682,23 @@ async def _websocket_trade(
                     continue
 
                 if mtype == "preflight_required":
-                    report = _build_preflight(state, msg.get("received_payload") or peer_offer, save)
+                    server_preflight = msg.get("server_preflight") if isinstance(msg.get("server_preflight"), dict) else {}
+                    if not server_preflight:
+                        try:
+                            server_preflight = state._runtime_post(
+                                "/runtime/trade-preflight",
+                                {
+                                    "received_payload": msg.get("received_payload") or peer_offer,
+                                    "target_generation": save.generation,
+                                    "target_game": save.game,
+                                },
+                            )
+                        except SaveError as exc:
+                            ui.error(str(exc))
+                            return
+                    if server_preflight.get("trade_evolution"):
+                        trade_evolution = dict(server_preflight.get("trade_evolution") or {})
+                    report = _build_preflight(state, msg.get("received_payload") or peer_offer, save, server_preflight)
                     logger.debug("Preflight report: %s", report)
                     await ws.send(
                         json.dumps(
@@ -477,10 +719,18 @@ async def _websocket_trade(
                     continue
 
                 if mtype == "preflight_ready":
-                    summary = peer_offer.get("display_summary") or peer_offer.get("nickname") or peer_offer.get("species_name") or "parceiro"
+                    incoming_payload = msg.get("received_payload") or peer_offer
+                    summary = incoming_payload.get("display_summary") or incoming_payload.get("nickname") or incoming_payload.get("species_name") or "parceiro"
+                    server_preflight = msg.get("server_preflight") if isinstance(msg.get("server_preflight"), dict) else {}
+                    trade_evolution = dict(msg.get("trade_evolution") or server_preflight.get("trade_evolution") or trade_evolution or {})
+                    if trade_evolution.get("evolved"):
+                        ui.ui_queue.put(("evolution_cancel_prompt", trade_evolution))
+                        logger.info("Waiting for evolution cancel decision: %s", trade_evolution)
+                        cancel_trade_evolution = bool(confirm_queue.get())
+                        logger.info("Evolution cancel decision: %s", cancel_trade_evolution)
                     ui.screen("trade_confirm")
                     ui.status(f"Pronto para trocar com {summary}")
-                    ui.ui_queue.put(("confirm_prompt", peer_offer))
+                    ui.ui_queue.put(("confirm_prompt", incoming_payload))
                     logger.info("Waiting for local confirmation: peer=%s", summary)
                     user_confirmed = confirm_queue.get()
                     logger.info("Local confirmation result: %s", user_confirmed)
@@ -503,6 +753,8 @@ async def _websocket_trade(
                     continue
 
                 if mtype == "prepare_write":
+                    server_preflight = msg.get("server_preflight") if isinstance(msg.get("server_preflight"), dict) else {}
+                    trade_evolution = dict(msg.get("trade_evolution") or server_preflight.get("trade_evolution") or trade_evolution or {})
                     logger.info("Prepare write received for save=%s", state.selected_save)
                     if not _save_unchanged_on_disk(expected_signature, state.selected_save):
                         await ws.send(
@@ -543,9 +795,16 @@ async def _websocket_trade(
                     ui.screen("trading")
                     ui.status("Aplicando troca ao save...")
                     received_payload = msg.get("received_payload") or peer_offer
+                    server_preflight = msg.get("server_preflight") if isinstance(msg.get("server_preflight"), dict) else {}
+                    trade_evolution = dict(msg.get("trade_evolution") or server_preflight.get("trade_evolution") or trade_evolution or {})
                     try:
                         logger.info("Applying received payload to location=%s", pokemon_location)
-                        saved_pokemon = save.apply_payload(pokemon_location, received_payload)
+                        saved_pokemon = save.apply_payload(
+                            pokemon_location,
+                            received_payload,
+                            trade_evolution=trade_evolution,
+                            cancel_trade_evolution=cancel_trade_evolution,
+                        )
                         save.write_to_disk()
                         refreshed = state.refresh_selected_save()
                         if refreshed:
@@ -563,8 +822,14 @@ async def _websocket_trade(
                             )
                         )
                         summary = saved_pokemon.get("display_summary") or saved_pokemon.get("nickname") or saved_pokemon.get("species_name") or "Pokémon"
+                        evolution = saved_pokemon.get("trade_evolution") or {}
                         logger.info("Write completed: %s", summary)
-                        ui.status(f"Save atualizado: {summary}")
+                        if evolution.get("evolved"):
+                            ui.status(f"{evolution.get('source_name')} evoluiu para {evolution.get('target_name')}!")
+                        elif evolution.get("cancelled"):
+                            ui.status(f"Evolucao de {evolution.get('source_name', 'Pokemon')} cancelada.")
+                        else:
+                            ui.status(f"Save atualizado: {summary}")
                     except Exception as exc:
                         logger.exception(f"Failed to apply received payload: {exc}")
                         await ws.send(
@@ -588,6 +853,7 @@ async def _websocket_trade(
                         {
                             "success": True,
                             "peer": peer_offer,
+                            "received": saved_pokemon,
                             "save": str(state.selected_save),
                             "backup": str(backup_path) if backup_path else "",
                         }
@@ -601,6 +867,8 @@ async def _websocket_trade(
                 if mtype == "trade_cancelled":
                     ui.error(msg.get("message", "Troca cancelada"))
                     return
+        finally:
+            await ws.close()
 
     except websockets.exceptions.ConnectionClosed as exc:
         logger.error(f"WebSocket closed: {exc}")

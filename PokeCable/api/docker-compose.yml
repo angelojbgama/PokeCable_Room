@@ -1,6 +1,8 @@
 services:
   pokecable-server:
-    build: .
+    build:
+      context: ..
+      dockerfile: api/Dockerfile
     container_name: pokecable-server
     restart: unless-stopped
     ports:
