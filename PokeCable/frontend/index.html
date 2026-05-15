@@ -8,6 +8,61 @@
   </head>
   <body>
     <main class="shell">
+      <section id="tab-menu" class="pokedex-screen">
+        <div class="pokedex-header">
+          <h1>PokeCable</h1>
+        </div>
+        <div class="pokedex-body">
+          <aside class="menu-panel">
+            <p class="menu-title">Menu</p>
+            <button type="button" class="menu-item is-selected" data-menu-action="enter-room">Acessar Sala</button>
+            <button type="button" class="menu-item" data-menu-action="open-config">Config</button>
+            <button type="button" class="menu-item" data-menu-action="exit-app">Sair</button>
+          </aside>
+          <section class="menu-content panel">
+            <h2>PokeCable Room</h2>
+            <p>Troca de Pokemon via save local. Escolha uma opcao no menu.</p>
+          </section>
+        </div>
+        <div class="pokedex-footer">
+          <span><strong>A</strong> OK</span>
+          <span><strong>B</strong> VOLTAR</span>
+        </div>
+      </section>
+
+      <section id="tab-config" class="pokedex-screen setup-stage-hidden">
+        <div class="pokedex-header">
+          <h1>Configuracoes</h1>
+        </div>
+        <div class="pokedex-body">
+          <section class="panel config-panel">
+            <label>
+              Idioma
+              <select id="configLanguage">
+                <option value="pt">Portugues</option>
+                <option value="en">English</option>
+                <option value="es">Espanol</option>
+              </select>
+            </label>
+            <label>
+              Tema
+              <select id="configTheme">
+                <option value="pokedex_dark">Dark Pokedex</option>
+                <option value="pokedex_white">White Pokedex</option>
+              </select>
+            </label>
+            <div class="actions">
+              <button type="button" id="configApply">Alterar</button>
+              <button type="button" id="configBack" class="ghost">Voltar</button>
+            </div>
+          </section>
+        </div>
+        <div class="pokedex-footer">
+          <span><strong>A</strong> ALTERAR</span>
+          <span><strong>B</strong> VOLTAR</span>
+        </div>
+      </section>
+
       <section class="topbar" aria-label="Status do servidor">
         <div>
           <p class="eyebrow">Troca por save local</p>
@@ -38,7 +93,7 @@
         </div>
       </div>
 
-      <section id="tab-setup">
+      <section id="tab-setup" class="setup-stage-hidden">
         <div class="grid grid-single">
           <form class="panel" id="roomForm" onsubmit="return false;">
             <div id="setupHeader">
@@ -159,7 +214,7 @@
               <button type="button" id="sendTradeOffer" disabled>Enviar oferta</button>
               <button type="button" id="confirmTrade" disabled>Confirmar troca</button>
               <button type="button" id="cancelTrade" class="secondary" disabled>Cancelar rodada</button>
-              <button type="button" id="startMovePokemon" class="ghost" disabled>Mover Pokémon</button>
+              <button type="button" id="startMovePokemon" class="ghost" disabled>Mover manual</button>
               <button type="button" id="cancelMovePokemon" class="ghost" hidden>Cancelar movimentação</button>
             </div>
           </section>
@@ -238,7 +293,6 @@
       </div>
     </aside>
 
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="/move-names.js"></script>
     <script src="/learnsets.js"></script>
     <script src="/ability-names.js"></script>

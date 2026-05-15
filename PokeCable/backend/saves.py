@@ -4,7 +4,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .parsers import Gen1Parser, Gen2Parser, Gen3Parser
+try:
+    from .parsers import Gen1Parser, Gen2Parser, Gen3Parser
+except ImportError:  # Support backend tests importing modules through PYTHONPATH=backend.
+    from parsers import Gen1Parser, Gen2Parser, Gen3Parser
 
 
 DEFAULT_CONFIG = {

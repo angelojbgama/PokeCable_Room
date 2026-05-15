@@ -3,7 +3,10 @@ from __future__ import annotations
 from canonical import CanonicalPokemon
 from compatibility import build_compatibility_report
 
-from .parsers.base import PokemonPayload
+try:
+    from .parsers.base import PokemonPayload
+except ImportError:  # Support backend tests importing modules through PYTHONPATH=backend.
+    from parsers.base import PokemonPayload
 
 
 def validate_payload_for_local_save(payload: PokemonPayload, local_generation: int) -> None:

@@ -10,9 +10,14 @@ from data.items import ITEM_IDS_BY_GENERATION_AND_NAME
 from parsers.gen1 import Gen1Parser
 from parsers.gen2 import Gen2Parser
 from parsers.gen3 import Gen3Parser
-from tests.test_gen1_synthetic import synthetic_save as synthetic_gen1_save
-from tests.test_gen2_parser import synthetic_save as synthetic_gen2_save
-from tests.test_gen3_parser import synthetic_save as synthetic_gen3_save
+try:
+    from tests.test_gen1_synthetic import synthetic_save as synthetic_gen1_save
+    from tests.test_gen2_parser import synthetic_save as synthetic_gen2_save
+    from tests.test_gen3_parser import synthetic_save as synthetic_gen3_save
+except ModuleNotFoundError:
+    from test_gen1_synthetic import synthetic_save as synthetic_gen1_save
+    from test_gen2_parser import synthetic_save as synthetic_gen2_save
+    from test_gen3_parser import synthetic_save as synthetic_gen3_save
 
 
 class _StubUI:

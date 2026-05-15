@@ -17,6 +17,38 @@
   --radius-sm: 8px;
 }
 
+:root[data-theme="pokedex_dark"] {
+  --bg: #0f1418;
+  --ink: #e9eff4;
+  --muted: #9aa6b2;
+  --panel: #1d262d;
+  --soft: #2b3741;
+  --line: #33424e;
+  --accent: #e9465c;
+  --accent-dark: #c5304b;
+  --blue: #e9465c;
+  --blue-light: #2b3741;
+  --green: #4cce8b;
+  --yellow: #ffbe58;
+  --shadow: none;
+}
+
+:root[data-theme="pokedex_white"] {
+  --bg: #eceff3;
+  --ink: #171f27;
+  --muted: #5b697a;
+  --panel: #fbfcfe;
+  --soft: #dae1e8;
+  --line: #c9d2dc;
+  --accent: #d53853;
+  --accent-dark: #b11f3d;
+  --blue: #d53853;
+  --blue-light: #e3e8ee;
+  --green: #26a66a;
+  --yellow: #c48a2c;
+  --shadow: none;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -36,9 +68,91 @@ select {
 }
 
 .shell {
-  width: min(1180px, calc(100% - 32px));
+  width: min(640px, calc(100% - 24px));
   margin: 0 auto;
-  padding: 24px 0;
+  padding: 16px 0;
+}
+
+.pokedex-screen {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.pokedex-header {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.pokedex-header h1 {
+  font-size: 1.3rem;
+}
+
+.pokedex-body {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  min-height: 316px;
+  gap: 12px;
+  padding: 10px;
+}
+
+.menu-panel {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 12px 8px;
+}
+
+.menu-title {
+  color: var(--muted);
+  margin: 0 0 10px;
+  font-weight: 700;
+}
+
+.menu-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  min-height: 40px;
+  margin-bottom: 8px;
+}
+
+.menu-item.is-selected,
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--accent);
+  color: #081018;
+}
+
+.menu-content {
+  margin: 0;
+}
+
+.pokedex-footer {
+  height: 60px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 0 12px;
+  color: var(--muted);
+}
+
+.pokedex-footer strong {
+  color: var(--accent);
+}
+
+.config-panel {
+  max-width: 360px;
 }
 
 .topbar {
@@ -201,8 +315,8 @@ h2 {
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(300px, 0.9fr) minmax(340px, 1.1fr);
-  gap: 16px;
+  grid-template-columns: 1fr;
+  gap: 12px;
 }
 
 .grid-single {
@@ -221,11 +335,11 @@ h2 {
 .panel,
 .log-panel {
   border: 1px solid var(--line);
-  border-top: 3px solid var(--blue);
-  border-radius: var(--radius);
+  border-top: 2px solid var(--accent);
+  border-radius: 6px;
   background: var(--panel);
   box-shadow: var(--shadow);
-  padding: 18px;
+  padding: 12px;
 }
 
 .panel-head {
@@ -926,6 +1040,12 @@ pre {
   padding: 10px;
 }
 
+.team-preview-entry {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
 .team-preview-item strong {
   overflow-wrap: anywhere;
 }
@@ -1049,6 +1169,8 @@ pre {
 .inventory-item-shell {
   position: relative;
   display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .inventory-item {
@@ -1286,21 +1408,29 @@ pre {
   opacity: 1;
 }
 
-.sortable-ghost {
-  opacity: 0.4;
-  background: var(--soft) !important;
-  border: 1px dashed var(--blue) !important;
-}
-
-.sortable-drag {
-  cursor: grabbing;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-  z-index: 1000;
-}
-
 .pc-box-nav {
   min-width: 34px;
   padding: 0;
+}
+
+.pokemon-transfer-button,
+.inventory-transfer-button {
+  width: 100%;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--ink);
+  padding: 5px 8px;
+  font-size: 0.74rem;
+  line-height: 1.15;
+}
+
+.pokemon-transfer-button:hover:not(:disabled),
+.inventory-transfer-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #081018;
 }
 
 .drawer-backdrop {
@@ -1436,6 +1566,12 @@ pre {
   .server-pill {
     width: 100%;
   }
+}
+
+.topbar,
+.notice,
+.steps-indicator {
+  display: none !important;
 }
 
 /* Interactive Move Replacement */

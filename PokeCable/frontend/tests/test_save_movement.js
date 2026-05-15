@@ -2,6 +2,60 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { moveWithinContainer, moveAcrossContainers } = require("../save-movement.js");
+const { createSaveManagementController } = require("../save-management.js");
+
+function createSaveManagementTestController({ elements = {}, selectedInventoryItem = null, pendingMoveSourceLocation = null } = {}) {
+  const pokemon = {
+    location: "party:0",
+    species_name: "Pikachu",
+    display_summary: "Pikachu Lv.5",
+    level: 5,
+    is_egg: false,
+    held_item_id: null
+  };
+  const save = {
+    generation: 2,
+    layout: { partyCapacity: 6 },
+    party: [pokemon],
+    boxes: { current_box: 0, box_names: [], pokemon: [] }
+  };
+  let selectedLocation = "party:0";
+  let selectedItem = selectedInventoryItem;
+  let pendingSource = pendingMoveSourceLocation;
+
+  return createSaveManagementController({
+    getLoadedSave: () => save,
+    getSelectedLocation: () => selectedLocation,
+    setSelectedLocation: (value) => { selectedLocation = value; },
+    getSelectedInventoryItem: () => selectedItem,
+    setSelectedInventoryItem: (value) => { selectedItem = value; },
+    getPendingMoveSourceLocation: () => pendingSource,
+    setPendingMoveSourceLocation: (value) => { pendingSource = value; },
+    getTradeState: () => ({ roundActive: false }),
+    parseLocation: (location) => ({ kind: "party", index: Number(String(location).split(":")[1] || 0) }),
+    pokemonByLocation: (_save, location) => location === pokemon.location ? pokemon : null,
+    locationLabel: () => "Party · slot 1",
+    cleanName: (value) => String(value || "").trim(),
+    normalizePokemonDisplay: (entry) => entry.display_summary || entry.species_name,
+    renderPokemonSummaryHtml: (entry) => entry.display_summary || entry.species_name,
+    renderOfferCard: () => {},
+    clearTradePreviews: () => {},
+    relocatePokemonWithinSave: () => {},
+    hasBagSpaceInSave: () => false,
+    hasPcSpaceInSave: () => false,
+    storeItemInBagForSave: () => null,
+    storeItemInPcForSave: () => null,
+    clearHeldItemInSave: () => {},
+    setHeldItemInSave: () => {},
+    removeItemFromPocket: () => {},
+    refreshLoadedSaveCollections: () => {},
+    nonHoldableCategories: new Set(),
+    syncTransientUi: () => {},
+    syncAfterSaveMutation: () => {},
+    activateTab: () => {},
+    elements
+  });
+}
 
 test("counted container reorders entry into next empty slot", () => {
   const state = {
@@ -76,4 +130,40 @@ test("counted target rejects invalid insertion past capacity", () => {
     entries: ["P1", "P2"]
   };
   assert.throws(() => moveAcrossContainers(source, target, 0, 2), /Destino inválido/);
+});
+
+test("save management tolerates missing optional held-item buttons", () => {
+  const tradeSelectedSummaryEl = { textContent: "" };
+  const controller = createSaveManagementTestController({ elements: { tradeSelectedSummaryEl } });
+
+  assert.doesNotThrow(() => controller.updateSelectionUi());
+  assert.equal(tradeSelectedSummaryEl.textContent, "Pikachu Lv.5");
+});
+
+test("save management updates move buttons when present and held-item buttons are absent", () => {
+  const startMovePokemonButton = { disabled: null };
+  const cancelMovePokemonButton = { hidden: null };
+  const controller = createSaveManagementTestController({
+    elements: {
+      tradeSelectedSummaryEl: { textContent: "" },
+      startMovePokemonButton,
+      cancelMovePokemonButton
+    }
+  });
+
+  controller.updateManagementButtons();
+
+  assert.equal(startMovePokemonButton.disabled, false);
+  assert.equal(cancelMovePokemonButton.hidden, true);
+});
+
+test("save management preview methods tolerate omitted optional preview targets", () => {
+  const controller = createSaveManagementTestController({
+    elements: {
+      tradeSelectedSummaryEl: { textContent: "" }
+    }
+  });
+
+  assert.doesNotThrow(() => controller.updateSetupPartyPreview());
+  assert.doesNotThrow(() => controller.updateTradePartyPreview());
 });

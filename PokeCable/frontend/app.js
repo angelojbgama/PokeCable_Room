@@ -46,6 +46,15 @@ const tradeBoxPreviewEl = document.querySelector("#tradeBoxPreview");
 const tradeTogglePokemonPcButton = document.querySelector("#tradeTogglePokemonPc");
 const startMovePokemonButton = document.querySelector("#startMovePokemon");
 const cancelMovePokemonButton = document.querySelector("#cancelMovePokemon");
+const menuTabEl = document.querySelector("#tab-menu");
+const configTabEl = document.querySelector("#tab-config");
+const setupTabEl = document.querySelector("#tab-setup");
+const tradeTabEl = document.querySelector("#tab-trade");
+const menuItems = Array.from(document.querySelectorAll(".menu-item"));
+const configLanguageEl = document.querySelector("#configLanguage");
+const configThemeEl = document.querySelector("#configTheme");
+const configApplyButton = document.querySelector("#configApply");
+const configBackButton = document.querySelector("#configBack");
 
 if (!tradeBoxPreviewEl) {
   console.error("tradeBoxPreviewEl not found - PC functionality will not work");
@@ -66,6 +75,61 @@ const localPlayerNameEl = document.querySelector("#localPlayerName");
 const peerPlayerNameEl = document.querySelector("#peerPlayerName");
 const localPlayerPillEl = document.querySelector("#localPlayerPill");
 const peerPlayerPillEl = document.querySelector("#peerPlayerPill");
+
+const mainTabs = {
+  menu: menuTabEl,
+  config: configTabEl,
+  setup: setupTabEl,
+  trade: tradeTabEl
+};
+const visualShellLabels = {
+  pt: {
+    menu_title: "Menu",
+    menu_access_room: "Acessar Sala",
+    menu_config: "Config",
+    menu_exit: "Sair",
+    config_title: "Configuracoes",
+    config_language: "Idioma",
+    config_theme: "Tema",
+    lang_pt: "Portugues",
+    lang_en: "English",
+    lang_es: "Espanol",
+    btn_ok: "OK",
+    btn_back: "VOLTAR",
+    btn_change: "ALTERAR"
+  },
+  en: {
+    menu_title: "Menu",
+    menu_access_room: "Enter Room",
+    menu_config: "Config",
+    menu_exit: "Exit",
+    config_title: "Settings",
+    config_language: "Language",
+    config_theme: "Theme",
+    lang_pt: "Portuguese",
+    lang_en: "English",
+    lang_es: "Spanish",
+    btn_ok: "OK",
+    btn_back: "BACK",
+    btn_change: "CHANGE"
+  },
+  es: {
+    menu_title: "Menu",
+    menu_access_room: "Entrar en Sala",
+    menu_config: "Config",
+    menu_exit: "Salir",
+    config_title: "Configuracion",
+    config_language: "Idioma",
+    config_theme: "Tema",
+    lang_pt: "Portugues",
+    lang_en: "Ingles",
+    lang_es: "Espanol",
+    btn_ok: "OK",
+    btn_back: "VOLVER",
+    btn_change: "CAMBIAR"
+  }
+};
+let selectedMenuIndex = 0;
 
 const speciesData = window.POKECABLE_SPECIES_DATA;
 if (!speciesData) {
@@ -557,7 +621,7 @@ const inventoryUiController = inventoryUiModule?.createInventoryUiController({
   escapeAttribute,
   renderPokemonSummaryHtml,
   relocatePokemonWithinSave,
-  syncAfterSaveMutation: () => updatePokemonOptions(),
+  syncAfterSaveMutation,
   elements: {
     setupBagPreviewEl,
     setupPcPreviewEl,
@@ -578,8 +642,8 @@ const tradeFlowController = tradeFlowModule?.createTradeFlowController({
   getSelectedLocation: () => selectedLocation,
   getSelectedPokemon: () => pokemonByLocation(loadedSave, selectedLocation),
   getRoomCredentials: () => ({
-    roomName: document.querySelector("#roomName").value.trim(),
-    password: document.querySelector("#roomPassword").value
+    roomName: (roomNameEl?.value || "").trim(),
+    password: roomPasswordEl?.value || ""
   }),
   getSessionAction: () => sessionState.action,
   selectedPayload,
@@ -611,7 +675,10 @@ const tradeFlowController = tradeFlowModule?.createTradeFlowController({
 const saveManagementController = saveManagementModule?.createSaveManagementController({
   getLoadedSave: () => loadedSave,
   getSelectedLocation: () => selectedLocation,
-  setSelectedLocation: (value) => { selectedLocation = value; pokemonChoiceEl.value = value; },
+  setSelectedLocation: (value) => {
+    selectedLocation = value;
+    if (pokemonChoiceEl) pokemonChoiceEl.value = value;
+  },
   getSelectedInventoryItem: () => selectedInventoryItem,
   setSelectedInventoryItem: (value) => { selectedInventoryItem = value; },
   getPendingMoveSourceLocation: () => pendingMoveSourceLocation,
@@ -642,7 +709,7 @@ const saveManagementController = saveManagementModule?.createSaveManagementContr
     tradeFlowController?.syncButtons();
     refreshSessionUi();
   },
-  syncAfterSaveMutation: () => updatePokemonOptions(),
+  syncAfterSaveMutation,
   activateTab,
   elements: {
     tradeSelectedSummaryEl,
@@ -650,6 +717,8 @@ const saveManagementController = saveManagementModule?.createSaveManagementContr
     setupSelectionDetailEl,
     selectedInventoryItemStatusEl,
     saveManagementStatusEl,
+    startMovePokemonButton,
+    cancelMovePokemonButton,
     setupPartyPreviewEl,
     tradePartyPreviewEl,
     localOfferEl,
@@ -906,8 +975,8 @@ function supportedProtocols() {
 }
 
 function roomCredentialsReady() {
-  const roomName = roomNameEl.value.trim();
-  const password = roomPasswordEl.value;
+  const roomName = (roomNameEl?.value || "").trim();
+  const password = roomPasswordEl?.value || "";
   return Boolean(roomName && password);
 }
 
@@ -917,9 +986,11 @@ function clearLoadedSave() {
   selectedInventoryItem = null;
   pendingMoveSourceLocation = null;
   sessionState.saveLocked = false;
-  saveFileEl.disabled = false;
-  saveFileEl.value = "";
-  saveSummaryEl.innerHTML = "<span>Nenhum save carregado</span><strong>Gen 1, Gen 2 e Gen 3 são detectadas pelo arquivo.</strong>";
+  if (saveFileEl) {
+    saveFileEl.disabled = false;
+    saveFileEl.value = "";
+  }
+  if (saveSummaryEl) saveSummaryEl.innerHTML = "<span>Nenhum save carregado</span><strong>Gen 1, Gen 2 e Gen 3 são detectadas pelo arquivo.</strong>";
   setupSaveStageEl?.classList.remove("setup-stage-hidden");
   setupRoomStageEl?.classList.add("setup-stage-hidden");
   if (tradePartyLabelEl) tradePartyLabelEl.textContent = "Sua Party";
@@ -931,17 +1002,157 @@ function loadedSaveHeadline(save) {
   return playerName ? `${save.label} · ${playerName}` : save.label;
 }
 
+function visibleMainTabEntries() {
+  return Object.entries(mainTabs).filter(([, element]) => Boolean(element));
+}
+
 function getActiveTab() {
-  if (!document.querySelector("#tab-setup").classList.contains("setup-stage-hidden")) return "setup";
-  if (!document.querySelector("#tab-trade").classList.contains("setup-stage-hidden")) return "trade";
-  return "setup";
+  for (const [name, element] of visibleMainTabEntries()) {
+    if (!element.classList.contains("setup-stage-hidden")) return name;
+  }
+  return "menu";
+}
+
+function selectMenuIndex(index) {
+  if (!menuItems.length) return;
+  selectedMenuIndex = (index + menuItems.length) % menuItems.length;
+  menuItems.forEach((item, itemIndex) => {
+    item.classList.toggle("is-selected", itemIndex === selectedMenuIndex);
+  });
+}
+
+function visualShellLabel(language, key) {
+  const table = visualShellLabels[language] || visualShellLabels.pt;
+  return table[key] || visualShellLabels.pt[key] || key;
+}
+
+function applyVisualLanguage(language) {
+  const lang = visualShellLabels[language] ? language : "pt";
+  const [enterButton, configButton, exitButton] = menuItems;
+  const menuTitle = menuTabEl?.querySelector(".menu-title");
+  const configTitle = configTabEl?.querySelector("h1");
+  const languageLabel = configLanguageEl?.closest("label");
+  const themeLabel = configThemeEl?.closest("label");
+
+  if (menuTitle) menuTitle.textContent = visualShellLabel(lang, "menu_title");
+  if (enterButton) enterButton.textContent = visualShellLabel(lang, "menu_access_room");
+  if (configButton) configButton.textContent = visualShellLabel(lang, "menu_config");
+  if (exitButton) exitButton.textContent = visualShellLabel(lang, "menu_exit");
+  if (configTitle) configTitle.textContent = visualShellLabel(lang, "config_title");
+  if (languageLabel?.firstChild) languageLabel.firstChild.textContent = `${visualShellLabel(lang, "config_language")}\n              `;
+  if (themeLabel?.firstChild) themeLabel.firstChild.textContent = `${visualShellLabel(lang, "config_theme")}\n              `;
+  if (configLanguageEl) {
+    configLanguageEl.value = lang;
+    Array.from(configLanguageEl.options).forEach((option) => {
+      option.textContent = visualShellLabel(lang, `lang_${option.value}`);
+    });
+  }
+  menuTabEl?.querySelectorAll(".pokedex-footer span").forEach((entry, index) => {
+    entry.innerHTML = index === 0
+      ? `<strong>A</strong> ${visualShellLabel(lang, "btn_ok")}`
+      : `<strong>B</strong> ${visualShellLabel(lang, "btn_back")}`;
+  });
+  configTabEl?.querySelectorAll(".pokedex-footer span").forEach((entry, index) => {
+    entry.innerHTML = index === 0
+      ? `<strong>A</strong> ${visualShellLabel(lang, "btn_change")}`
+      : `<strong>B</strong> ${visualShellLabel(lang, "btn_back")}`;
+  });
+}
+
+function applyVisualTheme(theme) {
+  const normalizedTheme = theme === "pokedex_white" ? "pokedex_white" : "pokedex_dark";
+  document.documentElement.setAttribute("data-theme", normalizedTheme);
+  if (configThemeEl) configThemeEl.value = normalizedTheme;
+}
+
+function saveVisualPreferences() {
+  try {
+    localStorage.setItem("pokecable-ui", JSON.stringify({
+      language: configLanguageEl?.value || "pt",
+      theme: configThemeEl?.value || "pokedex_dark"
+    }));
+  } catch (_error) {
+    // localStorage may be disabled in embedded browsers.
+  }
+}
+
+function runMenuAction(action) {
+  if (action === "enter-room") {
+    activateTab("setup");
+    return;
+  }
+  if (action === "open-config") {
+    activateTab("config");
+    return;
+  }
+  if (action === "exit-app") {
+    window.close();
+    setStatus("Feche esta aba para sair do PokeCable Web.");
+  }
+}
+
+function activateTab(tabName) {
+  const targetName = mainTabs[tabName] ? tabName : "menu";
+  for (const [name, element] of visibleMainTabEntries()) {
+    element.classList.toggle("setup-stage-hidden", name !== targetName);
+  }
+  if (targetName === "menu") selectMenuIndex(selectedMenuIndex);
+  refreshSessionUi();
+}
+
+function initVisualShell() {
+  menuItems.forEach((item, index) => {
+    item.addEventListener("mouseenter", () => selectMenuIndex(index));
+    item.addEventListener("focus", () => selectMenuIndex(index));
+    item.addEventListener("click", () => runMenuAction(item.dataset.menuAction));
+  });
+
+  configApplyButton?.addEventListener("click", () => {
+    applyVisualTheme(configThemeEl?.value || "pokedex_dark");
+    applyVisualLanguage(configLanguageEl?.value || "pt");
+    saveVisualPreferences();
+  });
+  configBackButton?.addEventListener("click", () => activateTab("menu"));
+
+  window.addEventListener("keydown", (event) => {
+    const activeTab = getActiveTab();
+    if (pokemonDetailDrawerEl?.classList.contains("is-open")) return;
+
+    if (activeTab === "menu") {
+      if (event.key === "ArrowUp" || event.key.toLowerCase() === "w") {
+        event.preventDefault();
+        selectMenuIndex(selectedMenuIndex - 1);
+      } else if (event.key === "ArrowDown" || event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        selectMenuIndex(selectedMenuIndex + 1);
+      } else if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        runMenuAction(menuItems[selectedMenuIndex]?.dataset.menuAction);
+      }
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      activateTab("menu");
+    }
+  });
+
+  let preferences = {};
+  try {
+    preferences = JSON.parse(localStorage.getItem("pokecable-ui") || "{}") || {};
+  } catch (_error) {
+    preferences = {};
+  }
+  applyVisualTheme(preferences.theme || "pokedex_dark");
+  applyVisualLanguage(preferences.language || "pt");
+  selectMenuIndex(0);
 }
 
 function refreshSessionUi() {
   const hasLoadedSave = Boolean(loadedSave);
   const credentialsReady = roomCredentialsReady();
   const canPrepareSession = hasLoadedSave && credentialsReady && !sessionState.joined && !sessionState.pending;
-  const roomChoiceReady = hasLoadedSave && sessionState.joined;
   const isSetupTab = getActiveTab() === "setup";
 
   if (hasLoadedSave && tradePartyLabelEl) {
@@ -949,12 +1160,12 @@ function refreshSessionUi() {
     tradePartyLabelEl.textContent = playerName ? `Party de ${playerName}` : "Sua Party";
   }
 
-  accessSessionButton.disabled = !canPrepareSession;
-  leaveSessionButton.disabled = !(sessionState.joined || sessionState.pending);
+  if (accessSessionButton) accessSessionButton.disabled = !canPrepareSession;
+  if (leaveSessionButton) leaveSessionButton.disabled = !(sessionState.joined || sessionState.pending);
   
   const inputsDisabled = sessionState.joined || sessionState.pending;
-  roomNameEl.disabled = inputsDisabled;
-  roomPasswordEl.disabled = inputsDisabled;
+  if (roomNameEl) roomNameEl.disabled = inputsDisabled;
+  if (roomPasswordEl) roomPasswordEl.disabled = inputsDisabled;
 
   if (setupSaveStageEl) setupSaveStageEl.classList.toggle("setup-stage-hidden", hasLoadedSave);
   if (setupRoomStageEl) setupRoomStageEl.classList.toggle("setup-stage-hidden", !hasLoadedSave || sessionState.joined);
@@ -987,16 +1198,6 @@ function refreshSessionUi() {
   setSessionStatus("Sessão ativa.", "Troca disponível.");
 }
 
-function activateTab(tabName) {
-  // Oculta todos os painéis principais
-  ["tab-setup", "tab-trade"].forEach(id => {
-    document.getElementById(id)?.classList.add("setup-stage-hidden");
-  });
-  // Mostra apenas o selecionado
-  document.getElementById(`tab-${tabName}`)?.classList.remove("setup-stage-hidden");
-  refreshSessionUi();
-}
-
 function wsUrl() {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   // Se estiver rodando localmente na porta 8080 (servidor estático), 
@@ -1017,9 +1218,9 @@ const wsClient = wsClientModule?.createWsClient({
   },
   onClosed: () => {
     resetSessionState();
-    confirmButton.disabled = true;
-    cancelButton.disabled = true;
-    sendTradeOfferButton.disabled = true;
+    if (confirmButton) confirmButton.disabled = true;
+    if (cancelButton) cancelButton.disabled = true;
+    if (sendTradeOfferButton) sendTradeOfferButton.disabled = true;
     setStatus("Conexao encerrada.");
     setSessionStatus("Conexão encerrada.", "Reabra a sessão para continuar usando a mesma sala.");
   }
@@ -1601,6 +1802,24 @@ function refreshLoadedSaveCollections(save) {
   save.party = save.generation === 1 ? parseGen1Party(save) : save.generation === 2 ? parseGen2Party(save) : parseGen3Party(save);
   save.inventory = parseInventory(save);
   save.boxes = save.generation === 1 ? parseGen1Boxes(save) : save.generation === 2 ? parseGen2Boxes(save) : parseGen3Boxes(save);
+}
+
+function refreshLoadedSaveSignature() {
+  if (!loadedSave) return;
+  const saveRef = loadedSave;
+  saveRef.signature = null;
+  void sha256Hex(saveRef.bytes).then((hash) => {
+    if (loadedSave !== saveRef) return;
+    saveRef.signature = {
+      size: saveRef.bytes.length,
+      sha256: hash
+    };
+  });
+}
+
+function syncAfterSaveMutation() {
+  refreshLoadedSaveSignature();
+  updatePokemonOptions();
 }
 
 function pocketEntries(save, pocketName) {
@@ -2601,6 +2820,10 @@ function movePokemonToEmptyLocation(save, sourceLocation, targetLocation) {
     throw new Error("Origem vazia para movimentação.");
   }
 
+  if (source.kind === "party" && target.kind === "box" && sourceState.entries.length <= 1) {
+    throw new Error("A party precisa manter pelo menos 1 Pokémon.");
+  }
+
   if (sourceKey === targetKey) {
     if (sourceState.kind === "counted" && targetIndex !== sourceState.entries.length) {
       throw new Error("Em containers contíguos, só o próximo slot vazio pode ser usado.");
@@ -2958,23 +3181,27 @@ function loadSave(bytes, name) {
 }
 
 function updatePokemonOptions() {
-  pokemonChoiceEl.innerHTML = "";
+  if (pokemonChoiceEl) pokemonChoiceEl.innerHTML = "";
   clearTradePreviews();
   if (!loadedSave) {
     const option = document.createElement("option");
     option.value = "";
     option.textContent = "Carregue um save";
-    pokemonChoiceEl.append(option);
-    setupPartyPreviewEl.textContent = "";
-    tradePartyPreviewEl.textContent = "";
-    setupBagPreviewEl.className = "inventory-preview-body inventory-preview-empty";
-    setupBagPreviewEl.textContent = "Carregue um save para visualizar os pockets da mochila.";
-    setupPcPreviewEl.className = "inventory-preview-body inventory-preview-empty";
-    setupPcPreviewEl.textContent = "Carregue um save para visualizar os itens guardados no PC.";
-    tradeSelectedSummaryEl.textContent = "Nenhum Pokémon selecionado.";
+    pokemonChoiceEl?.append(option);
+    if (setupPartyPreviewEl) setupPartyPreviewEl.textContent = "";
+    if (tradePartyPreviewEl) tradePartyPreviewEl.textContent = "";
+    if (setupBagPreviewEl) {
+      setupBagPreviewEl.className = "inventory-preview-body inventory-preview-empty";
+      setupBagPreviewEl.textContent = "Carregue um save para visualizar os pockets da mochila.";
+    }
+    if (setupPcPreviewEl) {
+      setupPcPreviewEl.className = "inventory-preview-body inventory-preview-empty";
+      setupPcPreviewEl.textContent = "Carregue um save para visualizar os itens guardados no PC.";
+    }
+    if (tradeSelectedSummaryEl) tradeSelectedSummaryEl.textContent = "Nenhum Pokémon selecionado.";
     if (setupSelectedSummaryEl) setupSelectedSummaryEl.textContent = "Nenhum Pokémon selecionado.";
     if (setupStatusEl) setupStatusEl.textContent = "Carregue um save para liberar as funções.";
-    saveManagementStatusEl.textContent = "Selecione um Pokémon para começar.";
+    if (saveManagementStatusEl) saveManagementStatusEl.textContent = "Selecione um Pokémon para começar.";
     selectedInventoryItem = null;
     pendingMoveSourceLocation = null;
     setStatus("Carregue um save para começar.");
@@ -2986,9 +3213,9 @@ function updatePokemonOptions() {
     const option = document.createElement("option");
     option.value = pokemon.location;
     option.textContent = `${locationLabel(pokemon.location, loadedSave.boxes)} · ${pokemon.display_summary || normalizePokemonDisplay(pokemon)}`;
-    pokemonChoiceEl.append(option);
+    pokemonChoiceEl?.append(option);
   });
-  const enabled = pokemonChoiceEl.options.length > 0;
+  const enabled = Boolean(pokemonChoiceEl && pokemonChoiceEl.options.length > 0);
   if (enabled) {
     const hasCurrentSelection = Array.from(pokemonChoiceEl.options).some((option) => option.value === selectedLocation);
     if (!hasCurrentSelection) selectedLocation = pokemonChoiceEl.options[0].value;
@@ -3117,6 +3344,8 @@ function resetSessionState() {
   sessionState.pending = false;
   sessionState.joined = false;
   sessionState.tradeJoined = false;
+  sessionState.clientId = null;
+  sessionState.slot = null;
   tradeState.hasJoinedRoom = false;
   tradeState.roomReady = false;
   tradeFlowController?.resetTradeRoundUi();
@@ -3134,7 +3363,7 @@ async function openPendingSession() {
     await connect();
     
     setSessionStatus("Entrando na sala...");
-    log(`Tentando ${sessionState.action === "create" ? "criar" : "entrar na"} sala: ${roomNameEl.value}`);
+    log(`Tentando ${sessionState.action === "create" ? "criar" : "entrar na"} sala: ${roomNameEl?.value || ""}`);
     tradeFlowController?.joinTradeRoom(sessionState.action);
     refreshSessionUi();
   } catch (error) {
@@ -3277,6 +3506,9 @@ function handleMessage(message) {
   switch (message.type) {
     case "peer_disconnected":
       log("O parceiro de troca se desconectou.");
+      tradeState.roomReady = false;
+      tradeState.roundActive = false;
+      tradeFlowController?.resetTradeRoundUi({ peerMessage: "Aguardando o Pokémon do outro treinador." });
       if (peerPlayerNameEl) {
         peerPlayerNameEl.textContent = "Aguardando...";
         peerPlayerPillEl?.classList.add("is-empty");
@@ -3297,6 +3529,7 @@ function handleMessage(message) {
   }
   
   if (message.type === "trade_cancelled" && message.reason !== "peer_disconnected") {
+    sessionState.joined = false;
     sessionState.tradeJoined = false;
     refreshSessionUi();
   }
@@ -3337,12 +3570,18 @@ function handleMessage(message) {
       
       // Erros que permitem nova tentativa imediata sem fechar socket
       const isAuthError = message.code === "invalid_password" || message.code === "room_not_found" || message.code === "room_exists";
+      tradeState.hasJoinedRoom = false;
+      tradeState.roomReady = false;
+      tradeState.roundActive = false;
+      tradeFlowController?.resetTradeRoundUi({ peerMessage: "Aguardando oferta..." });
       if (isAuthError) {
         sessionState.pending = false;
         // Mantemos o sessionState.action para o usuário ver o que tentou
         log(`Erro na sala: ${message.message}`);
       } else {
         sessionState.pending = false;
+        sessionState.joined = false;
+        sessionState.tradeJoined = false;
       }
 
       setStatus(message.message || "Erro no servidor.");
@@ -3358,29 +3597,29 @@ function handleMessage(message) {
   }
 }
 
-accessSessionButton.addEventListener("click", () => {
+accessSessionButton?.addEventListener("click", () => {
   void startSession("join").catch((error) => setSessionStatus(error.message || String(error)));
 });
 backToModeFromTradeButton?.addEventListener("click", () => {
-  activateTab("setup");
+  activateTab("menu");
 });
-roomNameEl.addEventListener("input", () => {
+roomNameEl?.addEventListener("input", () => {
   refreshSessionUi();
 });
-roomPasswordEl.addEventListener("input", () => {
+roomPasswordEl?.addEventListener("input", () => {
   refreshSessionUi();
 });
-leaveSessionButton.addEventListener("click", () => {
+leaveSessionButton?.addEventListener("click", () => {
   leaveSession();
 });
-sendTradeOfferButton.addEventListener("click", () => {
+sendTradeOfferButton?.addEventListener("click", () => {
   try {
     tradeFlowController?.sendOffer();
   } catch (error) {
     setStatus(error.message || String(error));
   }
 });
-confirmButton.addEventListener("click", () => {
+confirmButton?.addEventListener("click", () => {
   if (tradeState.awaitingMoveConfirmation) {
     // Estágio 1: Confirmar escolha de golpes
     const resolvedMoves = {};
@@ -3407,7 +3646,7 @@ confirmButton.addEventListener("click", () => {
     send({ type: "confirm_trade", resolved_moves: tradeState.pendingMoveReplacements || {} });
   }
 });
-cancelButton.addEventListener("click", () => {
+cancelButton?.addEventListener("click", () => {
   send({ type: "cancel_trade_round", reason: "user_cancelled" });
 });
 if (tradeBoxPreviewEl) {
@@ -3433,10 +3672,10 @@ if (cancelMovePokemonButton) {
     saveManagementController?.cancelMovePokemon();
   });
 }
-closePokemonDetailDrawerButton.addEventListener("click", () => {
+closePokemonDetailDrawerButton?.addEventListener("click", () => {
   inventoryUiController?.closePokemonDetailDrawer();
 });
-pokemonDetailDrawerBackdropEl.addEventListener("click", () => {
+pokemonDetailDrawerBackdropEl?.addEventListener("click", () => {
   inventoryUiController?.closePokemonDetailDrawer();
 });
 window.addEventListener("keydown", (event) => {
@@ -3444,12 +3683,12 @@ window.addEventListener("keydown", (event) => {
     inventoryUiController?.closePokemonDetailDrawer();
   }
 });
-setupBagPreviewEl.addEventListener("click", (event) => {
+setupBagPreviewEl?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-item-id]");
   if (!button) return;
   selectInventoryItem(button.getAttribute("data-item-id"), button.getAttribute("data-pocket-name"), button.getAttribute("data-storage"));
 });
-setupPcPreviewEl.addEventListener("click", (event) => {
+setupPcPreviewEl?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-item-id]");
   if (!button) return;
   selectInventoryItem(button.getAttribute("data-item-id"), button.getAttribute("data-pocket-name"), button.getAttribute("data-storage"));
@@ -3459,11 +3698,11 @@ window.addEventListener("beforeunload", (event) => {
   event.preventDefault();
   event.returnValue = "";
 });
-pokemonChoiceEl.addEventListener("change", () => {
+pokemonChoiceEl?.addEventListener("change", () => {
   if (!loadedSave) return;
   setSelectedTradePokemon(pokemonChoiceEl.value);
 });
-saveFileEl.addEventListener("change", async () => {
+saveFileEl?.addEventListener("change", async () => {
   const file = saveFileEl.files?.[0];
   if (!file) return;
   if (sessionState.saveLocked || loadedSave) {
@@ -3480,11 +3719,11 @@ saveFileEl.addEventListener("change", async () => {
     };
     sessionState.saveLocked = true;
     saveFileEl.disabled = true;
-    saveSummaryEl.innerHTML = `<span>${loadedSaveHeadline(loadedSave)}</span><strong>${loadedSave.party.length} Pokémon na party</strong>`;
+    if (saveSummaryEl) saveSummaryEl.innerHTML = `<span>${loadedSaveHeadline(loadedSave)}</span><strong>${loadedSave.party.length} Pokémon na party</strong>`;
     
     // Transição automática: esconde o carregamento e mostra a sala
-    setupSaveStageEl.classList.add("setup-stage-hidden");
-    setupRoomStageEl.classList.remove("setup-stage-hidden");
+    setupSaveStageEl?.classList.add("setup-stage-hidden");
+    setupRoomStageEl?.classList.remove("setup-stage-hidden");
     
     setStatus(`Save carregado: ${loadedSave.label}.`);
     log(`Save carregado: ${file.name} (${loadedSave.label}).`);
@@ -3492,7 +3731,7 @@ saveFileEl.addEventListener("change", async () => {
     loadedSave = null;
     sessionState.saveLocked = false;
     saveFileEl.disabled = false;
-    saveSummaryEl.innerHTML = "<span>Nenhum save carregado</span><strong>Arquivo nao suportado ou checksum invalido.</strong>";
+    if (saveSummaryEl) saveSummaryEl.innerHTML = "<span>Nenhum save carregado</span><strong>Arquivo nao suportado ou checksum invalido.</strong>";
     setStatus(error.message);
     log(`Erro ao carregar save: ${error.message}`);
   }
@@ -3502,7 +3741,8 @@ saveFileEl.addEventListener("change", async () => {
   }
 });
 
+initVisualShell();
 updatePokemonOptions();
-activateTab("setup");
+activateTab("menu");
 refreshSessionUi();
 log(`Frontend pronto em ${wsUrl()}`);

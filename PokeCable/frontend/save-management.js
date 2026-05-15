@@ -1,4 +1,5 @@
-window.POKECABLE_SAVE_MANAGEMENT = {
+(function initSaveManagement(root) {
+const api = {
   createSaveManagementController({
     getLoadedSave,
     getSelectedLocation,
@@ -51,6 +52,33 @@ window.POKECABLE_SAVE_MANAGEMENT = {
       return save?.generation === 3 ? 6 : Number(save?.layout?.partyCapacity || 6);
     }
 
+    function boxCapacity(save) {
+      return save?.generation === 3 ? 30 : Number(save?.layout?.boxCapacity || 20);
+    }
+
+    function boxCount(save) {
+      const namedBoxes = Number(save?.boxes?.box_names?.length || 0);
+      const occupiedBoxes = Math.max(0, ...(save?.boxes?.pokemon || []).map((pokemon) => Number(pokemon.box_index || 0) + 1));
+      const defaultBoxes = save?.generation === 1 ? 12 : 14;
+      return Math.max(namedBoxes, occupiedBoxes, defaultBoxes);
+    }
+
+    function firstEmptyBoxLocation(save) {
+      const capacity = boxCapacity(save);
+      const occupied = new Set((save?.boxes?.pokemon || []).map((pokemon) => `box:${Number(pokemon.box_index || 0)}:${Number(pokemon.slot_index || 0)}`));
+      for (let boxIndex = 0; boxIndex < boxCount(save); boxIndex += 1) {
+        for (let slotIndex = 0; slotIndex < capacity; slotIndex += 1) {
+          const location = `box:${boxIndex}:${slotIndex}`;
+          if (!occupied.has(location)) return location;
+        }
+      }
+      return null;
+    }
+
+    function setManagementStatus(message) {
+      if (saveManagementStatusEl) saveManagementStatusEl.textContent = message;
+    }
+
     function updateManagementButtons() {
       const loadedSave = getLoadedSave();
       const selected = pokemonByLocation(loadedSave, getSelectedLocation());
@@ -58,12 +86,18 @@ window.POKECABLE_SAVE_MANAGEMENT = {
       const tradeState = getTradeState?.();
       const pendingMove = Boolean(getPendingMoveSourceLocation());
 
-      startMovePokemonButton.disabled = !canManage || pendingMove || tradeState?.roundActive;
+      if (startMovePokemonButton) {
+        startMovePokemonButton.disabled = !canManage || pendingMove || tradeState?.roundActive;
+      }
       if (cancelMovePokemonButton) {
         cancelMovePokemonButton.hidden = !pendingMove;
       }
-      removeHeldItemButton.disabled = !canManage || loadedSave?.generation === 1 || !selected?.held_item_id;
-      applyHeldItemButton.disabled = !canManage || loadedSave?.generation === 1 || !getSelectedInventoryItem();
+      if (removeHeldItemButton) {
+        removeHeldItemButton.disabled = !canManage || loadedSave?.generation === 1 || !selected?.held_item_id;
+      }
+      if (applyHeldItemButton) {
+        applyHeldItemButton.disabled = !canManage || loadedSave?.generation === 1 || !getSelectedInventoryItem();
+      }
     }
 
     function updateSelectionUi() {
@@ -71,7 +105,7 @@ window.POKECABLE_SAVE_MANAGEMENT = {
       const selected = pokemonByLocation(loadedSave, getSelectedLocation());
       const label = selected ? selected.display_summary || normalizePokemonDisplay(selected) : "Nenhum Pokémon selecionado.";
       const locationText = selected ? locationLabel(selected.location, loadedSave?.boxes) : "Sem localização";
-      tradeSelectedSummaryEl.textContent = label;
+      if (tradeSelectedSummaryEl) tradeSelectedSummaryEl.textContent = label;
       if (setupSelectedSummaryEl) setupSelectedSummaryEl.textContent = label;
       if (setupSelectionDetailEl) {
         setupSelectionDetailEl.textContent = selected
@@ -88,6 +122,7 @@ window.POKECABLE_SAVE_MANAGEMENT = {
     }
 
     function renderPartyPreview(target, mode) {
+      if (!target) return;
       const loadedSave = getLoadedSave();
       const selectedLocation = getSelectedLocation();
       const pendingMoveSourceLocation = getPendingMoveSourceLocation();
@@ -95,17 +130,14 @@ window.POKECABLE_SAVE_MANAGEMENT = {
       if (!loadedSave) return;
 
       const count = partyCapacity(loadedSave);
+      const partySize = Number(loadedSave.party?.length || 0);
       const byIndex = new Map((loadedSave.party || []).filter((item) => !item.is_egg).map((pokemon) => [parseLocation(pokemon.location).index, pokemon]));
-
-      // Limpar instâncias antigas se houver
-      if (target._sortable) {
-        target._sortable.destroy();
-        delete target._sortable;
-      }
 
       for (let index = 0; index < count; index += 1) {
         const location = `party:${index}`;
         const pokemon = byIndex.get(index) || null;
+        const entry = document.createElement("div");
+        entry.className = `team-preview-entry${!pokemon ? " is-empty" : ""}`;
 
         const item = document.createElement("button");
         item.type = "button";
@@ -130,78 +162,29 @@ window.POKECABLE_SAVE_MANAGEMENT = {
         } else if (pendingMoveSourceLocation) {
           meta.textContent = "Clique para mover aqui";
         } else if (pokemon) {
-          meta.textContent = "Arraste para organizar ou clique para selecionar";
+          meta.textContent = "Clique para selecionar";
         } else {
           meta.textContent = "Slot vazio";
         }
         item.append(name, meta);
-        target.append(item);
-      }
+        entry.append(item);
 
-      // Initialize SortableJS
-      if (typeof Sortable !== "undefined" && !pendingMoveSourceLocation) {
-        let originalLocations = [];
-        target._sortable = new Sortable(target, {
-          animation: 150,
-          ghostClass: "sortable-ghost",
-          dragClass: "sortable-drag",
-          filter: ".is-source", // Don't allow dragging the source of a manual move
-          onStart: () => {
-            const tradeState = getTradeState();
-            if (tradeState?.roundActive) {
-              saveManagementStatusEl.textContent = "Não é possível organizar a party enquanto uma oferta de troca está ativa.";
-              return false;
-            }
-            // Capture locations before DOM reordering
-            originalLocations = Array.from(target.children).map(el => el.dataset.pokemonLocation);
-          },
-          onMove: () => {
-            const tradeState = getTradeState();
-            if (tradeState?.roundActive) return false;
-          },
-          onEnd: (evt) => {
-            const { oldIndex, newIndex } = evt;
-            if (oldIndex === newIndex) return;
+        if (pokemon) {
+          const sendToPcButton = document.createElement("button");
+          sendToPcButton.type = "button";
+          sendToPcButton.className = "pokemon-transfer-button";
+          sendToPcButton.textContent = "Enviar ao PC";
+          sendToPcButton.disabled = Boolean(pendingMoveSourceLocation || getTradeState?.()?.roundActive || partySize <= 1);
+          if (partySize <= 1) sendToPcButton.title = "A party precisa manter pelo menos 1 Pokémon.";
+          sendToPcButton.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            sendPartyPokemonToPc(location);
+          });
+          entry.append(sendToPcButton);
+        }
 
-            const sourceLocation = originalLocations[oldIndex];
-            const targetLocation = originalLocations[newIndex];
-
-            if (!sourceLocation || !targetLocation || sourceLocation === targetLocation) {
-              updateSetupPartyPreview();
-              updateTradePartyPreview();
-              return;
-            }
-
-            try {
-              const currentSelected = getSelectedLocation();
-              let newSelectedLocation = currentSelected;
-
-              // Logic to track the selected pokemon
-              if (currentSelected === sourceLocation) {
-                newSelectedLocation = targetLocation;
-              } else if (currentSelected === targetLocation) {
-                newSelectedLocation = sourceLocation;
-              }
-
-              relocatePokemonWithinSave(loadedSave, sourceLocation, targetLocation);
-              saveManagementStatusEl.textContent = `Party organizada: ${locationLabel(sourceLocation, loadedSave?.boxes)} ↔ ${locationLabel(targetLocation, loadedSave?.boxes)}.`;
-
-              syncAfterSaveMutation?.();
-
-              if (newSelectedLocation && (newSelectedLocation === sourceLocation || newSelectedLocation === targetLocation)) {
-                setSelectedTradePokemon(newSelectedLocation);
-              } else {
-                updateSelectionUi();
-                updateSetupPartyPreview();
-                updateTradePartyPreview();
-              }
-            } catch (error) {
-              saveManagementStatusEl.textContent = error.message || String(error);
-              updateSetupPartyPreview();
-              updateTradePartyPreview();
-            }
-          }
-        });
+        target.append(entry);
       }
     }
 
@@ -234,7 +217,7 @@ window.POKECABLE_SAVE_MANAGEMENT = {
       const tradeState = getTradeState();
       if (pendingMoveSourceLocation && pendingMoveSourceLocation !== location) {
         if (tradeState?.roundActive) {
-          saveManagementStatusEl.textContent = "Não é possível mover Pokémon enquanto uma oferta de troca está ativa.";
+          setManagementStatus("Não é possível mover Pokémon enquanto uma oferta de troca está ativa.");
           setPendingMoveSourceLocation(null);
           updateSelectionUi();
           updateSetupPartyPreview();
@@ -257,7 +240,7 @@ window.POKECABLE_SAVE_MANAGEMENT = {
           }
 
           relocatePokemonWithinSave(loadedSave, pendingMoveSourceLocation, location);
-          saveManagementStatusEl.textContent = `Pokémon movido: ${locationLabel(pendingMoveSourceLocation, loadedSave?.boxes)} → ${locationLabel(location, loadedSave?.boxes)}.`;
+          setManagementStatus(`Pokémon movido: ${locationLabel(pendingMoveSourceLocation, loadedSave?.boxes)} → ${locationLabel(location, loadedSave?.boxes)}.`);
           setPendingMoveSourceLocation(null);
 
           syncAfterSaveMutation?.();
@@ -274,7 +257,7 @@ window.POKECABLE_SAVE_MANAGEMENT = {
           if (tab) activateTab(tab);
           return;
         } catch (error) {
-          saveManagementStatusEl.textContent = error.message || String(error);
+          setManagementStatus(error.message || String(error));
           setPendingMoveSourceLocation(null);
           updateSelectionUi();
           updateSetupPartyPreview();
@@ -287,12 +270,52 @@ window.POKECABLE_SAVE_MANAGEMENT = {
       if (tab) activateTab(tab);
     }
 
+    function movePokemonDirectly(sourceLocation, targetLocation, successMessage) {
+      const loadedSave = getLoadedSave();
+      if (!loadedSave || !sourceLocation || !targetLocation) return;
+      if (getTradeState?.()?.roundActive) {
+        setManagementStatus("Não é possível mover Pokémon enquanto uma oferta de troca está ativa.");
+        return;
+      }
+      try {
+        setPendingMoveSourceLocation(null);
+        relocatePokemonWithinSave(loadedSave, sourceLocation, targetLocation);
+        setManagementStatus(successMessage);
+        syncAfterSaveMutation?.();
+        setSelectedTradePokemon(targetLocation);
+      } catch (error) {
+        setManagementStatus(error.message || String(error));
+        updateSelectionUi();
+        updateSetupPartyPreview();
+        updateTradePartyPreview();
+        syncTransientUi?.();
+      }
+    }
+
+    function sendPartyPokemonToPc(sourceLocation) {
+      const loadedSave = getLoadedSave();
+      if (Number(loadedSave?.party?.length || 0) <= 1) {
+        setManagementStatus("A party precisa manter pelo menos 1 Pokémon.");
+        return;
+      }
+      const targetLocation = firstEmptyBoxLocation(loadedSave);
+      if (!targetLocation) {
+        setManagementStatus("Não há espaço livre no PC Pokémon.");
+        return;
+      }
+      movePokemonDirectly(
+        sourceLocation,
+        targetLocation,
+        `Pokémon enviado ao PC: ${locationLabel(sourceLocation, loadedSave?.boxes)} → ${locationLabel(targetLocation, loadedSave?.boxes)}.`
+      );
+    }
+
     function startMovePokemon() {
       const loadedSave = getLoadedSave();
       const selected = pokemonByLocation(loadedSave, getSelectedLocation());
       if (!selected) return;
       setPendingMoveSourceLocation(selected.location);
-      saveManagementStatusEl.textContent = `Movimentação armada a partir de ${locationLabel(selected.location, loadedSave?.boxes)}. Clique no destino para mover ou trocar.`;
+      setManagementStatus(`Movimentação armada a partir de ${locationLabel(selected.location, loadedSave?.boxes)}. Clique no destino para mover ou trocar.`);
       updateSelectionUi();
       updateSetupPartyPreview();
       updateTradePartyPreview();
@@ -301,7 +324,7 @@ window.POKECABLE_SAVE_MANAGEMENT = {
 
     function cancelMovePokemon() {
       setPendingMoveSourceLocation(null);
-      saveManagementStatusEl.textContent = "Movimentação cancelada.";
+      setManagementStatus("Movimentação cancelada.");
       updateSelectionUi();
       updateSetupPartyPreview();
       updateTradePartyPreview();
@@ -316,7 +339,7 @@ window.POKECABLE_SAVE_MANAGEMENT = {
       ) || null;
       setSelectedInventoryItem(selectedInventoryItem);
       if (selectedInventoryItem) {
-        saveManagementStatusEl.textContent = `Item selecionado: ${selectedInventoryItem.item_name}. Selecione um Pokémon para equipar.`;
+        setManagementStatus(`Item selecionado: ${selectedInventoryItem.item_name}. Selecione um Pokémon para equipar.`);
       }
       syncTransientUi?.();
       updateSelectionUi();
@@ -337,7 +360,7 @@ window.POKECABLE_SAVE_MANAGEMENT = {
       if (!stored) throw new Error("Sem espaço na mochila nem no PC para remover o item.");
       clearHeldItemInSave(loadedSave, selected.location);
       refreshLoadedSaveCollections(loadedSave);
-      saveManagementStatusEl.textContent = `Item removido de ${locationLabel(selected.location, loadedSave?.boxes)} e enviado para ${stored.storage === "pc" ? "PC" : "mochila"} (${stored.pocket_name}).`;
+      setManagementStatus(`Item removido de ${locationLabel(selected.location, loadedSave?.boxes)} e enviado para ${stored.storage === "pc" ? "PC" : "mochila"} (${stored.pocket_name}).`);
       syncAfterSaveMutation?.();
     }
 
@@ -365,7 +388,7 @@ window.POKECABLE_SAVE_MANAGEMENT = {
       const appliedName = selectedInventoryItem.item_name;
       setSelectedInventoryItem(null);
       refreshLoadedSaveCollections(loadedSave);
-      saveManagementStatusEl.textContent = `${appliedName} equipado em ${locationLabel(selected.location, loadedSave?.boxes)}.`;
+      setManagementStatus(`${appliedName} equipado em ${locationLabel(selected.location, loadedSave?.boxes)}.`);
       syncAfterSaveMutation?.();
     }
 
@@ -384,3 +407,9 @@ window.POKECABLE_SAVE_MANAGEMENT = {
     };
   }
 };
+
+root.POKECABLE_SAVE_MANAGEMENT = api;
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = api;
+}
+})(typeof window !== "undefined" ? window : globalThis);
