@@ -31,7 +31,11 @@ if DEBUG:
     logger.setLevel(logging.DEBUG)
 
 
-DEFAULT_BACKEND_WS = "ws://127.0.0.1:8000/ws"
+DEFAULT_BACKEND_WS = "wss://9kernel.vps-kinghost.net/ws"
+LOCAL_BACKEND_WS_VALUES = {
+    "ws://127.0.0.1:8000/ws",
+    "ws://localhost:8000/ws",
+}
 DEFAULT_LANGUAGE = "pt"
 DEFAULT_THEME = "pokedex_dark"
 SUPPORTED_LANGUAGES = {"pt", "en", "es"}
@@ -167,11 +171,18 @@ class PokecableState:
         return deduped
 
     def _load_server_url(self) -> str:
+        env_url = os.getenv("POKECABLE_SERVER_URL", "").strip()
+        if env_url:
+            logger.info("Loaded server URL from POKECABLE_SERVER_URL: %s", env_url)
+            return env_url
         config_file = self.config_dir / "server.conf"
         if config_file.exists():
             try:
                 url = config_file.read_text().strip()
                 if url:
+                    if url in LOCAL_BACKEND_WS_VALUES:
+                        logger.info("Migrating local default server URL to public server: %s", DEFAULT_BACKEND_WS)
+                        return DEFAULT_BACKEND_WS
                     logger.info("Loaded server URL from config: %s", url)
                     return url
             except Exception as exc:

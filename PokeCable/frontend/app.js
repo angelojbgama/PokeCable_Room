@@ -1,4 +1,5 @@
 window.POKECABLE_TRADE_EVOLUTION_ENABLED = true;
+window.POKECABLE_PUBLIC_SERVER_URL = window.POKECABLE_PUBLIC_SERVER_URL || "https://9kernel.vps-kinghost.net";
 
 const statusEl = document.querySelector("#connectionStatus");
 const tradeStatusEl = document.querySelector("#tradeStatus");
@@ -1199,15 +1200,11 @@ function refreshSessionUi() {
 }
 
 function wsUrl() {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  // Se estiver rodando localmente na porta 8080 (servidor estático), 
-  // tenta conectar no backend na porta 8000 por padrão.
-  if (window.location.port === "8080" || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
-    if (window.location.port === "8080") {
-      return `${protocol}//${window.location.hostname}:8000/ws`;
-    }
-  }
-  return `${protocol}//${window.location.host}/ws`;
+  const publicServer = String(window.POKECABLE_PUBLIC_SERVER_URL || "https://9kernel.vps-kinghost.net").replace(/\/+$/, "");
+  const localHost = ["localhost", "127.0.0.1", ""].includes(window.location.hostname);
+  const isStaticLocal = localHost || window.location.protocol === "file:";
+  const base = isStaticLocal ? publicServer : `${window.location.protocol}//${window.location.host}`;
+  return `${base.replace(/^https:/, "wss:").replace(/^http:/, "ws:")}/ws`;
 }
 
 const wsClient = wsClientModule?.createWsClient({
