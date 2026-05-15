@@ -84,7 +84,13 @@ class BaseConverter:
         self, converted: CanonicalPokemon, report: CompatibilityReport, resolved_moves: dict[int, int] | None = None
     ) -> None:
         if converted.species is not None:
-            converted.species.target_species_id = report.normalized_species.get("target_species_id")
+            target_species_id = report.normalized_species.get("target_species_id")
+            if target_species_id is None:
+                if report.compatible:
+                    report.compatible = False
+                    report.blocking_reasons.append("target_species_id ausente: especie nao mapeada na geracao destino.")
+                return
+            converted.species.target_species_id = target_species_id
             converted.species.target_species_id_space = report.normalized_species.get("target_species_id_space")
         
         removed_move_ids = {int(move["move_id"]) for move in report.removed_moves if move.get("move_id") is not None}

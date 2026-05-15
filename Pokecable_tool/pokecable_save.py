@@ -768,6 +768,402 @@ class SaveModel:
             "metadata": {"format": raw_format, "source": "r36s-local-save", "location": location},
         }
 
+    def _count_total_pokemon(self) -> int:
+        return len(self.party) + len(self.boxes)
+
+    def _restore_snapshot(self, snapshot: bytes) -> None:
+        self.bytes = bytearray(snapshot)
+        try:
+            self.refresh()
+        except Exception as exc:
+            logger.exception("Failed to refresh after snapshot rollback: %s", exc)
+
+    def deposit_party_to_pc(self, party_index: int) -> Dict[str, Any]:
+        """Move o Pokemon da Party[party_index] para o primeiro slot livre do PC.
+
+        Levanta SaveError quando a Party ficaria vazia ou o PC nao tem espaco.
+        Retorna {"box_index", "slot_index", "species_name"}.
+        Opera de forma atomica: em qualquer falha, restaura snapshot dos bytes.
+        """
+        if party_index < 0 or party_index >= len(self.party):
+            raise SaveError("Slot da Party invalido.")
+        if len(self.party) <= 1:
+            raise SaveError("A Party nao pode ficar vazia. Adicione outro Pokemon antes de mover.")
+        species_name = str(self.party[party_index].get("species_name") or "Pokemon")
+        snapshot = bytes(self.bytes)
+        before_total = self._count_total_pokemon()
+        try:
+            if self.generation == 1:
+                box_index, slot_index = self._deposit_gen1_party_to_pc(party_index)
+            elif self.generation == 2:
+                box_index, slot_index = self._deposit_gen2_party_to_pc(party_index)
+            elif self.generation == 3:
+                box_index, slot_index = self._deposit_gen3_party_to_pc(party_index)
+            else:
+                raise SaveError(f"Geracao nao suportada para deposito: {self.generation}")
+            self.refresh()
+            after_total = self._count_total_pokemon()
+            if after_total != before_total:
+                raise SaveError(f"Inconsistencia pos-deposito: total mudou de {before_total} para {after_total}.")
+        except Exception:
+            self._restore_snapshot(snapshot)
+            raise
+        logger.info(
+            "Deposit party[%s] -> box[%s]:slot[%s] (%s) total=%s",
+            party_index,
+            box_index,
+            slot_index,
+            species_name,
+            after_total,
+        )
+        return {"box_index": box_index, "slot_index": slot_index, "species_name": species_name}
+
+    def _sync_gen1_current_box_to_stored(self, box_index: int) -> None:
+        if box_index != self.current_box:
+            return
+        if not (0 <= self.current_box < GEN1["box_count"]):
+            return
+        current = GEN1["current_box_data_offset"]
+        stored = GEN1["stored_box_offsets"][self.current_box]
+        size = GEN1["box_data_size"]
+        self.bytes[stored:stored + size] = bytes(self.bytes[current:current + size])
+        self.bytes[GEN1["checksum_offset"]] = gen1_checksum(self.bytes)
+
+    def _sync_gen2_current_box_to_stored(self, box_index: int) -> None:
+        if box_index != self.current_box:
+            return
+        if not (0 <= self.current_box < self.layout["box_count"]):
+            return
+        current = self.layout["current_box_data_offset"]
+        stored = self.layout["stored_box_offsets"][self.current_box]
+        size = 0x450
+        self.bytes[stored:stored + size] = bytes(self.bytes[current:current + size])
+        write_gen2_checksums(self.bytes, self.layout)
+
+    def _find_empty_gen1_box_slot(self) -> Optional[tuple[int, int]]:
+        for box_index in range(GEN1["box_count"]):
+            count, _, _ = self._gen1_box_header(box_index)
+            if count < GEN1["box_capacity"]:
+                return box_index, count
+        return None
+
+    def _find_empty_gen2_box_slot(self) -> Optional[tuple[int, int]]:
+        for box_index in range(self.layout["box_count"]):
+            count, _, _ = self._gen2_box_header(box_index)
+            if count < self.layout["box_capacity"]:
+                return box_index, count
+        return None
+
+    def _find_empty_gen3_box_slot(self) -> Optional[tuple[int, int]]:
+        for box_index in range(GEN3["box_count"]):
+            for slot_index in range(GEN3["box_capacity"]):
+                raw = self._read_gen3_box_data(box_index, slot_index)
+                if not any(raw):
+                    return box_index, slot_index
+        return None
+
+    def _deposit_gen1_party_to_pc(self, party_index: int) -> tuple[int, int]:
+        target = self._find_empty_gen1_box_slot()
+        if target is None:
+            raise SaveError("PC sem espaco.")
+        box_index, slot_index = target
+        mon, ot, nick = self._read_gen1_party_data(party_index)
+        truncated = mon[: GEN1["box_mon_size"]]
+        # Increment box count + add species list + place terminator (do this before writing checksum)
+        _, _, box_offset = self._gen1_box_header(box_index)
+        old_count = int(self.bytes[box_offset])
+        self.bytes[box_offset] = old_count + 1
+        self.bytes[box_offset + 1 + (old_count + 1)] = 0xFF
+        self._write_gen1_box_data(box_index, slot_index, truncated, ot, nick)
+        self._sync_gen1_current_box_to_stored(box_index)
+        self._compact_gen1_party(party_index)
+        return box_index, slot_index
+
+    def _deposit_gen2_party_to_pc(self, party_index: int) -> tuple[int, int]:
+        target = self._find_empty_gen2_box_slot()
+        if target is None:
+            raise SaveError("PC sem espaco.")
+        box_index, slot_index = target
+        mon, ot, nick = self._read_gen2_party_data(party_index)
+        truncated = mon[: self.layout["box_mon_size"]]
+        _, _, box_offset = self._gen2_box_header(box_index)
+        old_count = int(self.bytes[box_offset])
+        self.bytes[box_offset] = old_count + 1
+        self.bytes[box_offset + 1 + (old_count + 1)] = 0xFF
+        self._write_gen2_box_data(box_index, slot_index, truncated, ot, nick)
+        self._sync_gen2_current_box_to_stored(box_index)
+        self._compact_gen2_party(party_index)
+        return box_index, slot_index
+
+    def _deposit_gen3_party_to_pc(self, party_index: int) -> tuple[int, int]:
+        target = self._find_empty_gen3_box_slot()
+        if target is None:
+            raise SaveError("PC sem espaco.")
+        box_index, slot_index = target
+        raw = self._read_gen3_party_data(party_index)
+        truncated = raw[: GEN3["box_mon_size"]]
+        self._write_gen3_box_data(box_index, slot_index, truncated)
+        self._compact_gen3_party(party_index)
+        return box_index, slot_index
+
+    def _compact_gen1_party(self, party_index: int) -> None:
+        count = int(self.bytes[GEN1["party_offset"]])
+        if count <= 0:
+            return
+        data_off = GEN1["data_offset"]
+        ot_off = GEN1["ot_offset"]
+        nick_off = GEN1["nick_offset"]
+        mon_sz = GEN1["mon_size"]
+        nm_sz = GEN1["name_size"]
+        species_base = GEN1["party_offset"] + 1
+        for j in range(party_index, count - 1):
+            src = j + 1
+            self.bytes[species_base + j] = self.bytes[species_base + src]
+            self.bytes[data_off + j * mon_sz : data_off + (j + 1) * mon_sz] = bytes(
+                self.bytes[data_off + src * mon_sz : data_off + (src + 1) * mon_sz]
+            )
+            self.bytes[ot_off + j * nm_sz : ot_off + (j + 1) * nm_sz] = bytes(
+                self.bytes[ot_off + src * nm_sz : ot_off + (src + 1) * nm_sz]
+            )
+            self.bytes[nick_off + j * nm_sz : nick_off + (j + 1) * nm_sz] = bytes(
+                self.bytes[nick_off + src * nm_sz : nick_off + (src + 1) * nm_sz]
+            )
+        last = count - 1
+        self.bytes[species_base + last] = 0xFF
+        self.bytes[data_off + last * mon_sz : data_off + (last + 1) * mon_sz] = b"\x00" * mon_sz
+        self.bytes[ot_off + last * nm_sz : ot_off + (last + 1) * nm_sz] = b"\x00" * nm_sz
+        self.bytes[nick_off + last * nm_sz : nick_off + (last + 1) * nm_sz] = b"\x00" * nm_sz
+        self.bytes[GEN1["party_offset"]] = count - 1
+        self.bytes[GEN1["checksum_offset"]] = gen1_checksum(self.bytes)
+
+    def _compact_gen2_party(self, party_index: int) -> None:
+        count = int(self.bytes[self.layout["party_offset"]])
+        if count <= 0:
+            return
+        data_off = self.layout["data_offset"]
+        ot_off = self.layout["ot_offset"]
+        nick_off = self.layout["nick_offset"]
+        mon_sz = self.layout["mon_size"]
+        nm_sz = self.layout["name_size"]
+        species_base = self.layout["party_offset"] + 1
+        for j in range(party_index, count - 1):
+            src = j + 1
+            self.bytes[species_base + j] = self.bytes[species_base + src]
+            self.bytes[data_off + j * mon_sz : data_off + (j + 1) * mon_sz] = bytes(
+                self.bytes[data_off + src * mon_sz : data_off + (src + 1) * mon_sz]
+            )
+            self.bytes[ot_off + j * nm_sz : ot_off + (j + 1) * nm_sz] = bytes(
+                self.bytes[ot_off + src * nm_sz : ot_off + (src + 1) * nm_sz]
+            )
+            self.bytes[nick_off + j * nm_sz : nick_off + (j + 1) * nm_sz] = bytes(
+                self.bytes[nick_off + src * nm_sz : nick_off + (src + 1) * nm_sz]
+            )
+        last = count - 1
+        self.bytes[species_base + last] = 0xFF
+        self.bytes[data_off + last * mon_sz : data_off + (last + 1) * mon_sz] = b"\x00" * mon_sz
+        self.bytes[ot_off + last * nm_sz : ot_off + (last + 1) * nm_sz] = b"\x00" * nm_sz
+        self.bytes[nick_off + last * nm_sz : nick_off + (last + 1) * nm_sz] = b"\x00" * nm_sz
+        self.bytes[self.layout["party_offset"]] = count - 1
+        write_gen2_checksums(self.bytes, self.layout)
+
+    def _compact_gen3_party(self, party_index: int) -> None:
+        if not self.slot:
+            raise SaveError("Slot Gen 3 nao detectado.")
+        section1 = self.slot["section_offsets"][1]
+        count_addr = section1 + self.layout["party_count_offset"]
+        count = int(self.bytes[count_addr])
+        if count <= 0:
+            return
+        base = section1 + self.layout["party_offset"]
+        mon_sz = GEN3["mon_size"]
+        for j in range(party_index, count - 1):
+            src = j + 1
+            self.bytes[base + j * mon_sz : base + (j + 1) * mon_sz] = bytes(
+                self.bytes[base + src * mon_sz : base + (src + 1) * mon_sz]
+            )
+        last = count - 1
+        self.bytes[base + last * mon_sz : base + (last + 1) * mon_sz] = b"\x00" * mon_sz
+        self.bytes[count_addr] = count - 1
+        write_u16(self.bytes, section1 + 0xFF6, gen3_sector_checksum(self.bytes, section1))
+
+    def withdraw_box_to_party(self, box_index: int, slot_index: int) -> Dict[str, Any]:
+        """Retira o Pokemon do PC[box_index][slot_index] para o primeiro slot livre da Party.
+
+        Levanta SaveError quando a Party esta cheia ou o slot esta vazio.
+        Retorna {"party_index", "species_name"}.
+        """
+        if self.generation == 1:
+            party_capacity = GEN1["party_capacity"]
+            party_count = int(self.bytes[GEN1["party_offset"]])
+        elif self.generation == 2:
+            party_capacity = self.layout["party_capacity"]
+            party_count = int(self.bytes[self.layout["party_offset"]])
+        elif self.generation == 3:
+            party_capacity = GEN3["party_capacity"]
+            if not self.slot:
+                raise SaveError("Slot Gen 3 nao detectado.")
+            section1 = self.slot["section_offsets"][1]
+            party_count = int(self.bytes[section1 + self.layout["party_count_offset"]])
+        else:
+            raise SaveError(f"Geracao nao suportada para retirada: {self.generation}")
+        if party_count >= party_capacity:
+            raise SaveError("Party esta cheia. Mova um Pokemon para o PC antes de retirar.")
+        target_pokemon = self.pokemon_by_location(f"box:{box_index}:{slot_index}")
+        if not target_pokemon:
+            raise SaveError("Slot do PC esta vazio.")
+        species_name = str(target_pokemon.get("species_name") or "Pokemon")
+        snapshot = bytes(self.bytes)
+        before_total = self._count_total_pokemon()
+        try:
+            if self.generation == 1:
+                self._withdraw_gen1_box_to_party(box_index, slot_index, party_count)
+            elif self.generation == 2:
+                self._withdraw_gen2_box_to_party(box_index, slot_index, party_count)
+            else:
+                self._withdraw_gen3_box_to_party(box_index, slot_index, party_count)
+            self.refresh()
+            after_total = self._count_total_pokemon()
+            if after_total != before_total:
+                raise SaveError(f"Inconsistencia pos-retirada: total mudou de {before_total} para {after_total}.")
+        except Exception:
+            self._restore_snapshot(snapshot)
+            raise
+        logger.info(
+            "Withdraw box[%s]:slot[%s] -> party[%s] (%s) total=%s",
+            box_index,
+            slot_index,
+            party_count,
+            species_name,
+            after_total,
+        )
+        return {"party_index": party_count, "species_name": species_name}
+
+    def _compact_gen1_box(self, box_index: int, slot_index: int) -> None:
+        _, _, offset = self._gen1_box_header(box_index)
+        count = int(self.bytes[offset])
+        if count <= 0:
+            return
+        mon_sz = GEN1["box_mon_size"]
+        nm_sz = GEN1["name_size"]
+        species_base = offset + 1
+        data_base = offset + 0x16
+        ot_base = offset + GEN1["box_ot_offset"]
+        nick_base = offset + GEN1["box_nick_offset"]
+        for j in range(slot_index, count - 1):
+            src = j + 1
+            self.bytes[species_base + j] = self.bytes[species_base + src]
+            self.bytes[data_base + j * mon_sz : data_base + (j + 1) * mon_sz] = bytes(
+                self.bytes[data_base + src * mon_sz : data_base + (src + 1) * mon_sz]
+            )
+            self.bytes[ot_base + j * nm_sz : ot_base + (j + 1) * nm_sz] = bytes(
+                self.bytes[ot_base + src * nm_sz : ot_base + (src + 1) * nm_sz]
+            )
+            self.bytes[nick_base + j * nm_sz : nick_base + (j + 1) * nm_sz] = bytes(
+                self.bytes[nick_base + src * nm_sz : nick_base + (src + 1) * nm_sz]
+            )
+        last = count - 1
+        self.bytes[species_base + last] = 0xFF
+        self.bytes[data_base + last * mon_sz : data_base + (last + 1) * mon_sz] = b"\x00" * mon_sz
+        self.bytes[ot_base + last * nm_sz : ot_base + (last + 1) * nm_sz] = b"\x00" * nm_sz
+        self.bytes[nick_base + last * nm_sz : nick_base + (last + 1) * nm_sz] = b"\x00" * nm_sz
+        self.bytes[offset] = count - 1
+        self.bytes[GEN1["checksum_offset"]] = gen1_checksum(self.bytes)
+        self._sync_gen1_current_box_to_stored(box_index)
+
+    def _compact_gen2_box(self, box_index: int, slot_index: int) -> None:
+        _, _, offset = self._gen2_box_header(box_index)
+        count = int(self.bytes[offset])
+        if count <= 0:
+            return
+        mon_sz = self.layout["box_mon_size"]
+        nm_sz = self.layout["name_size"]
+        species_base = offset + 1
+        data_base = offset + 0x16
+        ot_base = offset + self.layout["box_ot_offset"]
+        nick_base = offset + self.layout["box_nick_offset"]
+        for j in range(slot_index, count - 1):
+            src = j + 1
+            self.bytes[species_base + j] = self.bytes[species_base + src]
+            self.bytes[data_base + j * mon_sz : data_base + (j + 1) * mon_sz] = bytes(
+                self.bytes[data_base + src * mon_sz : data_base + (src + 1) * mon_sz]
+            )
+            self.bytes[ot_base + j * nm_sz : ot_base + (j + 1) * nm_sz] = bytes(
+                self.bytes[ot_base + src * nm_sz : ot_base + (src + 1) * nm_sz]
+            )
+            self.bytes[nick_base + j * nm_sz : nick_base + (j + 1) * nm_sz] = bytes(
+                self.bytes[nick_base + src * nm_sz : nick_base + (src + 1) * nm_sz]
+            )
+        last = count - 1
+        self.bytes[species_base + last] = 0xFF
+        self.bytes[data_base + last * mon_sz : data_base + (last + 1) * mon_sz] = b"\x00" * mon_sz
+        self.bytes[ot_base + last * nm_sz : ot_base + (last + 1) * nm_sz] = b"\x00" * nm_sz
+        self.bytes[nick_base + last * nm_sz : nick_base + (last + 1) * nm_sz] = b"\x00" * nm_sz
+        self.bytes[offset] = count - 1
+        write_gen2_checksums(self.bytes, self.layout)
+        self._sync_gen2_current_box_to_stored(box_index)
+
+    def _level_from_experience_gen1(self, species_id: int, experience: int) -> int:
+        try:
+            _ensure_backend_import_path()
+            from data.species import native_to_national
+            from data.growth_rates import level_from_species_experience
+            ndex = int(native_to_national(1, int(species_id)) or 0)
+            if ndex:
+                return max(1, min(100, int(level_from_species_experience(ndex, int(experience)))))
+        except Exception as exc:
+            logger.debug("Level-from-exp Gen1 failed: %s", exc)
+        return 1
+
+    def _level_from_experience_gen2(self, species_id: int, experience: int) -> int:
+        try:
+            _ensure_backend_import_path()
+            from data.growth_rates import level_from_species_experience
+            return max(1, min(100, int(level_from_species_experience(int(species_id), int(experience)))))
+        except Exception as exc:
+            logger.debug("Level-from-exp Gen2 failed: %s", exc)
+        return 1
+
+    def _withdraw_gen1_box_to_party(self, box_index: int, slot_index: int, party_index: int) -> None:
+        box_mon, ot, nick = self._read_gen1_box_data(box_index, slot_index)
+        experience = (box_mon[0x0E] << 16) | (box_mon[0x0F] << 8) | box_mon[0x10]
+        level = self._level_from_experience_gen1(box_mon[0], experience)
+        party_mon = bytearray(GEN1["mon_size"])
+        party_mon[: GEN1["box_mon_size"]] = box_mon
+        party_mon[0x21] = level
+        party_count = int(self.bytes[GEN1["party_offset"]])
+        self.bytes[GEN1["party_offset"]] = party_count + 1
+        self.bytes[GEN1["party_offset"] + 1 + (party_count + 1)] = 0xFF
+        self._write_gen1_party_data(party_index, bytes(party_mon), ot, nick)
+        self._compact_gen1_box(box_index, slot_index)
+
+    def _withdraw_gen2_box_to_party(self, box_index: int, slot_index: int, party_index: int) -> None:
+        box_mon, ot, nick = self._read_gen2_box_data(box_index, slot_index)
+        experience = (box_mon[0x08] << 16) | (box_mon[0x09] << 8) | box_mon[0x0A]
+        level = self._level_from_experience_gen2(box_mon[0], experience)
+        party_mon = bytearray(self.layout["mon_size"])
+        party_mon[: self.layout["box_mon_size"]] = box_mon
+        party_mon[0x1F] = level
+        party_count = int(self.bytes[self.layout["party_offset"]])
+        self.bytes[self.layout["party_offset"]] = party_count + 1
+        self.bytes[self.layout["party_offset"] + 1 + (party_count + 1)] = 0xFF
+        self._write_gen2_party_data(party_index, bytes(party_mon), ot, nick)
+        self._compact_gen2_box(box_index, slot_index)
+
+    def _withdraw_gen3_box_to_party(self, box_index: int, slot_index: int, party_index: int) -> None:
+        raw = self._read_gen3_box_data(box_index, slot_index)
+        target = self.pokemon_by_location(f"box:{box_index}:{slot_index}") or {}
+        promoted = self._promote_gen3_box_to_party(raw, target)
+        self._write_gen3_party_data(party_index, promoted)
+        if not self.slot:
+            raise SaveError("Slot Gen 3 nao detectado.")
+        section1 = self.slot["section_offsets"][1]
+        count_addr = section1 + self.layout["party_count_offset"]
+        self.bytes[count_addr] = int(self.bytes[count_addr]) + 1
+        write_u16(self.bytes, section1 + 0xFF6, gen3_sector_checksum(self.bytes, section1))
+        # Clear box slot (Gen 3 boxes don't compact)
+        empty = b"\x00" * GEN3["box_mon_size"]
+        self._write_gen3_box_data(box_index, slot_index, empty)
+
     def apply_payload(
         self,
         location: str,
@@ -804,6 +1200,42 @@ class SaveModel:
             parser = {1: Gen1Parser, 2: Gen2Parser, 3: Gen3Parser}.get(self.generation)
             if parser is None:
                 raise SaveError("Geração de destino não suportada para conversão.")
+            # Pre-evoluir o canonical (se houver trade evolution) antes do converter escrever.
+            # Isto resolve o bug de nicknames trocados em cross-gen: o converter+parser
+            # cuidam de re-encodar nickname/species no charmap correto da gen destino.
+            applied_evolution: Optional[Dict[str, Any]] = None
+            if (
+                trade_evolution
+                and bool(trade_evolution.get("evolved"))
+                and not cancel_trade_evolution
+            ):
+                try:
+                    from data.species import native_to_national
+                    evo_gen = int(trade_evolution.get("generation") or canonical.source_generation or 0)
+                    target_native = int(trade_evolution.get("target_species_id") or 0)
+                    target_national = int(native_to_national(evo_gen, target_native) or 0) if target_native else 0
+                except Exception as exc:
+                    logger.warning("Cross-gen evolution lookup failed: %s", exc)
+                    target_national = 0
+                source_name = str(trade_evolution.get("source_name") or "")
+                target_name = str(trade_evolution.get("target_name") or "")
+                if target_national > 0 and target_name:
+                    old_species_name = getattr(canonical.species, "name", "") or ""
+                    canonical.species.national_dex_id = target_national
+                    canonical.species.name = target_name
+                    nick_match = nickname_matches_species(canonical.nickname or "", old_species_name) or \
+                        nickname_matches_species(canonical.nickname or "", source_name)
+                    if nick_match:
+                        canonical.nickname = target_name.upper()
+                    applied_evolution = {
+                        "evolved": True,
+                        "source_name": source_name or old_species_name,
+                        "target_name": target_name,
+                        "generation": self.generation,
+                        "source_species_id": trade_evolution.get("source_species_id"),
+                        "target_species_id": target_national,
+                    }
+                    logger.info("Cross-gen pre-evolved canonical: %s -> %s", source_name, target_name)
             try:
                 with tempfile.TemporaryDirectory(prefix="pokecable_xgen_") as tmpdir:
                     tmp_path = Path(tmpdir) / f"trade{self.path.suffix or '.sav'}"
@@ -819,7 +1251,10 @@ class SaveModel:
                     )
                     target_parser.save(tmp_path)
                     self.bytes = bytearray(tmp_path.read_bytes())
-                evolution = self._apply_trade_evolution_decision(parsed, trade_evolution or {}, cancel_trade_evolution)
+                if applied_evolution is not None:
+                    evolution = applied_evolution
+                else:
+                    evolution = self._apply_trade_evolution_decision(parsed, trade_evolution or {}, cancel_trade_evolution)
                 self.refresh()
                 result = self.pokemon_by_location(location) or {}
                 if evolution:

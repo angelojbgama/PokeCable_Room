@@ -42,9 +42,7 @@ class RoomManager:
         self.max_rooms = max_rooms or int(os.getenv("MAX_ROOMS", "200"))
         configured_modes = enabled_trade_modes
         if configured_modes is None:
-            configured_modes = os.getenv("ENABLED_TRADE_MODES", "")
-            if not configured_modes and os.getenv("ALLOW_CROSS_GENERATION", "false").lower() in {"1", "true", "yes", "on"}:
-                configured_modes = [TIME_CAPSULE_GEN1_GEN2, FORWARD_TRANSFER_TO_GEN3, LEGACY_DOWNCONVERT_EXPERIMENTAL]
+            configured_modes = [TIME_CAPSULE_GEN1_GEN2, FORWARD_TRANSFER_TO_GEN3, LEGACY_DOWNCONVERT_EXPERIMENTAL]
         self.enabled_trade_modes = self._normalize_enabled_trade_modes(configured_modes)
         self.rooms: dict[str, Room] = {}
         self.client_rooms: dict[str, tuple[str, PlayerSlot]] = {}
@@ -263,6 +261,8 @@ class RoomManager:
             room.preflight_errors[slot] = str(error or "")
             room.confirmations[slot] = False
             blocked = not bool(compatible)
+            # `ready` so vira True quando AMBOS os peers reportaram preflight ok;
+            # o primeiro a chegar sempre ve ready=False (aguardando o outro).
             ready = not blocked and room.has_both_preflight_ok()
             reports = {key: dict(value or {}) for key, value in room.preflight_reports.items()}
             if blocked:

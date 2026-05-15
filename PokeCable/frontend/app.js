@@ -3404,7 +3404,7 @@ confirmButton.addEventListener("click", () => {
   } else {
     // Estágio 2: Confirmar troca
     confirmButton.disabled = true;
-    send({ type: "confirm_trade" });
+    send({ type: "confirm_trade", resolved_moves: tradeState.pendingMoveReplacements || {} });
   }
 });
 cancelButton.addEventListener("click", () => {

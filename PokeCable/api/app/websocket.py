@@ -33,6 +33,15 @@ class ConnectionHub:
                 await self._handle_message(client_id, message)
         except WebSocketDisconnect:
             await self._disconnect(client_id)
+        except RuntimeError as exc:
+            msg = str(exc).lower()
+            if "not connected" in msg or "disconnect" in msg:
+                logger.info("websocket disconnected before receive (client_id=%s)", client_id)
+                await self._disconnect(client_id)
+            else:
+                logger.exception("Unexpected websocket runtime error for client_id=%s", client_id)
+                await self._safe_send(client_id, {"type": "error", "code": "internal_error", "message": str(exc)})
+                await self._disconnect(client_id)
         except Exception as exc:
             logger.exception("Unexpected websocket error for client_id=%s", client_id)
             await self._safe_send(client_id, {"type": "error", "code": "internal_error", "message": str(exc)})
@@ -159,6 +168,10 @@ class ConnectionHub:
 
     async def _confirm_trade(self, client_id: str, message: dict[str, Any]) -> None:
         resolved_moves = message.get("resolved_moves")
+        if not isinstance(resolved_moves, dict):
+            if resolved_moves is not None:
+                logger.warning("Ignoring resolved_moves with invalid type %s from client %s", type(resolved_moves).__name__, client_id)
+            resolved_moves = None
         room, slot, committed = await self.room_manager.confirm_trade(client_id=client_id, resolved_moves=resolved_moves)
         logger.info("trade_confirmed room=%s slot=%s committed=%s", room.room_name, slot, committed)
         await self._send(client_id, {"type": "trade_confirmed", "slot": slot})

@@ -13,10 +13,10 @@ class Gen3ToGen1Converter(BaseConverter):
     target_generation = 1
     mode = "legacy_downconvert_experimental"
 
-    def _normalized_copy(self, canonical: CanonicalPokemon, report: CompatibilityReport) -> CanonicalPokemon:
+    def _normalized_copy(self, canonical: CanonicalPokemon, report: CompatibilityReport, resolved_moves: dict[int, int] | None = None) -> CanonicalPokemon:
         converted = deepcopy(canonical)
         converted.held_item = None
         converted.ability = None
         converted.nature = None
-        self._apply_report_normalization(converted, report)
+        self._apply_report_normalization(converted, report, resolved_moves=resolved_moves)
         return converted

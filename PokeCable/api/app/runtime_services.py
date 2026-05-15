@@ -25,6 +25,8 @@ from data.items import item_category, item_exists, item_name  # noqa: E402
 from data.moves import move_exists, move_name  # noqa: E402
 from data.species import SPECIES_NAMES_BY_NATIONAL, native_to_national  # noqa: E402
 from evolutions import preview_trade_evolution  # noqa: E402
+from canonical import CanonicalPokemon  # noqa: E402
+from converters import get_converter  # noqa: E402
 
 
 def _as_int(value: Any, default: int = 0) -> int:
@@ -206,8 +208,35 @@ def build_trade_preflight(payload: dict[str, Any]) -> dict[str, Any]:
         received,
         item_based_evolutions_enabled=_item_trade_evolutions_enabled(payload),
     )
-    compatible = not reasons
     mode = "same_generation" if source_generation == target_generation else "cross_generation"
+    removed_moves: list[dict[str, Any]] = []
+    if mode == "cross_generation" and source_generation and target_generation:
+        canonical_payload = received.get("canonical") if isinstance(received.get("canonical"), dict) else None
+        if not canonical_payload:
+            reasons.append("Payload cross-generation sem dados canonical.")
+        else:
+            try:
+                canonical = CanonicalPokemon.from_dict(canonical_payload)
+                try:
+                    converter = get_converter(source_generation, target_generation)
+                except KeyError:
+                    reasons.append(f"Conversao Gen {source_generation} -> Gen {target_generation} nao suportada.")
+                    converter = None
+                if converter is not None:
+                    report = converter.can_convert(canonical, policy="auto_retrocompat")
+                    removed_moves = list(report.removed_moves or [])
+                    for reason in report.blocking_reasons or []:
+                        text = str(reason).strip()
+                        if text and text not in reasons:
+                            reasons.append(text)
+                    for warning in report.warnings or []:
+                        text = str(warning).strip()
+                        if text and text not in warnings:
+                            warnings.append(text)
+            except Exception as exc:
+                reasons.append(f"Erro avaliando compatibilidade: {exc}")
+                removed_moves = []
+    compatible = not reasons
     return {
         "compatible": compatible,
         "mode": mode,
@@ -219,4 +248,5 @@ def build_trade_preflight(payload: dict[str, Any]) -> dict[str, Any]:
         "suggested_actions": [],
         "pokemon": enriched,
         "trade_evolution": evolution,
+        "removed_moves": removed_moves,
     }

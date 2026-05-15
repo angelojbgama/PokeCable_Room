@@ -27,8 +27,8 @@ except ImportError:
     sys.exit(1)
 
 from pokecable_logging import configure_logging
-from pokecable_save import SaveError
-from r36s_pokecable_core import PokecableState, start_trade_thread
+from pokecable_save import SaveError, _ensure_backend_import_path
+from r36s_pokecable_core import PokecableState, start_trade_thread, request_trade_cancel, request_leave_room, _create_backup
 
 
 LOG_PATHS = configure_logging()
@@ -47,12 +47,14 @@ LIST_W = 250
 AXIS_X = 0
 AXIS_Y = 1
 AXIS_THRESHOLD = 0.7
-ACTION_DEBOUNCE = 0.14
+ACTION_DEBOUNCE = 0.05
+NAV_REPEAT_DELAY = 0.25
+NAV_REPEAT_INTERVAL = 0.06
 QUIT_COMBO_WINDOW = 0.35
 JOY_BUTTON_START = 13
 JOY_BUTTON_SELECT = 12
 ROW_H = 45
-ROW_VISIBLE = 8
+ROW_VISIBLE = 7
 
 # GO-Super Gamepad mapping from /opt/inttools/gamecontrollerdb.txt
 JOY_MAP = {
@@ -683,7 +685,7 @@ def keyboard_limits(shift=False):
 
 
 def random_room_name():
-    return f"{random.choice(POKEMON_ROOM_NAMES)}-{random.randint(10, 99)}"
+    return f"{random.choice(POKEMON_ROOM_NAMES).lower()}{random.randint(10, 99)}"
 
 
 def draw_keyboard(screen, fonts, title, value, grid_index, is_password=False, shift=False):
@@ -699,27 +701,38 @@ def draw_keyboard(screen, fonts, title, value, grid_index, is_password=False, sh
     text(screen, body_f, display_value if display_value else "(vazio)", 20, HEADER_H + 20, ACCENT, SCREEN_W - 40)
 
     chars = keyboard_chars(shift)
-    key_w, key_h = 48, 34
-    start_x, start_y = 18, HEADER_H + 74
+    margin_x = 16
+    grid_pitch = (SCREEN_W - margin_x * 2) // KEYBOARD_GRID_W
+    key_w = grid_pitch - 4
+    key_h = 40
+    start_x = margin_x + (SCREEN_W - margin_x * 2 - grid_pitch * KEYBOARD_GRID_W) // 2
+    start_y = HEADER_H + 74
+    rows_used = math.ceil(len(chars) / KEYBOARD_GRID_W)
 
     for idx, char in enumerate(chars):
         col, row = idx % KEYBOARD_GRID_W, idx // KEYBOARD_GRID_W
-        x, y = start_x + col * key_w, start_y + row * key_h
+        row_chars = min(KEYBOARD_GRID_W, len(chars) - row * KEYBOARD_GRID_W)
+        row_offset = (KEYBOARD_GRID_W - row_chars) * grid_pitch // 2
+        x = start_x + row_offset + col * grid_pitch
+        y = start_y + row * (key_h + 4)
         selected = idx == grid_index
-        key_rect = pygame.Rect(x, y, key_w - 6, key_h - 5)
+        key_rect = pygame.Rect(x, y, key_w, key_h)
         rect(screen, ACCENT if selected else PANEL_2, key_rect, 5)
-        text(screen, tiny_f, char, key_rect.x + 6, key_rect.y + 8, (5, 11, 18) if selected else TEXT)
+        char_surface = tiny_f.render(char, True, (5, 11, 18) if selected else TEXT)
+        screen.blit(char_surface, char_surface.get_rect(center=key_rect.center))
 
-    specials_row = math.ceil(len(chars) / KEYBOARD_GRID_W)
     special_start = len(chars)
     specials = [("DEL", special_start), ("SHIFT", special_start + 1), ("SPACE", special_start + 2), ("OK", special_start + 3)]
+    specials_y = start_y + rows_used * (key_h + 4) + 6
+    special_total_w = SCREEN_W - margin_x * 2
+    special_w = (special_total_w - 3 * 10) // 4
     for offset, (label, idx) in enumerate(specials):
-        x = start_x + offset * (key_w * 2)
-        y = start_y + specials_row * key_h + 8
+        x = margin_x + offset * (special_w + 10)
         selected = idx == grid_index
-        key_rect = pygame.Rect(x, y, key_w * 2 - 12, key_h - 3)
+        key_rect = pygame.Rect(x, specials_y, special_w, key_h + 4)
         rect(screen, ACCENT if selected else PANEL_2, key_rect, 5)
-        text(screen, tiny_f, label, key_rect.x + 8, key_rect.y + 8, (5, 11, 18) if selected else TEXT)
+        label_surface = tiny_f.render(label, True, (5, 11, 18) if selected else TEXT)
+        screen.blit(label_surface, label_surface.get_rect(center=key_rect.center))
 
     rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
     button(screen, tiny_f, "A", "SELECT", 12, SCREEN_H - 48)
@@ -762,7 +775,7 @@ def draw_select_save(screen, fonts, selected, saves):
     button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
 
 
-def draw_select_pokemon_source(screen, fonts, selected, status=""):
+def draw_select_pokemon_source(screen, fonts, selected, status="", room_name="", room_password=""):
     title_f, _, small_f, tiny_f = fonts
     screen.fill(BG)
     rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
@@ -782,6 +795,25 @@ def draw_select_pokemon_source(screen, fonts, selected, status=""):
         if idx == selected:
             rect(screen, ACCENT, row, 4)
         text(screen, small_f, item, row.x + 9, row.y + 9, color, row.w - 18)
+
+    info_panel = pygame.Rect(LIST_W + 2, HEADER_H + 10, SCREEN_W - LIST_W - 12, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    rect(screen, PANEL, info_panel, 6)
+    text(screen, small_f, "Sala", info_panel.x + 14, info_panel.y + 12, MUTED)
+    text(screen, small_f, room_name or "(sem nome)", info_panel.x + 14, info_panel.y + 38, ACCENT, info_panel.w - 28)
+    text(screen, small_f, "Senha", info_panel.x + 14, info_panel.y + 78, MUTED)
+    text(screen, small_f, room_password or "(sem senha)", info_panel.x + 14, info_panel.y + 104, ACCENT, info_panel.w - 28)
+    text(screen, tiny_f, "Compartilhe estes dados com seu parceiro para entrar na mesma sala.", info_panel.x + 14, info_panel.y + 150, MUTED, info_panel.w - 28)
+
+    ball_cx = info_panel.centerx
+    ball_cy = info_panel.bottom - 70
+    ball_r = 44
+    pygame.draw.circle(screen, (220, 40, 40), (ball_cx, ball_cy), ball_r)
+    pygame.draw.circle(screen, (240, 240, 240), (ball_cx, ball_cy), ball_r, draw_top_right=False, draw_top_left=False)
+    pygame.draw.rect(screen, (20, 20, 20), pygame.Rect(ball_cx - ball_r, ball_cy - 4, ball_r * 2, 8))
+    pygame.draw.circle(screen, (20, 20, 20), (ball_cx, ball_cy), ball_r, 3)
+    pygame.draw.circle(screen, (20, 20, 20), (ball_cx, ball_cy), 12)
+    pygame.draw.circle(screen, (240, 240, 240), (ball_cx, ball_cy), 7)
+    pygame.draw.circle(screen, (20, 20, 20), (ball_cx, ball_cy), 7, 2)
 
     rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
     button(screen, tiny_f, "A", "OK", 12, SCREEN_H - 48)
@@ -888,6 +920,11 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
     rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
     button(screen, tiny_f, "A", "OK", 12, SCREEN_H - 48)
     button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
+    is_party = "party" in (source_label or "").lower()
+    x_label = "MOVER P/ PC" if is_party else "RETIRAR"
+    button(screen, tiny_f, "X", x_label, 212, SCREEN_H - 48)
+    y_label = "VER PC" if is_party else "VER PARTY"
+    button(screen, tiny_f, "Y", y_label, 360, SCREEN_H - 48)
 
 
 def draw_connecting(screen, fonts, frame):
@@ -912,7 +949,132 @@ def draw_waiting_partner(screen, fonts, status):
     rect(screen, PANEL, content, 6)
     text(screen, body_f, status or "Aguardando segundo jogador...", 40, HEADER_H + 150, MUTED, SCREEN_W - 80)
     rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    text(screen, tiny_f, "Aguarde...", 250, SCREEN_H - 45, MUTED)
+    button(screen, tiny_f, "B", "CANCELAR", 12, SCREEN_H - 48)
+
+
+def draw_leave_room_confirm(screen, fonts):
+    title_f, body_f, small_f, tiny_f = fonts
+    screen.fill(BG)
+    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
+    text(screen, title_f, "Sair da sala?", 14, 10)
+    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    rect(screen, PANEL, content, 6)
+    text(screen, body_f, "Deseja encerrar esta sala?", 30, HEADER_H + 60, TEXT, SCREEN_W - 60)
+    text(screen, small_f, "Voce e o parceiro voltarao ao menu.", 30, HEADER_H + 110, MUTED, SCREEN_W - 60)
+    text(screen, small_f, "Para mais trocas, escolha A=NAO.", 30, HEADER_H + 140, MUTED, SCREEN_W - 60)
+    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
+    button(screen, tiny_f, "A", "SIM", 12, SCREEN_H - 48)
+    button(screen, tiny_f, "B", "NAO", 112, SCREEN_H - 48)
+
+
+def draw_deposit_confirm(screen, fonts, pokemon):
+    title_f, body_f, small_f, tiny_f = fonts
+    screen.fill(BG)
+    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
+    text(screen, title_f, "Mover para PC?", 14, 10)
+    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    rect(screen, PANEL, content, 6)
+    name = (pokemon or {}).get("display") or (pokemon or {}).get("nickname") or (pokemon or {}).get("species_name") or "Pokemon"
+    level = (pokemon or {}).get("level")
+    text(screen, body_f, f"Enviar {name} para o PC?", 30, HEADER_H + 60, TEXT, SCREEN_W - 60)
+    if level:
+        text(screen, small_f, f"Nivel {level}", 30, HEADER_H + 100, MUTED)
+    text(screen, small_f, "Ele ira para o primeiro slot livre.", 30, HEADER_H + 140, MUTED, SCREEN_W - 60)
+    text(screen, small_f, "Um backup do save sera criado antes.", 30, HEADER_H + 170, MUTED, SCREEN_W - 60)
+    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
+    button(screen, tiny_f, "A", "SIM", 12, SCREEN_H - 48)
+    button(screen, tiny_f, "B", "NAO", 112, SCREEN_H - 48)
+
+
+def draw_withdraw_confirm(screen, fonts, pokemon):
+    title_f, body_f, small_f, tiny_f = fonts
+    screen.fill(BG)
+    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
+    text(screen, title_f, "Retirar do PC?", 14, 10)
+    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    rect(screen, PANEL, content, 6)
+    name = (pokemon or {}).get("display") or (pokemon or {}).get("nickname") or (pokemon or {}).get("species_name") or "Pokemon"
+    box_name = (pokemon or {}).get("box_name") or ""
+    text(screen, body_f, f"Trazer {name} para a Party?", 30, HEADER_H + 60, TEXT, SCREEN_W - 60)
+    if box_name:
+        text(screen, small_f, f"De: {box_name}", 30, HEADER_H + 100, MUTED)
+    text(screen, small_f, "Sera adicionado no proximo slot livre da Party.", 30, HEADER_H + 140, MUTED, SCREEN_W - 60)
+    text(screen, small_f, "Um backup do save sera criado antes.", 30, HEADER_H + 170, MUTED, SCREEN_W - 60)
+    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
+    button(screen, tiny_f, "A", "SIM", 12, SCREEN_H - 48)
+    button(screen, tiny_f, "B", "NAO", 112, SCREEN_H - 48)
+
+
+def draw_info_modal(screen, fonts, title, message):
+    title_f, body_f, small_f, tiny_f = fonts
+    screen.fill(BG)
+    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
+    text(screen, title_f, title or "Aviso", 14, 10)
+    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    rect(screen, PANEL, content, 6)
+    body_msg = (message or "").strip() or "Sem detalhes."
+    text(screen, body_f, body_msg[:240], content.x + 16, content.y + 30, TEXT, content.w - 32)
+    text(screen, small_f, "A troca foi cancelada. A sala continua aberta.", content.x + 16, content.bottom - 60, MUTED, content.w - 32)
+    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
+    button(screen, tiny_f, "A", "OK", 12, SCREEN_H - 48)
+
+
+def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_idx, total, chosen_ids=None):
+    title_f, body_f, small_f, tiny_f = fonts
+    screen.fill(BG)
+    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
+    text(screen, title_f, f"Move incompativel {current_idx + 1}/{total}", 14, 10)
+
+    info_panel = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, 70)
+    rect(screen, PANEL, info_panel, 6)
+    move_name_text = removed_move.get("name") or f"Move #{removed_move.get('move_id', 0)}"
+    text(screen, body_f, f"Sem suporte: {move_name_text}", info_panel.x + 14, info_panel.y + 14, ACCENT)
+    text(screen, small_f, "Escolha um substituto ou deixe vazio.", info_panel.x + 14, info_panel.y + 42, MUTED)
+
+    chosen_set = set(int(x) for x in (chosen_ids or []) if x)
+    replacements = [
+        r for r in (removed_move.get("valid_replacements") or [])
+        if int(r.get("move_id") or 0) not in chosen_set
+    ]
+    options = replacements + [{"move_id": 0, "name": "(deixar vazio)"}]
+    list_panel = pygame.Rect(10, HEADER_H + 90, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 100)
+    rect(screen, PANEL, list_panel, 6)
+
+    scroll = list_scroll_offset(f"resolve_moves_{current_idx}", replacement_index, len(options))
+    first = max(0, int(scroll) - 1)
+    last = min(len(options), int(scroll) + ROW_VISIBLE + 2)
+    previous_clip = screen.get_clip()
+    screen.set_clip(list_panel.inflate(-8, -8))
+    for idx in range(first, last):
+        option = options[idx]
+        y = list_panel.y + 14 + int((idx - scroll) * ROW_H)
+        row = pygame.Rect(list_panel.x + 8, y, list_panel.w - 24, 40)
+        color = (5, 11, 18) if idx == replacement_index else TEXT
+        if idx == replacement_index:
+            rect(screen, ACCENT, row, 4)
+        label = option.get("name") or f"Move #{option.get('move_id', 0)}"
+        text(screen, small_f, label[:48], row.x + 10, row.y + 10, color, row.w - 20)
+    screen.set_clip(previous_clip)
+    draw_scrollbar(screen, list_panel, scroll, len(options))
+
+    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
+    button(screen, tiny_f, "A", "ESCOLHER", 12, SCREEN_H - 48)
+    button(screen, tiny_f, "B", "PULAR", 132, SCREEN_H - 48)
+
+
+def draw_cancel_waiting_confirm(screen, fonts):
+    title_f, body_f, small_f, tiny_f = fonts
+    screen.fill(BG)
+    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
+    text(screen, title_f, "Cancelar troca?", 14, 10)
+    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    rect(screen, PANEL, content, 6)
+    text(screen, body_f, "Cancelar a troca deste Pokemon?", 30, HEADER_H + 60, TEXT, SCREEN_W - 60)
+    text(screen, small_f, "Seu save NAO sera modificado.", 30, HEADER_H + 110, MUTED, SCREEN_W - 60)
+    text(screen, small_f, "A sala continua aberta - voce escolhera outro Pokemon.", 30, HEADER_H + 140, MUTED, SCREEN_W - 60)
+    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
+    button(screen, tiny_f, "A", "SIM", 12, SCREEN_H - 48)
+    button(screen, tiny_f, "B", "NAO", 112, SCREEN_H - 48)
 
 
 def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon, sprite_loader):
@@ -927,16 +1089,24 @@ def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon, sprite_loade
     mine = my_pokemon.get("display") or my_pokemon.get("display_summary") or "???"
     peer = opponent_pokemon.get("display_summary") or opponent_pokemon.get("nickname") or opponent_pokemon.get("species_name") or "???"
 
-    my_entry = {
-        "generation": int(my_pokemon.get("generation") or 0),
-        "species_id": int(my_pokemon.get("species_id") or 0),
-        "species_name": my_pokemon.get("species_name") or "Pokemon",
-    }
-    peer_entry = {
-        "generation": int(opponent_pokemon.get("generation") or opponent_pokemon.get("source_generation") or 0),
-        "species_id": int(opponent_pokemon.get("species_id") or 0),
-        "species_name": opponent_pokemon.get("species_name") or "Pokemon",
-    }
+    my_entry = dict(my_pokemon or {})
+    my_entry.setdefault("generation", int(my_pokemon.get("generation") or 0))
+    my_entry.setdefault("species_id", int(my_pokemon.get("species_id") or 0))
+    my_entry.setdefault("species_name", my_pokemon.get("species_name") or "Pokemon")
+    peer_entry = dict(opponent_pokemon or {})
+    canonical = opponent_pokemon.get("canonical") if isinstance(opponent_pokemon, dict) else {}
+    canonical = canonical if isinstance(canonical, dict) else {}
+    species_block = canonical.get("species") if isinstance(canonical.get("species"), dict) else {}
+    peer_ndex = int(
+        opponent_pokemon.get("national_dex_id")
+        or canonical.get("species_national_id")
+        or species_block.get("national_dex_id")
+        or 0
+    )
+    peer_entry["national_dex_id"] = peer_ndex
+    peer_entry.setdefault("generation", int(opponent_pokemon.get("generation") or canonical.get("source_generation") or opponent_pokemon.get("source_generation") or 0))
+    peer_entry.setdefault("species_id", int(opponent_pokemon.get("species_id") or 0))
+    peer_entry.setdefault("species_name", opponent_pokemon.get("species_name") or canonical.get("species_name") or species_block.get("name") or "Pokemon")
     sprite_loader.request_for(my_entry)
     sprite_loader.request_for(peer_entry)
     my_sprite, my_loading, _ = sprite_loader.snapshot_for(my_entry)
@@ -981,10 +1151,26 @@ def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon, sprite_loade
 
 
 def evolution_sprite_entry(evolution, side):
+    generation = int(evolution.get("generation") or 0)
+    species_id = int(evolution.get(f"{side}_species_id") or 0)
+    explicit_ndex = int(evolution.get(f"{side}_national_id") or evolution.get(f"{side}_national_dex_id") or 0)
+    national_dex_id = explicit_ndex
+    if not national_dex_id and species_id:
+        if generation == 2:
+            national_dex_id = species_id
+        else:
+            try:
+                _ensure_backend_import_path()
+                from data.species import native_to_national
+                national_dex_id = int(native_to_national(generation, species_id) or 0)
+            except Exception as exc:
+                logger.debug("evolution_sprite_entry national lookup failed: %s", exc)
+                national_dex_id = 0
     return {
-        "generation": int(evolution.get("generation") or 0),
-        "species_id": int(evolution.get(f"{side}_species_id") or 0),
+        "generation": generation,
+        "species_id": species_id,
         "species_name": evolution.get(f"{side}_name") or "Pokemon",
+        "national_dex_id": national_dex_id,
     }
 
 
@@ -996,6 +1182,29 @@ def draw_scaled_sprite(surface, sprite, center, size, alpha=255):
     surface.blit(scaled, (center[0] - size // 2, center[1] - size // 2))
 
 
+def _silhouette_surface(sprite, size):
+    scaled = pygame.transform.smoothscale(sprite, (size, size)).convert_alpha()
+    scaled.fill((255, 255, 255, 0), special_flags=pygame.BLEND_RGB_ADD)
+    return scaled
+
+
+def _draw_scaled_silhouette(screen, sprite, center, width, height, alpha=255):
+    if not sprite or width <= 0 or height <= 0:
+        return
+    silhouette = pygame.transform.smoothscale(sprite, (int(width), int(height))).convert_alpha()
+    silhouette.fill((255, 255, 255, 0), special_flags=pygame.BLEND_RGB_ADD)
+    silhouette.set_alpha(max(0, min(255, int(alpha))))
+    screen.blit(silhouette, (center[0] - int(width) // 2, center[1] - int(height) // 2))
+
+
+def _draw_scaled_full(screen, sprite, center, width, height, alpha=255):
+    if not sprite or width <= 0 or height <= 0:
+        return
+    scaled = pygame.transform.smoothscale(sprite, (int(width), int(height))).convert_alpha()
+    scaled.set_alpha(max(0, min(255, int(alpha))))
+    screen.blit(scaled, (center[0] - int(width) // 2, center[1] - int(height) // 2))
+
+
 def draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, final_form="loop"):
     _, _, small_f, tiny_f = fonts
     source = evolution_sprite_entry(evolution, "source")
@@ -1005,31 +1214,92 @@ def draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, fin
     source_sprite, source_loading, _ = sprite_loader.snapshot_for(source)
     target_sprite, target_loading, _ = sprite_loader.snapshot_for(target)
 
-    stage = pygame.Rect(190, HEADER_H + 44, 260, 142)
-    rect(screen, BG, stage, 8)
-    progress = (math.sin(frame * 0.16) + 1.0) / 2.0
+    # Frame estilo Game Boy: bezel -> tela escura -> textbox
+    stage_w, stage_h = 360, 210
+    stage = pygame.Rect((SCREEN_W - stage_w) // 2, HEADER_H + 16, stage_w, stage_h)
+    # sombra
+    shadow = pygame.Surface((stage.w + 8, stage.h + 8), pygame.SRCALPHA)
+    pygame.draw.rect(shadow, (0, 0, 0, 100), shadow.get_rect(), border_radius=16)
+    screen.blit(shadow, (stage.x - 4, stage.y + 4))
+    # bezel claro
+    pygame.draw.rect(screen, (62, 76, 110), stage, border_radius=14)
+    # borda escura
+    pygame.draw.rect(screen, (12, 18, 32), stage.inflate(-10, -10), 3, border_radius=10)
+    # tela
+    crt = stage.inflate(-22, -22)
+    pygame.draw.rect(screen, (10, 16, 30), crt, border_radius=8)
+
+    # area do sprite (deixa ~46px embaixo para textbox)
+    sprite_area = pygame.Rect(crt.x, crt.y, crt.w, crt.h - 46)
+    textbox = pygame.Rect(crt.x + 8, crt.bottom - 42, crt.w - 16, 32)
+
+    # cycle: one-shot animation, frame param ja vem com offset desde o start
     if final_form == "source":
-        progress = 0.0
+        cycle = 0.0
     elif final_form == "target":
-        progress = 1.0
-
-    glow = int(65 + 70 * progress)
-    pygame.draw.circle(screen, (glow, 176, 255), stage.center, 62, 3)
-    pygame.draw.circle(screen, (255, 255, 255), stage.center, 34 + int(14 * progress), 1)
-
-    if source_sprite or target_sprite:
-        draw_scaled_sprite(screen, source_sprite, stage.center, 104, 255 * (1.0 - progress))
-        draw_scaled_sprite(screen, target_sprite, stage.center, 104, 255 * progress)
-        if final_form == "loop" and 0.42 < progress < 0.58:
-            flash = pygame.Surface((stage.w, stage.h), pygame.SRCALPHA)
-            flash.fill((255, 255, 255, 60))
-            screen.blit(flash, stage.topleft)
+        cycle = 1.0
     else:
-        label = "Carregando sprites..." if source_loading or target_loading else "Sem sprite"
-        text(screen, small_f, label, stage.x + 58, stage.y + 58, MUTED)
+        cycle = min(1.0, max(0.0, frame / 180.0))
 
-    text(screen, tiny_f, source["species_name"], stage.x + 8, stage.bottom - 24, MUTED, 100)
-    text(screen, tiny_f, target["species_name"], stage.right - 108, stage.bottom - 24, ACCENT, 100)
+    cx, cy = sprite_area.center
+    base_size = 132
+
+    if not (source_sprite or target_sprite):
+        label = "Carregando sprites..." if source_loading or target_loading else "Sem sprite"
+        text(screen, small_f, label, sprite_area.x + 80, sprite_area.centery - 8, MUTED)
+    else:
+        if cycle <= 0.10:
+            # idle: source com leve bob
+            bob = int(math.sin(frame * 0.15) * 2)
+            _draw_scaled_full(screen, source_sprite, (cx, cy + bob), base_size, base_size, 255)
+        elif cycle <= 0.25:
+            # wind-up: stretch vertical
+            t = (cycle - 0.10) / 0.15
+            h = int(base_size * (1.0 + 0.25 * t))
+            w = int(base_size * (1.0 - 0.10 * t))
+            _draw_scaled_full(screen, source_sprite, (cx, cy), w, h, 255)
+        elif cycle <= 0.85:
+            # silhouette swap com frequencia crescente
+            t = (cycle - 0.25) / 0.60
+            phase = (t ** 2) * 16 * math.pi
+            show_target = math.sin(phase) > 0
+            visible = target_sprite if show_target else source_sprite
+            fallback = source_sprite if show_target else target_sprite
+            chosen = visible or fallback
+            h = int(base_size * 1.25)
+            w = int(base_size * 0.90)
+            _draw_scaled_silhouette(screen, chosen, (cx, cy), w, h, 255)
+            # flash quando esta perto de trocar (cos(phase) ~ 0)
+            flash_intensity = 1.0 - abs(math.cos(phase))
+            if flash_intensity > 0.92:
+                flash_alpha = int(150 * (flash_intensity - 0.92) / 0.08)
+                flash = pygame.Surface(sprite_area.size, pygame.SRCALPHA)
+                flash.fill((255, 255, 255, max(0, min(180, flash_alpha))))
+                screen.blit(flash, sprite_area.topleft)
+        else:
+            # reveal do target
+            t = (cycle - 0.85) / 0.15
+            size = int(base_size * (0.70 + 0.30 * t))
+            _draw_scaled_full(screen, target_sprite, (cx, cy), size, size, int(255 * min(1.0, t * 1.5)))
+            # flash inicial decrescente
+            if t < 0.5:
+                flash = pygame.Surface(sprite_area.size, pygame.SRCALPHA)
+                flash.fill((255, 255, 255, int(200 * (1 - t * 2))))
+                screen.blit(flash, sprite_area.topleft)
+
+    # Textbox: fundo branco com borda escura
+    pygame.draw.rect(screen, (240, 240, 230), textbox, border_radius=4)
+    pygame.draw.rect(screen, (12, 18, 32), textbox, 2, border_radius=4)
+    source_name = source["species_name"]
+    target_name = target["species_name"]
+    if cycle < 0.25:
+        msg = f"{source_name} esta evoluindo!"
+    elif cycle < 0.85:
+        # texto pisca durante a fase de silhouette
+        msg = "???" if int(frame / 6) % 2 == 0 else f"{source_name} esta evoluindo!"
+    else:
+        msg = f"{source_name} evoluiu em {target_name}!"
+    text(screen, tiny_f, msg, textbox.x + 8, textbox.y + 8, (12, 18, 32), textbox.w - 16)
 
 
 def draw_evolution_cancel_prompt(screen, fonts, evolution, sprite_loader, frame):
@@ -1043,13 +1313,13 @@ def draw_evolution_cancel_prompt(screen, fonts, evolution, sprite_loader, frame)
     source = evolution.get("source_name", "Pokemon")
     target = evolution.get("target_name", "evolucao")
     draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame)
-    text(screen, body_f, f"{source} quer evoluir para {target}.", 30, HEADER_H + 210, TEXT, SCREEN_W - 60)
-    text(screen, small_f, "Deseja cancelar essa evolucao?", 30, HEADER_H + 246, WARN, SCREEN_W - 60)
-    text(screen, tiny_f, "B deixa a animacao terminar na forma evoluida.", 30, HEADER_H + 282, MUTED, SCREEN_W - 60)
+    text(screen, body_f, f"{source} quer evoluir para {target}.", 30, HEADER_H + 240, TEXT, SCREEN_W - 60)
+    text(screen, small_f, "Deseja cancelar essa evolucao?", 30, HEADER_H + 274, WARN, SCREEN_W - 60)
+    text(screen, tiny_f, "B deixa a animacao terminar na forma evoluida.", 30, HEADER_H + 308, MUTED, SCREEN_W - 60)
 
     rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "CANCELAR EVO", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "DEIXAR EVOLUIR", 172, SCREEN_H - 48)
+    button(screen, tiny_f, "A", "DEIXAR EVOLUIR", 12, SCREEN_H - 48)
+    button(screen, tiny_f, "B", "CANCELAR EVO", 172, SCREEN_H - 48)
 
 
 def draw_evolution_cancel_confirm(screen, fonts, evolution, sprite_loader, frame):
@@ -1063,13 +1333,13 @@ def draw_evolution_cancel_confirm(screen, fonts, evolution, sprite_loader, frame
     source = evolution.get("source_name", "Pokemon")
     target = evolution.get("target_name", "evolucao")
     draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, final_form="source")
-    text(screen, body_f, "Tem certeza?", 30, HEADER_H + 210, WARN, SCREEN_W - 60)
-    text(screen, small_f, f"Isso ira interromper a evolucao de {source} para {target}.", 30, HEADER_H + 246, TEXT, SCREEN_W - 60)
-    text(screen, tiny_f, "A troca continua, mas o Pokemon recebido fica sem evoluir.", 30, HEADER_H + 282, MUTED, SCREEN_W - 60)
+    text(screen, body_f, "Tem certeza?", 30, HEADER_H + 240, WARN, SCREEN_W - 60)
+    text(screen, small_f, f"Isso ira interromper a evolucao de {source} para {target}.", 30, HEADER_H + 274, TEXT, SCREEN_W - 60)
+    text(screen, tiny_f, "A troca continua, mas o Pokemon recebido fica sem evoluir.", 30, HEADER_H + 308, MUTED, SCREEN_W - 60)
 
     rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "SIM, INTERROMPER", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "NAO", 218, SCREEN_H - 48)
+    button(screen, tiny_f, "A", "NAO, DEIXAR EVOLUIR", 12, SCREEN_H - 48)
+    button(screen, tiny_f, "B", "SIM, INTERROMPER", 250, SCREEN_H - 48)
 
 
 def draw_trading(screen, fonts, status):
@@ -1130,6 +1400,7 @@ def main():
     logger.info("Debug mode: %s", DEBUG)
     pygame.init()
     pygame.font.init()
+    pygame.key.set_repeat(int(NAV_REPEAT_DELAY * 1000), int(NAV_REPEAT_INTERVAL * 1000))
     try:
         pygame.joystick.init()
     except Exception as exc:
@@ -1179,6 +1450,15 @@ def main():
     axis_state = {}
     combo_state = {"pressed": set(), "last_down": {}, "suppress_until": 0.0}
     action_state = {"last_action": None, "last_time": 0.0}
+    nav_hold = {"direction": None, "started": 0.0, "last_fire": 0.0}
+    pending_removed_moves = []
+    resolve_current_idx = 0
+    resolve_replacement_idx = 0
+    resolved_moves_choices = {}
+    info_modal_data = {"title": "", "message": ""}
+    pending_deposit_idx = -1
+    pending_withdraw_pokemon = None
+    evolution_anim_start = None
     sprite_loader = SpriteLoader(state.server_url)
 
     def switch_screen(new_screen, reason):
@@ -1196,9 +1476,37 @@ def main():
                 running = False
                 continue
             mapped = event_to_action(event, axis_state, combo_state)
+            if event.type == pygame.JOYHATMOTION:
+                hat_x, hat_y = event.value
+                if hat_x == 0 and hat_y == 0:
+                    nav_hold["direction"] = None
+                elif mapped in ("up", "down", "left", "right"):
+                    now = time.monotonic()
+                    nav_hold["direction"] = mapped
+                    nav_hold["started"] = now
+                    nav_hold["last_fire"] = now
+            elif event.type == pygame.JOYAXISMOTION and event.axis in (AXIS_X, AXIS_Y):
+                if abs(event.value) < AXIS_THRESHOLD:
+                    if (event.axis == AXIS_Y and nav_hold["direction"] in ("up", "down")) or \
+                       (event.axis == AXIS_X and nav_hold["direction"] in ("left", "right")):
+                        nav_hold["direction"] = None
+                elif mapped in ("up", "down", "left", "right"):
+                    now = time.monotonic()
+                    nav_hold["direction"] = mapped
+                    nav_hold["started"] = now
+                    nav_hold["last_fire"] = now
             mapped = debounce_action(mapped, action_state)
             if mapped and action is None:
                 action = mapped
+
+        if action is None and nav_hold["direction"]:
+            now = time.monotonic()
+            if now - nav_hold["started"] >= NAV_REPEAT_DELAY and \
+               now - nav_hold["last_fire"] >= NAV_REPEAT_INTERVAL:
+                action = nav_hold["direction"]
+                nav_hold["last_fire"] = now
+                action_state["last_action"] = action
+                action_state["last_time"] = now
 
         try:
             while True:
@@ -1213,9 +1521,26 @@ def main():
                     result_data = payload if isinstance(payload, dict) else {}
                     logger.info("QUEUE confirm_prompt: %s", result_data)
                     switch_screen("trade_confirm", "confirm_prompt")
+                elif msg_type == "info_modal":
+                    data = payload if isinstance(payload, dict) else {}
+                    info_modal_data = {"title": data.get("title", ""), "message": data.get("message", "")}
+                    logger.info("QUEUE info_modal: %s", info_modal_data)
+                    switch_screen("info_modal", "info_modal_prompt")
+                elif msg_type == "resolve_moves_prompt":
+                    data = payload if isinstance(payload, dict) else {}
+                    pending_removed_moves = list(data.get("removed_moves") or [])
+                    resolve_current_idx = 0
+                    resolve_replacement_idx = 0
+                    resolved_moves_choices = {}
+                    logger.info("QUEUE resolve_moves_prompt: %s moves", len(pending_removed_moves))
+                    if pending_removed_moves:
+                        switch_screen("resolve_moves", "resolve_moves_prompt")
+                    else:
+                        confirm_queue.put({})
                 elif msg_type == "evolution_cancel_prompt":
                     result_data = payload if isinstance(payload, dict) else {}
                     logger.info("QUEUE evolution_cancel_prompt: %s", result_data)
+                    evolution_anim_start = frame
                     switch_screen("evolution_cancel_prompt", "evolution_cancel_prompt")
                 elif msg_type == "result":
                     result_data = payload if isinstance(payload, dict) else {"success": True}
@@ -1308,25 +1633,29 @@ def main():
                 menu_index = 0
 
         elif current_screen == "select_pokemon_source" and action:
-            if action == "up":
-                menu_index = (menu_index - 1) % 2
-            elif action == "down":
-                menu_index = (menu_index + 1) % 2
+            if action in ("up", "down", "y"):
+                menu_index = (menu_index + (1 if action != "up" else -1)) % 2
             elif action == "select":
                 state.pokemon_source = "party" if menu_index == 0 else "boxes"
                 try:
                     state.get_pokemon_list(state.pokemon_source)
                 except SaveError as exc:
                     logger.error("Pokemon enrichment failed: %s", exc)
-                    trade_status = str(exc)
-                    result_data = {"success": False, "error": str(exc)}
-                    switch_screen("trade_result", "api_enrichment_failed")
+                    info_modal_data = {
+                        "title": "Falha ao carregar Pokemon",
+                        "message": str(exc),
+                        "return_screen": "select_pokemon_source",
+                    }
+                    switch_screen("info_modal", "api_enrichment_failed")
                     continue
                 logger.info("Pokemon source selected: %s count=%s", state.pokemon_source, len(state.pokemon_list))
                 switch_screen("select_pokemon", "pokemon_source_selected")
                 menu_index = 0
             elif action == "back":
-                switch_screen("waiting_partner" if in_room_selection else "load_save", "back_from_source")
+                if in_room_selection:
+                    switch_screen("leave_room_confirm", "leave_from_source")
+                else:
+                    switch_screen("load_save", "back_from_source")
                 menu_index = 0
 
         elif current_screen == "select_pokemon" and action:
@@ -1335,12 +1664,49 @@ def main():
             elif action == "down":
                 menu_index = min(max(0, len(state.pokemon_list) - 1), menu_index + 1)
             elif action == "select" and state.pokemon_list:
-                state.selected_pokemon = state.pokemon_list[menu_index]
-                logger.info("Pokemon selected: %s location=%s", state.selected_pokemon.get("display"), state.selected_pokemon.get("location"))
-                trade_status = f"Pokemon selecionado: {state.selected_pokemon.get('display', 'Pokemon')}"
-                switch_screen("waiting_partner" if in_room_selection else "enter_room_name", "pokemon_selected")
+                if state.pokemon_source != "party":
+                    info_modal_data = {
+                        "title": "Pokemon esta no PC",
+                        "message": "Pressione X para retirar este Pokemon para a Party antes de troca-lo.",
+                        "return_screen": "select_pokemon",
+                    }
+                    switch_screen("info_modal", "select_from_pc_blocked")
+                else:
+                    state.selected_pokemon = state.pokemon_list[menu_index]
+                    logger.info("Pokemon selected: %s location=%s", state.selected_pokemon.get("display"), state.selected_pokemon.get("location"))
+                    trade_status = f"Pokemon selecionado: {state.selected_pokemon.get('display', 'Pokemon')}"
+                    switch_screen("waiting_partner" if in_room_selection else "enter_room_name", "pokemon_selected")
+            elif action == "x" and state.pokemon_list:
+                if state.trade_phase not in ("idle", "waiting"):
+                    trade_status = "Aguarde a troca terminar antes de mover."
+                elif state.pokemon_source == "party":
+                    pending_deposit_idx = menu_index
+                    logger.info("Deposit requested for party slot %s", pending_deposit_idx)
+                    switch_screen("deposit_confirm", "deposit_request")
+                else:
+                    pending_withdraw_pokemon = state.pokemon_list[menu_index]
+                    logger.info("Withdraw requested for %s", pending_withdraw_pokemon.get("location"))
+                    switch_screen("withdraw_confirm", "withdraw_request")
+            elif action == "y":
+                new_source = "boxes" if state.pokemon_source == "party" else "party"
+                try:
+                    state.pokemon_source = new_source
+                    state.get_pokemon_list(new_source)
+                    menu_index = 0
+                    logger.info("Toggled source -> %s (%s entries)", new_source, len(state.pokemon_list))
+                except SaveError as exc:
+                    logger.error("Source toggle failed: %s", exc)
+                    info_modal_data = {
+                        "title": "Erro",
+                        "message": str(exc),
+                        "return_screen": "select_pokemon",
+                    }
+                    switch_screen("info_modal", "source_toggle_failed")
             elif action == "back":
-                switch_screen("select_pokemon_source", "back_from_pokemon")
+                if in_room_selection:
+                    switch_screen("select_pokemon_source", "back_to_source")
+                else:
+                    switch_screen("load_save", "back_from_pokemon")
                 menu_index = 0
 
         elif current_screen == "enter_room_name" and action:
@@ -1433,32 +1799,178 @@ def main():
                 result_data = {}
                 reset_flow_state(state)
 
+        elif current_screen == "info_modal" and action in ("select", "back"):
+            logger.info("Info modal acknowledged")
+            return_screen = info_modal_data.get("return_screen") if isinstance(info_modal_data, dict) else ""
+            info_modal_data = {"title": "", "message": ""}
+            if return_screen:
+                switch_screen(return_screen, "info_modal_ack")
+            else:
+                confirm_queue.put(True)
+
+        elif current_screen == "resolve_moves" and action and pending_removed_moves:
+            current_move = pending_removed_moves[resolve_current_idx]
+            chosen_set = set(int(x) for x in resolved_moves_choices.values() if x)
+            replacements = [
+                r for r in (current_move.get("valid_replacements") or [])
+                if int(r.get("move_id") or 0) not in chosen_set
+            ]
+            total_options = len(replacements) + 1
+            if action == "up":
+                resolve_replacement_idx = (resolve_replacement_idx - 1) % total_options
+            elif action == "down":
+                resolve_replacement_idx = (resolve_replacement_idx + 1) % total_options
+            elif action in ("select", "back"):
+                if action == "select" and resolve_replacement_idx < len(replacements):
+                    move_id = int(current_move.get("move_id") or 0)
+                    replacement_id = int(replacements[resolve_replacement_idx].get("move_id") or 0)
+                    if move_id and replacement_id:
+                        resolved_moves_choices[move_id] = replacement_id
+                resolve_current_idx += 1
+                resolve_replacement_idx = 0
+                if resolve_current_idx >= len(pending_removed_moves):
+                    logger.info("Move resolution complete: %s", resolved_moves_choices)
+                    confirm_queue.put(dict(resolved_moves_choices))
+                    pending_removed_moves = []
+
         elif current_screen == "evolution_cancel_prompt" and action:
             if action == "select":
-                logger.info("Evolution cancellation requested")
-                switch_screen("evolution_cancel_confirm", "evolution_cancel_requested")
-            elif action == "back":
-                logger.info("Evolution cancellation skipped")
+                logger.info("Evolution cancellation skipped (A = let evolve)")
                 confirm_queue.put(False)
                 switch_screen("trading", "evolution_cancel_no")
+            elif action == "back":
+                logger.info("Evolution cancellation requested (B = interrupt)")
+                switch_screen("evolution_cancel_confirm", "evolution_cancel_requested")
 
         elif current_screen == "evolution_cancel_confirm" and action:
             if action == "select":
-                logger.info("Evolution cancellation confirmed")
-                confirm_queue.put(True)
-                switch_screen("trading", "evolution_cancel_yes")
-            elif action == "back":
-                logger.info("Evolution cancellation rejected")
+                logger.info("Evolution cancellation rejected (A = let evolve)")
                 confirm_queue.put(False)
                 switch_screen("trading", "evolution_cancel_rejected")
+            elif action == "back":
+                logger.info("Evolution cancellation confirmed (B = interrupt)")
+                confirm_queue.put(True)
+                switch_screen("trading", "evolution_cancel_yes")
+
+        elif current_screen == "withdraw_confirm" and action:
+            if action == "select":
+                save_model = state.get_selected_save_model()
+                if not save_model or not pending_withdraw_pokemon:
+                    info_modal_data = {
+                        "title": "Erro",
+                        "message": "Slot do PC nao encontrado.",
+                        "return_screen": "select_pokemon",
+                    }
+                    switch_screen("info_modal", "withdraw_no_target")
+                else:
+                    try:
+                        _create_backup(state.selected_save)
+                        location = str(pending_withdraw_pokemon.get("location") or "")
+                        parts = location.split(":")
+                        if len(parts) >= 3 and parts[0] == "box":
+                            box_idx = int(parts[1])
+                            slot_idx = int(parts[2])
+                        else:
+                            box_idx = int(pending_withdraw_pokemon.get("box_index") or 0)
+                            slot_idx = int(pending_withdraw_pokemon.get("slot_index") or 0)
+                        logger.info("Withdraw target: location=%s box=%s slot=%s", location, box_idx, slot_idx)
+                        result = save_model.withdraw_box_to_party(box_idx, slot_idx)
+                        save_model.write_to_disk()
+                        state.expected_signature = save_model.signature()
+                        state.refresh_selected_save()
+                        state.get_pokemon_list(state.pokemon_source or "boxes")
+                        trade_status = f"{result.get('species_name', 'Pokemon')} agora esta na Party."
+                        menu_index = min(menu_index, max(0, len(state.pokemon_list) - 1))
+                        switch_screen("select_pokemon", "withdraw_done")
+                    except Exception as exc:
+                        logger.exception("Withdraw failed: %s", exc)
+                        info_modal_data = {
+                            "title": "Nao foi possivel retirar",
+                            "message": str(exc),
+                            "return_screen": "select_pokemon",
+                        }
+                        switch_screen("info_modal", "withdraw_failed")
+                pending_withdraw_pokemon = None
+            elif action == "back":
+                pending_withdraw_pokemon = None
+                switch_screen("select_pokemon", "withdraw_aborted")
+
+        elif current_screen == "deposit_confirm" and action:
+            if action == "select":
+                save_model = state.get_selected_save_model()
+                if not save_model:
+                    info_modal_data = {
+                        "title": "Erro",
+                        "message": "Save nao carregado.",
+                        "return_screen": "select_pokemon",
+                    }
+                    switch_screen("info_modal", "deposit_no_save")
+                else:
+                    try:
+                        _create_backup(state.selected_save)
+                        result = save_model.deposit_party_to_pc(pending_deposit_idx)
+                        save_model.write_to_disk()
+                        state.expected_signature = save_model.signature()
+                        state.refresh_selected_save()
+                        state.get_pokemon_list("party")
+                        trade_status = f"{result.get('species_name', 'Pokemon')} movido para o PC."
+                        menu_index = min(menu_index, max(0, len(state.pokemon_list) - 1))
+                        switch_screen("select_pokemon", "deposit_done")
+                    except Exception as exc:
+                        logger.exception("Deposit failed: %s", exc)
+                        info_modal_data = {
+                            "title": "Nao foi possivel mover",
+                            "message": str(exc),
+                            "return_screen": "select_pokemon",
+                        }
+                        switch_screen("info_modal", "deposit_failed")
+                pending_deposit_idx = -1
+            elif action == "back":
+                pending_deposit_idx = -1
+                switch_screen("select_pokemon", "deposit_aborted")
+
+        elif current_screen == "waiting_partner" and action == "back":
+            logger.info("Cancel from waiting_partner requested")
+            switch_screen("cancel_waiting_confirm", "cancel_requested")
+
+        elif current_screen == "cancel_waiting_confirm" and action:
+            if action == "select":
+                ok = request_trade_cancel(state)
+                logger.info("Cancel from waiting confirmed: scheduled=%s", ok)
+                if ok:
+                    trade_status = "Cancelando..."
+                    switch_screen("waiting_partner", "cancel_pending")
+                else:
+                    trade_status = "Nao foi possivel cancelar agora."
+                    switch_screen("waiting_partner", "cancel_failed")
+            elif action == "back":
+                logger.info("Cancel from waiting aborted")
+                switch_screen("waiting_partner", "cancel_aborted")
+
+        elif current_screen == "leave_room_confirm" and action:
+            if action == "select":
+                logger.info("Leave room confirmed")
+                request_leave_room(state)
+                trade_status = "Saindo da sala..."
+                switch_screen("menu", "leave_room_yes")
+                menu_index = 0
+                reset_flow_state(state)
+            elif action == "back":
+                logger.info("Leave room aborted")
+                switch_screen("select_pokemon_source", "leave_room_no")
 
         elif current_screen == "trade_result" and action in ("select", "back"):
             logger.info("Trade result acknowledged: %s", result_data)
-            switch_screen("menu", "trade_result_ack")
-            menu_index = 0
+            success = bool(isinstance(result_data, dict) and result_data.get("success"))
+            staying_in_room = success and trade_thread and trade_thread.is_alive()
             result_data = {}
             trade_status = ""
-            reset_flow_state(state)
+            menu_index = 0
+            if staying_in_room:
+                switch_screen("select_pokemon_source", "trade_result_ack_continue")
+            else:
+                switch_screen("menu", "trade_result_ack")
+                reset_flow_state(state)
 
         if current_screen == "menu":
             draw_menu(screen, fonts, menu_index, state.language)
@@ -1467,7 +1979,7 @@ def main():
         elif current_screen == "load_save":
             draw_select_save(screen, fonts, menu_index, state.saves)
         elif current_screen == "select_pokemon_source":
-            draw_select_pokemon_source(screen, fonts, menu_index, trade_status)
+            draw_select_pokemon_source(screen, fonts, menu_index, trade_status, state.room_name or room_name, state.room_password or room_password)
         elif current_screen == "select_pokemon":
             source_label = "Sua Party" if state.pokemon_source == "party" else "Seu PC"
             draw_select_pokemon(screen, fonts, menu_index, state.pokemon_list, source_label, sprite_loader, trade_status)
@@ -1479,6 +1991,10 @@ def main():
             draw_connecting(screen, fonts, frame)
         elif current_screen == "waiting_partner":
             draw_waiting_partner(screen, fonts, trade_status)
+        elif current_screen == "cancel_waiting_confirm":
+            draw_cancel_waiting_confirm(screen, fonts)
+        elif current_screen == "leave_room_confirm":
+            draw_leave_room_confirm(screen, fonts)
         elif current_screen == "trade_confirm":
             draw_trade_confirm(
                 screen,
@@ -1487,8 +2003,28 @@ def main():
                 result_data if isinstance(result_data, dict) else {},
                 sprite_loader,
             )
+        elif current_screen == "info_modal":
+            draw_info_modal(screen, fonts, info_modal_data.get("title", ""), info_modal_data.get("message", ""))
+        elif current_screen == "deposit_confirm":
+            target_pokemon = None
+            if 0 <= pending_deposit_idx < len(state.pokemon_list):
+                target_pokemon = state.pokemon_list[pending_deposit_idx]
+            draw_deposit_confirm(screen, fonts, target_pokemon or {})
+        elif current_screen == "withdraw_confirm":
+            draw_withdraw_confirm(screen, fonts, pending_withdraw_pokemon or {})
+        elif current_screen == "resolve_moves" and pending_removed_moves:
+            draw_resolve_moves(
+                screen,
+                fonts,
+                pending_removed_moves[resolve_current_idx],
+                resolve_replacement_idx,
+                resolve_current_idx,
+                len(pending_removed_moves),
+                set(resolved_moves_choices.values()),
+            )
         elif current_screen == "evolution_cancel_prompt":
-            draw_evolution_cancel_prompt(screen, fonts, result_data if isinstance(result_data, dict) else {}, sprite_loader, frame)
+            anim_frame = max(0, frame - (evolution_anim_start if evolution_anim_start is not None else frame))
+            draw_evolution_cancel_prompt(screen, fonts, result_data if isinstance(result_data, dict) else {}, sprite_loader, anim_frame)
         elif current_screen == "evolution_cancel_confirm":
             draw_evolution_cancel_confirm(screen, fonts, result_data if isinstance(result_data, dict) else {}, sprite_loader, frame)
         elif current_screen == "trading":

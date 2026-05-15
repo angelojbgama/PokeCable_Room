@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 
 import websockets
 
-from pokecable_save import SaveError, SaveModel, load_save
+from pokecable_save import SaveError, SaveModel, _ensure_backend_import_path, load_save
 
 DEBUG = os.getenv("POKECABLE_DEBUG", "0").lower() in ("1", "true", "yes")
 logger = logging.getLogger("r36s_pokecable_core")
@@ -97,6 +97,13 @@ class PokecableState:
         self.room_password = ""
         self.pokemon_source = "party"
         self.action: str = "access"
+
+        self._ws = None
+        self._ws_loop: Optional[asyncio.AbstractEventLoop] = None
+        self.trade_phase: str = "idle"
+        self.cancel_round_requested: bool = False
+        self.leave_requested: bool = False
+        self.expected_signature: Optional[Dict[str, Any]] = None
 
         self.save_analysis: Dict[str, Dict[str, Any]] = {}
         self.server_url = self._load_server_url()
@@ -411,6 +418,31 @@ class PygameUI:
         self.ui_queue.put(("screen", screen))
 
 
+def _open_party_selection(state: "PokecableState", ui: "PygameUI") -> None:
+    """Abre a tela de escolha de origem (Party ou PC) para o usuario."""
+    del state  # unused, mantido para assinatura uniforme
+    ui.screen("select_pokemon_source")
+
+
+_BACKUP_RETENTION = 20
+
+
+def _prune_backups(backup_dir: Path, stem: str) -> None:
+    try:
+        candidates = sorted(
+            backup_dir.glob(f"{stem}.*.bak"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for stale in candidates[_BACKUP_RETENTION:]:
+            try:
+                stale.unlink()
+            except Exception as exc:
+                logger.debug("Failed to prune backup %s: %s", stale, exc)
+    except Exception as exc:
+        logger.debug("Backup prune scan failed: %s", exc)
+
+
 def _create_backup(save_path: Path) -> Path:
     backup_dir = Path.home() / ".pokecable" / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
@@ -418,6 +450,7 @@ def _create_backup(save_path: Path) -> Path:
     backup_path = backup_dir / f"{save_path.stem}.{timestamp}{save_path.suffix}.bak"
     shutil.copy2(save_path, backup_path)
     logger.info(f"Backup: {backup_path}")
+    _prune_backups(backup_dir, save_path.stem)
     return backup_path
 
 
@@ -461,6 +494,32 @@ def _build_preflight(
         "server_preflight": server_preflight,
         "trade_evolution": server_preflight.get("trade_evolution") or {},
     }
+
+
+_GAME_DISPLAY_NAMES = {
+    "red": "Pokemon Red",
+    "blue": "Pokemon Blue",
+    "yellow": "Pokemon Yellow",
+    "gold": "Pokemon Gold",
+    "silver": "Pokemon Silver",
+    "crystal": "Pokemon Crystal",
+    "ruby": "Pokemon Ruby",
+    "sapphire": "Pokemon Sapphire",
+    "emerald": "Pokemon Emerald",
+    "firered": "Pokemon FireRed",
+    "leafgreen": "Pokemon LeafGreen",
+}
+
+
+def _game_display_name(game: str, generation: int) -> str:
+    key = (game or "").strip().lower()
+    if key in _GAME_DISPLAY_NAMES:
+        return _GAME_DISPLAY_NAMES[key]
+    if key:
+        return f"Pokemon {key.title()}"
+    if generation:
+        return f"Geracao {generation}"
+    return "jogo do parceiro"
 
 
 def _peer_player_name(room: Dict[str, Any], client_id: str = "", slot: str = "") -> str:
@@ -508,7 +567,7 @@ async def _websocket_trade(
         return
 
     save: SaveModel = analysis["save"]
-    expected_signature = analysis["signature"]
+    state.expected_signature = analysis["signature"]
 
     ui.screen("connecting")
     ui.status(f"Conectando a {state.server_url}...")
@@ -537,6 +596,9 @@ async def _websocket_trade(
                     family=socket.AF_INET,
                 )
                 logger.info("WebSocket handshake completed attempt=%s", attempt)
+                state._ws = ws
+                state._ws_loop = asyncio.get_running_loop()
+                state.trade_phase = "waiting"
                 break
             except (asyncio.TimeoutError, OSError, websockets.exceptions.WebSocketException) as exc:
                 last_connect_error = exc
@@ -579,6 +641,8 @@ async def _websocket_trade(
             our_offer_sent = False
             room_ready = False
             selection_opened = False
+            peer_generation: int = 0
+            peer_game: str = ""
             cancel_trade_evolution = False
             trade_evolution: Dict[str, Any] = {}
             client_id = ""
@@ -599,11 +663,53 @@ async def _websocket_trade(
                     msg = None
                     mtype = None
 
+                if state.cancel_round_requested and state.trade_phase == "writing":
+                    logger.warning("Ignoring cancel_round_requested during writing phase")
+                    state.cancel_round_requested = False
+                elif state.cancel_round_requested:
+                    state.cancel_round_requested = False
+                    if our_offer_sent:
+                        logger.info("Sending cancel_trade_round (user requested round cancel)")
+                        try:
+                            await ws.send(json.dumps({"type": "cancel_trade_round", "reason": "user_cancelled"}))
+                        except Exception as exc:
+                            logger.warning("Failed to send cancel_trade_round: %s", exc)
+                    else:
+                        logger.info("Cancel before offer: navigating back, keeping room alive")
+                        state.selected_pokemon = None
+                        ui.status("")
+                        _open_party_selection(state, ui)
+
                 if room_ready and not our_offer_sent and state.selected_pokemon:
                     state.refresh_selected_save()
                     save = state.get_selected_save_model() or save
                     selected = state.selected_pokemon
                     pokemon_location = selected.get("location", "party:0")
+                    if peer_generation:
+                        try:
+                            _ensure_backend_import_path()
+                            from data.species import species_exists_in_generation
+                            ndex = int(
+                                selected.get("national_dex_id")
+                                or (selected.get("raw") or {}).get("national_dex_id")
+                                or 0
+                            )
+                            if ndex and not species_exists_in_generation(ndex, peer_generation):
+                                species_name = selected.get("species_name") or selected.get("name") or "Este Pokemon"
+                                game_label = _game_display_name(peer_game, peer_generation)
+                                modal_msg = f"{species_name} (#{ndex}) nao existe em {game_label}. Escolha outro Pokemon para a troca."
+                                logger.info("Pre-offer block: %s", modal_msg)
+                                ui.ui_queue.put((
+                                    "info_modal",
+                                    {"title": "Pokemon indisponivel no parceiro", "message": modal_msg},
+                                ))
+                                await asyncio.to_thread(confirm_queue.get)
+                                state.selected_pokemon = None
+                                ui.status("")
+                                _open_party_selection(state, ui)
+                                continue
+                        except Exception as exc:
+                            logger.warning("Pre-offer species check failed (allowing offer): %s", exc)
                     try:
                         offer_payload = save.export_payload(pokemon_location)
                     except SaveError as exc:
@@ -667,7 +773,7 @@ async def _websocket_trade(
                         ui.error(room_error)
                         return
                     if not selection_opened:
-                        ui.screen("select_pokemon_source")
+                        _open_party_selection(state, ui)
                         selection_opened = True
                     ui.status("Sala criada. Escolha o Pokemon e aguarde outro treinador...")
                     continue
@@ -678,7 +784,7 @@ async def _websocket_trade(
                         ui.error(room_error)
                         return
                     if not selection_opened:
-                        ui.screen("select_pokemon_source")
+                        _open_party_selection(state, ui)
                         selection_opened = True
                     ui.status("Entrou na sala. Escolha o Pokemon para a troca...")
                     continue
@@ -693,11 +799,18 @@ async def _websocket_trade(
                         ui.error(room_error)
                         return
                     room_ready = True
+                    room_info = msg.get("room", {}) or {}
+                    for slot_name, player in (room_info.get("players") or {}).items():
+                        if str(slot_name) == str(local_slot) or (client_id and str(player.get("client_id", "")) == str(client_id)):
+                            continue
+                        peer_generation = int(player.get("generation") or 0)
+                        peer_game = str(player.get("game") or "")
+                        break
                     if not selection_opened:
-                        ui.screen("select_pokemon_source")
+                        _open_party_selection(state, ui)
                         selection_opened = True
                     if not state.selected_pokemon:
-                        peer_name = _peer_player_name(msg.get("room", {}), client_id, local_slot)
+                        peer_name = _peer_player_name(room_info, client_id, local_slot)
                         ui.status(f"{peer_name}: escolha Pokemon" if peer_name else "Escolha Pokemon")
                     continue
 
@@ -714,7 +827,7 @@ async def _websocket_trade(
                         ui.status(f"Oferta recebida: {summary}")
                     else:
                         if not selection_opened:
-                            ui.screen("select_pokemon_source")
+                            _open_party_selection(state, ui)
                             selection_opened = True
                         ui.status(f"{summary} recebido. Escolha o seu.")
                     continue
@@ -743,22 +856,32 @@ async def _websocket_trade(
                         trade_evolution = dict(server_preflight.get("trade_evolution") or {})
                     report = _build_preflight(state, msg.get("received_payload") or peer_offer, save, server_preflight)
                     logger.debug("Preflight report: %s", report)
+                    if not report["compatible"]:
+                        reason_text = "; ".join(report["blocking_reasons"]) or "Troca incompativel."
+                        logger.info("Preflight blocked locally: %s", reason_text)
+                        ui.ui_queue.put((
+                            "info_modal",
+                            {"title": "Troca incompativel", "message": reason_text},
+                        ))
+                        await asyncio.to_thread(confirm_queue.get)
+                        logger.info("User acknowledged preflight block")
+                        try:
+                            await ws.send(json.dumps({"type": "cancel_trade_round", "reason": "preflight_blocked"}))
+                        except Exception as exc:
+                            logger.warning("Failed to send cancel_trade_round after preflight block: %s", exc)
+                        continue
                     await ws.send(
                         json.dumps(
                             {
                                 "type": "preflight_result",
-                                "compatible": report["compatible"],
+                                "compatible": True,
                                 "requires_user_confirmation": False,
                                 "report": report,
-                                "error": "; ".join(report["blocking_reasons"]),
+                                "error": "",
                             }
                         )
                     )
-                    if report["compatible"]:
-                        ui.status("Compatibilidade validada. Aguardando confirmação...")
-                    else:
-                        ui.error("; ".join(report["blocking_reasons"]) or "Troca bloqueada")
-                        return
+                    ui.status("Compatibilidade validada. Aguardando confirmação...")
                     continue
 
                 if mtype == "preflight_ready":
@@ -769,13 +892,22 @@ async def _websocket_trade(
                     if trade_evolution.get("evolved"):
                         ui.ui_queue.put(("evolution_cancel_prompt", trade_evolution))
                         logger.info("Waiting for evolution cancel decision: %s", trade_evolution)
-                        cancel_trade_evolution = bool(confirm_queue.get())
+                        cancel_trade_evolution = bool(await asyncio.to_thread(confirm_queue.get))
                         logger.info("Evolution cancel decision: %s", cancel_trade_evolution)
+                    removed_moves = list(server_preflight.get("removed_moves") or [])
+                    resolved_moves: Dict[int, int] = {}
+                    if removed_moves:
+                        ui.ui_queue.put(("resolve_moves_prompt", {"removed_moves": removed_moves}))
+                        logger.info("Waiting for move resolution: %s removed moves", len(removed_moves))
+                        choice = await asyncio.to_thread(confirm_queue.get)
+                        if isinstance(choice, dict):
+                            resolved_moves = {int(k): int(v) for k, v in choice.items() if v}
+                        logger.info("Move resolution received: %s", resolved_moves)
                     ui.screen("trade_confirm")
                     ui.status(f"Pronto para trocar com {summary}")
                     ui.ui_queue.put(("confirm_prompt", incoming_payload))
                     logger.info("Waiting for local confirmation: peer=%s", summary)
-                    user_confirmed = confirm_queue.get()
+                    user_confirmed = await asyncio.to_thread(confirm_queue.get)
                     logger.info("Local confirmation result: %s", user_confirmed)
                     if not user_confirmed:
                         await ws.send(json.dumps({"type": "cancel_trade_round", "reason": "user_cancelled"}))
@@ -783,12 +915,22 @@ async def _websocket_trade(
                         return
                     ui.screen("trading")
                     ui.status("Confirmação enviada. Aguardando o outro treinador...")
-                    await ws.send(json.dumps({"type": "confirm_trade"}))
+                    await ws.send(json.dumps({"type": "confirm_trade", "resolved_moves": resolved_moves}))
                     continue
 
                 if mtype == "trade_blocked":
-                    ui.error(msg.get("message", "Troca bloqueada"))
-                    return
+                    reason_text = msg.get("message") or "Troca bloqueada pelo parceiro."
+                    logger.info("Trade blocked by server/peer: %s", reason_text)
+                    ui.ui_queue.put((
+                        "info_modal",
+                        {"title": "Troca incompativel", "message": reason_text},
+                    ))
+                    await asyncio.to_thread(confirm_queue.get)
+                    our_offer_sent = False
+                    state.selected_pokemon = None
+                    ui.status("")
+                    _open_party_selection(state, ui)
+                    continue
 
                 if mtype == "trade_confirmed":
                     ui.screen("trading")
@@ -796,10 +938,11 @@ async def _websocket_trade(
                     continue
 
                 if mtype == "prepare_write":
+                    state.trade_phase = "writing"
                     server_preflight = msg.get("server_preflight") if isinstance(msg.get("server_preflight"), dict) else {}
                     trade_evolution = dict(msg.get("trade_evolution") or server_preflight.get("trade_evolution") or trade_evolution or {})
                     logger.info("Prepare write received for save=%s", state.selected_save)
-                    if not _save_unchanged_on_disk(expected_signature, state.selected_save):
+                    if state.expected_signature is None or not _save_unchanged_on_disk(state.expected_signature, state.selected_save):
                         await ws.send(
                             json.dumps(
                                 {
@@ -808,7 +951,7 @@ async def _websocket_trade(
                                     "error": "save_changed_during_room",
                                     "metadata": {
                                         "message": "O save mudou em disco antes da gravação.",
-                                        "expected_signature": expected_signature,
+                                        "expected_signature": state.expected_signature,
                                     },
                                 }
                             )
@@ -819,6 +962,7 @@ async def _websocket_trade(
                     ui.screen("trading")
                     ui.status(f"Backup criado: {backup_path.name}")
                     logger.info("Write ready after backup: %s", backup_path)
+                    sig = state.expected_signature or {"size": 0, "sha256": ""}
                     await ws.send(
                         json.dumps(
                             {
@@ -826,8 +970,8 @@ async def _websocket_trade(
                                 "ready": True,
                                 "metadata": {
                                     "save_name": state.selected_save.name,
-                                    "size": expected_signature["size"],
-                                    "sha256": expected_signature["sha256"],
+                                    "size": sig.get("size", 0),
+                                    "sha256": sig.get("sha256", ""),
                                 },
                             }
                         )
@@ -851,7 +995,7 @@ async def _websocket_trade(
                         save.write_to_disk()
                         refreshed = state.refresh_selected_save()
                         if refreshed:
-                            expected_signature = refreshed["signature"]
+                            state.expected_signature = refreshed["signature"]
                         await ws.send(
                             json.dumps(
                                 {
@@ -901,11 +1045,26 @@ async def _websocket_trade(
                             "backup": str(backup_path) if backup_path else "",
                         }
                     )
-                    return
+                    our_offer_sent = False
+                    state.selected_pokemon = None
+                    peer_offer = {}
+                    saved_pokemon = {}
+                    trade_evolution = {}
+                    backup_path = None
+                    state.trade_phase = "waiting"
+                    continue
 
                 if mtype == "trade_write_failed":
                     ui.error(msg.get("error", "Falha remota na gravação"))
                     return
+
+                if mtype == "trade_round_cancelled":
+                    logger.info("Server confirmed trade_round_cancelled: %s", msg.get("reason"))
+                    our_offer_sent = False
+                    state.selected_pokemon = None
+                    ui.status("Troca cancelada. Escolha outro Pokemon.")
+                    _open_party_selection(state, ui)
+                    continue
 
                 if mtype == "trade_cancelled":
                     ui.error(msg.get("message", "Troca cancelada"))
@@ -914,8 +1073,11 @@ async def _websocket_trade(
             await ws.close()
 
     except websockets.exceptions.ConnectionClosed as exc:
-        logger.error(f"WebSocket closed: {exc}")
-        ui.error(f"Conexão fechada: {exc}")
+        if state.leave_requested:
+            logger.info("WebSocket closed by user leave request")
+        else:
+            logger.error(f"WebSocket closed: {exc}")
+            ui.error(f"Conexão fechada: {exc}")
     except asyncio.TimeoutError:
         logger.error("Timeout waiting for server")
         ui.error("Timeout aguardando servidor")
@@ -932,6 +1094,59 @@ def _run_trade_bg(state: PokecableState, action: str, ui_queue: queue.Queue, con
     except Exception as exc:
         logger.exception(f"Trade thread failed: {exc}")
         ui.error(str(exc))
+    finally:
+        state._ws = None
+        state._ws_loop = None
+        state.trade_phase = "idle"
+        state.cancel_round_requested = False
+        state.leave_requested = False
+        state.expected_signature = None
+        # destrava qualquer asyncio.to_thread(confirm_queue.get) ainda pendente
+        try:
+            confirm_queue.put_nowait(None)
+        except Exception:
+            pass
+
+
+def request_leave_room(state: PokecableState) -> bool:
+    """Gracefully close the trade ws, ending the session and freeing the room."""
+    ws = state._ws
+    loop = state._ws_loop
+    if ws is None or loop is None:
+        return False
+    if state.trade_phase == "writing":
+        logger.warning("Leave ignored: save write in progress")
+        return False
+    state.leave_requested = True
+    async def _close():
+        try:
+            await ws.close()
+        except Exception as exc:
+            logger.debug("Leave close failed (ignored): %s", exc)
+    try:
+        asyncio.run_coroutine_threadsafe(_close(), loop)
+        return True
+    except Exception as exc:
+        logger.warning("Failed to schedule leave: %s", exc)
+        return False
+
+
+def request_trade_cancel(state: PokecableState) -> bool:
+    """Safe cancel of the current round: keeps the room/ws alive so user can re-pick a Pokémon.
+
+    Only honoured before the save write begins (phase != 'writing').
+    The trade thread observes `cancel_round_requested` and sends `cancel_trade_round`.
+    """
+    phase = state.trade_phase
+    if phase in ("idle", "writing", "done"):
+        logger.warning("Cancel ignored in phase=%s", phase)
+        return False
+    if state._ws is None:
+        logger.warning("Cancel requested but no active ws")
+        return False
+    state.cancel_round_requested = True
+    logger.info("Round cancel flag set (phase=%s)", phase)
+    return True
 
 
 def start_trade_thread(
