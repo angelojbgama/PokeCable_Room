@@ -32,10 +32,6 @@ if DEBUG:
 
 
 DEFAULT_BACKEND_WS = "wss://9kernel.vps-kinghost.net/ws"
-LOCAL_BACKEND_WS_VALUES = {
-    "ws://127.0.0.1:8000/ws",
-    "ws://localhost:8000/ws",
-}
 DEFAULT_LANGUAGE = "pt"
 DEFAULT_THEME = "pokedex_dark"
 SUPPORTED_LANGUAGES = {"pt", "en", "es"}
@@ -84,6 +80,20 @@ def _runtime_candidate_urls(server_url: str, path: str) -> List[str]:
     return candidates
 
 
+def _runtime_candidate_urls_from_api_base(api_base_url: str, path: str) -> List[str]:
+    base_url = str(api_base_url or "").strip().rstrip("/")
+    if not base_url:
+        return []
+    parsed = urllib.parse.urlparse(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return []
+    clean_path = "/" + str(path or "").lstrip("/")
+    candidates = [f"{base_url}{clean_path}"]
+    if clean_path.startswith("/runtime/"):
+        candidates.append(f"{base_url}/api{clean_path}")
+    return candidates
+
+
 class PokecableState:
     """Manages application state and local save cache."""
 
@@ -111,6 +121,7 @@ class PokecableState:
 
         self.save_analysis: Dict[str, Dict[str, Any]] = {}
         self.server_url = self._load_server_url()
+        self.api_base_url = self._load_api_base_url()
         self.language = DEFAULT_LANGUAGE
         self.theme = DEFAULT_THEME
         self._load_ui_config()
@@ -180,9 +191,6 @@ class PokecableState:
             try:
                 url = config_file.read_text().strip()
                 if url:
-                    if url in LOCAL_BACKEND_WS_VALUES:
-                        logger.info("Migrating local default server URL to public server: %s", DEFAULT_BACKEND_WS)
-                        return DEFAULT_BACKEND_WS
                     logger.info("Loaded server URL from config: %s", url)
                     return url
             except Exception as exc:
@@ -196,6 +204,31 @@ class PokecableState:
             self.server_url = url
         except Exception as exc:
             logger.error(f"Failed to save server.conf: {exc}")
+
+    def _load_api_base_url(self) -> str:
+        env_url = os.getenv("POKECABLE_API_BASE_URL", "").strip()
+        if env_url:
+            logger.info("Loaded API base URL from POKECABLE_API_BASE_URL: %s", env_url)
+            return env_url.rstrip("/")
+        config_file = self.config_dir / "api.conf"
+        if config_file.exists():
+            try:
+                url = config_file.read_text().strip()
+                if url:
+                    logger.info("Loaded API base URL from config: %s", url)
+                    return url.rstrip("/")
+            except Exception as exc:
+                logger.warning("Failed to read api.conf: %s", exc)
+        return ""
+
+    def save_api_base_url(self, url: str) -> None:
+        config_file = self.config_dir / "api.conf"
+        try:
+            normalized = str(url or "").strip().rstrip("/")
+            config_file.write_text(normalized)
+            self.api_base_url = normalized
+        except Exception as exc:
+            logger.error("Failed to save api.conf: %s", exc)
 
     def _load_ui_config(self) -> None:
         config_file = self.config_dir / "ui.conf"
@@ -229,10 +262,15 @@ class PokecableState:
             logger.error("Failed to save ui.conf: %s", exc)
 
     def runtime_http_base_url(self) -> str:
+        if self.api_base_url:
+            return self.api_base_url
         return _runtime_http_base_url(self.server_url)
 
     def _runtime_post(self, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        urls = _runtime_candidate_urls(self.server_url, path)
+        urls = []
+        if self.api_base_url:
+            urls.extend(_runtime_candidate_urls_from_api_base(self.api_base_url, path))
+        urls.extend(url for url in _runtime_candidate_urls(self.server_url, path) if url not in urls)
         if not urls:
             raise SaveError("URL HTTP da API indisponivel para validar dados.")
         body = json.dumps(payload).encode("utf-8")
