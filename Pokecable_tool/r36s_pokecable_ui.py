@@ -12,9 +12,7 @@ import random
 import logging
 import queue
 import threading
-import urllib.request
 from pathlib import Path
-from urllib.parse import urlparse
 
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
@@ -28,7 +26,15 @@ except ImportError:
 
 from pokecable_logging import configure_logging
 from pokecable_save import SaveError, _ensure_backend_import_path
-from r36s_pokecable_core import PokecableState, start_trade_thread, request_trade_cancel, request_leave_room, _create_backup
+from r36s_pokecable_core import (
+    PokecableState,
+    execute_self_trade,
+    prepare_self_trade,
+    start_trade_thread,
+    request_trade_cancel,
+    request_leave_room,
+    _create_backup,
+)
 
 
 LOG_PATHS = configure_logging()
@@ -97,6 +103,7 @@ STRINGS = {
     "pt": {
         "menu_title": "Menu",
         "menu_access_room": "Acessar Sala",
+        "menu_self_trade": "Trocar comigo",
         "menu_config": "Config",
         "menu_exit": "Sair",
         "config_title": "Configuracoes",
@@ -114,6 +121,7 @@ STRINGS = {
     "en": {
         "menu_title": "Menu",
         "menu_access_room": "Enter Room",
+        "menu_self_trade": "Trade With Myself",
         "menu_config": "Config",
         "menu_exit": "Exit",
         "config_title": "Settings",
@@ -131,6 +139,7 @@ STRINGS = {
     "es": {
         "menu_title": "Menu",
         "menu_access_room": "Entrar en Sala",
+        "menu_self_trade": "Intercambiar conmigo",
         "menu_config": "Config",
         "menu_exit": "Salir",
         "config_title": "Configuracion",
@@ -177,8 +186,9 @@ def t(lang, key):
     table = STRINGS.get(language, STRINGS["pt"])
     return table.get(key, STRINGS["pt"].get(key, key))
 
-SPRITE_CACHE_DIR = Path.home() / ".pokecable" / "sprites"
-SPRITE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+POKEMON_SPRITE_ASSET_DIR = Path(__file__).resolve().parent / "assets" / "pokemon_sprites"
+SPRITE_CACHE_VERSION = "pixel-v1"
+SPRITE_LOADING_MAX_SECONDS = float(os.getenv("POKECABLE_SPRITE_LOADING_MAX_SECONDS", "3"))
 
 SCROLL_STATE = {}
 KEYBOARD_GRID_W = 12
@@ -255,16 +265,41 @@ def held_item_info(pokemon):
 def move_labels(pokemon):
     raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
     names = (pokemon or {}).get("move_names") or raw.get("move_names") or []
-    if names:
-        return [str(name) for name in names[:4] if name]
     moves = (pokemon or {}).get("moves") or raw.get("moves") or []
+    if names:
+        labels = []
+        for idx, name in enumerate(names[:4]):
+            if not name:
+                continue
+            move_id = moves[idx] if idx < len(moves) else 0
+            labels.append(local_move_name(move_id) if is_move_number_label(name) and move_id else str(name))
+        return labels
     labels = []
     for move_id in moves[:4]:
         if not move_id:
             continue
         move_id = int(move_id)
-        labels.append(f"Move #{move_id}")
+        labels.append(local_move_name(move_id))
     return labels
+
+
+def is_move_number_label(value):
+    text_value = str(value or "").strip().lower()
+    if not text_value.startswith("move #"):
+        return False
+    return text_value[6:].strip().isdigit()
+
+
+def local_move_name(move_id):
+    numeric_id = 0
+    try:
+        numeric_id = int(move_id or 0)
+        _ensure_backend_import_path()
+        from data.moves import move_name  # type: ignore
+
+        return move_name(numeric_id) or f"Move #{numeric_id}"
+    except Exception:
+        return f"Move #{numeric_id or move_id}"
 
 
 def pokemon_types(pokemon):
@@ -386,26 +421,58 @@ def pokemon_sprite_slug(name):
     return value
 
 
+def sprite_form_slug(form):
+    value = str(form or "").strip().lower()
+    if not value or value == "a":
+        return ""
+    if value == "!":
+        return "exclamation"
+    if value == "?":
+        return "question"
+    value = value.replace("!", "exclamation").replace("?", "question")
+    for token in ["'", ".", ":", ",", "(", ")", "[", "]"]:
+        value = value.replace(token, "")
+    value = value.replace(" ", "-").replace("_", "-")
+    while "--" in value:
+        value = value.replace("--", "-")
+    return value.strip("-")
+
+
+def pokemon_sprite_variant(pokemon):
+    raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
+    metadata = (pokemon or {}).get("metadata", {}) if isinstance(pokemon, dict) else {}
+    raw_metadata = raw.get("metadata", {}) if isinstance(raw, dict) else {}
+    canonical = (pokemon or {}).get("canonical", {}) if isinstance(pokemon, dict) else {}
+    canonical_metadata = canonical.get("metadata", {}) if isinstance(canonical, dict) else {}
+    is_shiny = bool(
+        (pokemon or {}).get("is_shiny")
+        or (raw.get("is_shiny") if isinstance(raw, dict) else False)
+        or (metadata.get("is_shiny") if isinstance(metadata, dict) else False)
+        or (raw_metadata.get("is_shiny") if isinstance(raw_metadata, dict) else False)
+        or (canonical_metadata.get("is_shiny") if isinstance(canonical_metadata, dict) else False)
+    )
+    form = (
+        (pokemon or {}).get("unown_form")
+        or (pokemon or {}).get("form")
+        or (metadata.get("unown_form") if isinstance(metadata, dict) else "")
+        or (metadata.get("form") if isinstance(metadata, dict) else "")
+        or (raw.get("unown_form") if isinstance(raw, dict) else "")
+        or (raw.get("form") if isinstance(raw, dict) else "")
+        or (raw_metadata.get("unown_form") if isinstance(raw_metadata, dict) else "")
+        or (raw_metadata.get("form") if isinstance(raw_metadata, dict) else "")
+        or (canonical_metadata.get("unown_form") if isinstance(canonical_metadata, dict) else "")
+        or (canonical_metadata.get("form") if isinstance(canonical_metadata, dict) else "")
+    )
+    return "shiny" if is_shiny else "normal", sprite_form_slug(form)
+
+
 class SpriteLoader:
     def __init__(self, server_url: str):
         self.lock = threading.Lock()
-        self.http_base_url = self._http_base_url(server_url)
+        self.asset_dir = POKEMON_SPRITE_ASSET_DIR
         self.current_key = ""
         self.entries = {}
-
-    @staticmethod
-    def _http_base_url(server_url: str) -> str:
-        candidate = (server_url or "").strip()
-        if not candidate:
-            return ""
-        if candidate.startswith("ws://"):
-            return "http://" + candidate[len("ws://"):].rstrip("/")
-        if candidate.startswith("wss://"):
-            return "https://" + candidate[len("wss://"):].rstrip("/")
-        parsed = urlparse(candidate)
-        if parsed.scheme in {"http", "https"}:
-            return candidate.rstrip("/")
-        return ""
+        del server_url
 
     def _identity(self, pokemon):
         species_name = pokemon.get("species_name") if pokemon else ""
@@ -419,14 +486,26 @@ class SpriteLoader:
         slug = pokemon_sprite_slug(species_name)
         if not slug and not national_dex_id:
             return "", {}
-        key = f"national-{national_dex_id or slug}-front"
+        variant, form = pokemon_sprite_variant(pokemon)
+        sprite_id = self._sprite_id(national_dex_id, slug, form)
+        key = f"{SPRITE_CACHE_VERSION}-{variant}-{sprite_id}-front"
         lookup = {
             "generation": generation,
             "species_slug": slug,
             "species_id": species_id,
             "national_dex_id": national_dex_id,
+            "sprite_id": sprite_id,
+            "variant": variant,
         }
         return key, lookup
+
+    @staticmethod
+    def _sprite_id(national_dex_id, species_slug="", form=""):
+        base = str(int(national_dex_id)) if int(national_dex_id or 0) else str(species_slug or "")
+        form = sprite_form_slug(form)
+        if form:
+            return f"{base}-{form}"
+        return base
 
     def request(self, pokemon):
         self.request_for(pokemon)
@@ -443,41 +522,22 @@ class SpriteLoader:
             entry = self.entries.get(key)
             if entry and (entry.get("loading") or entry.get("surface") is not None):
                 return
-            self.entries[key] = {"surface": None, "loading": True, "error": ""}
+            self.entries[key] = {"surface": None, "loading": True, "error": "", "started_at": time.monotonic()}
         threading.Thread(target=self._load, args=(key, lookup), daemon=True).start()
 
-    def _sprite_urls(self, lookup):
-        generation = int(lookup.get("generation") or 0)
-        species_slug = str(lookup.get("species_slug") or "")
-        national_dex_id = int(lookup.get("national_dex_id") or 0)
-        urls = []
-        if national_dex_id:
-            urls.append(f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{national_dex_id}.png")
-        if self.http_base_url and generation and species_slug:
-            urls.append(f"{self.http_base_url}/sprites/{generation}/{species_slug}/front.png")
-        if species_slug:
-            urls.append(f"https://img.pokemondb.net/sprites/home/normal/{species_slug}.png")
-        return urls
+    def _sprite_path(self, lookup):
+        variant = str(lookup.get("variant") or "normal")
+        sprite_id = str(lookup.get("sprite_id") or lookup.get("national_dex_id") or lookup.get("species_slug") or "")
+        if not sprite_id:
+            return None
+        return self.asset_dir / variant / f"{sprite_id}.png"
 
     def _load(self, key, lookup):
         try:
-            cache_file = SPRITE_CACHE_DIR / f"{key}.png"
-            if not cache_file.exists():
-                logger.debug("Sprite cache miss: key=%s", key)
-                errors = []
-                for sprite_url in self._sprite_urls(lookup):
-                    try:
-                        request = urllib.request.Request(sprite_url, headers={"User-Agent": "PokeCable/1.0"})
-                        with urllib.request.urlopen(request, timeout=8) as response:
-                            cache_file.write_bytes(response.read())
-                        logger.info("Sprite downloaded: key=%s url=%s", key, sprite_url)
-                        break
-                    except Exception as exc:
-                        errors.append(f"{sprite_url}: {exc}")
-                        logger.debug("Sprite source failed: key=%s url=%s error=%s", key, sprite_url, exc)
-                if not cache_file.exists():
-                    raise RuntimeError("; ".join(errors) or "no sprite URL available")
-            surface = pygame.image.load(str(cache_file)).convert_alpha()
+            sprite_path = self._sprite_path(lookup)
+            if not sprite_path or not sprite_path.exists():
+                raise RuntimeError(f"local sprite not found: {sprite_path}")
+            surface = pygame.image.load(str(sprite_path)).convert_alpha()
             error = ""
         except Exception as exc:
             surface = None
@@ -497,7 +557,10 @@ class SpriteLoader:
     def snapshot_key(self, key):
         with self.lock:
             entry = self.entries.get(key or "", {})
-            return entry.get("surface"), bool(entry.get("loading")), str(entry.get("error") or "")
+            loading = bool(entry.get("loading"))
+            if loading and time.monotonic() - float(entry.get("started_at") or 0) > SPRITE_LOADING_MAX_SECONDS:
+                loading = False
+            return entry.get("surface"), loading, str(entry.get("error") or "")
 
 
 def translate_joy_button(button_id):
@@ -602,7 +665,12 @@ def draw_menu(screen, fonts, selected, language):
     rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
     text(screen, title_f, "PokeCable", 14, 10)
 
-    items = [t(language, "menu_access_room"), t(language, "menu_config"), t(language, "menu_exit")]
+    items = [
+        t(language, "menu_access_room"),
+        t(language, "menu_self_trade"),
+        t(language, "menu_config"),
+        t(language, "menu_exit"),
+    ]
     list_panel = pygame.Rect(10, HEADER_H + 10, LIST_W - 18, SCREEN_H - HEADER_H - FOOTER_H - 20)
     rect(screen, PANEL, list_panel, 6)
     text(screen, small_f, t(language, "menu_title"), 22, HEADER_H + 22, MUTED)
@@ -739,11 +807,11 @@ def draw_keyboard(screen, fonts, title, value, grid_index, is_password=False, sh
     button(screen, tiny_f, "B", "DEL/VOLTAR", 112, SCREEN_H - 48)
 
 
-def draw_select_save(screen, fonts, selected, saves):
+def draw_select_save(screen, fonts, selected, saves, title="Select Save"):
     title_f, body_f, small_f, tiny_f = fonts
     screen.fill(BG)
     rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Select Save", 14, 10)
+    text(screen, title_f, title, 14, 10)
 
     if not saves:
         text(screen, body_f, "No saves found!", 50, HEADER_H + 100, RED)
@@ -820,7 +888,7 @@ def draw_select_pokemon_source(screen, fonts, selected, status="", room_name="",
     button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
 
 
-def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, sprite_loader, status=""):
+def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, sprite_loader, status="", allow_pc_actions=True):
     title_f, body_f, small_f, tiny_f = fonts
     screen.fill(BG)
     rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
@@ -920,11 +988,12 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
     rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
     button(screen, tiny_f, "A", "OK", 12, SCREEN_H - 48)
     button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
-    is_party = "party" in (source_label or "").lower()
-    x_label = "MOVER P/ PC" if is_party else "RETIRAR"
-    button(screen, tiny_f, "X", x_label, 212, SCREEN_H - 48)
-    y_label = "VER PC" if is_party else "VER PARTY"
-    button(screen, tiny_f, "Y", y_label, 360, SCREEN_H - 48)
+    if allow_pc_actions:
+        is_party = "party" in (source_label or "").lower()
+        x_label = "MOVER P/ PC" if is_party else "RETIRAR"
+        button(screen, tiny_f, "X", x_label, 212, SCREEN_H - 48)
+        y_label = "VER PC" if is_party else "VER PARTY"
+        button(screen, tiny_f, "Y", y_label, 360, SCREEN_H - 48)
 
 
 def draw_connecting(screen, fonts, frame):
@@ -1027,7 +1096,9 @@ def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_i
 
     info_panel = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, 70)
     rect(screen, PANEL, info_panel, 6)
-    move_name_text = removed_move.get("name") or f"Move #{removed_move.get('move_id', 0)}"
+    move_name_text = removed_move.get("name") or local_move_name(removed_move.get("move_id", 0))
+    if is_move_number_label(move_name_text):
+        move_name_text = local_move_name(removed_move.get("move_id", 0))
     text(screen, body_f, f"Sem suporte: {move_name_text}", info_panel.x + 14, info_panel.y + 14, ACCENT)
     text(screen, small_f, "Escolha um substituto ou deixe vazio.", info_panel.x + 14, info_panel.y + 42, MUTED)
 
@@ -1052,7 +1123,9 @@ def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_i
         color = (5, 11, 18) if idx == replacement_index else TEXT
         if idx == replacement_index:
             rect(screen, ACCENT, row, 4)
-        label = option.get("name") or f"Move #{option.get('move_id', 0)}"
+        label = option.get("name") or local_move_name(option.get("move_id", 0))
+        if is_move_number_label(label):
+            label = local_move_name(option.get("move_id", 0))
         text(screen, small_f, label[:48], row.x + 10, row.y + 10, color, row.w - 20)
     screen.set_clip(previous_clip)
     draw_scrollbar(screen, list_panel, scroll, len(options))
@@ -1374,9 +1447,14 @@ def draw_trade_result(screen, fonts, success, data):
             if evolution.get("cancelled")
             else received.get("display_summary") or peer.get("display_summary") or peer.get("nickname") or peer.get("species_name") or "Pokemon"
         )
-        backup_name = Path(data.get("backup", "")).name if isinstance(data, dict) and data.get("backup") else "nenhum"
+        if isinstance(data, dict) and (data.get("backup_a") or data.get("backup_b")):
+            backup_a = Path(data.get("backup_a", "")).name if data.get("backup_a") else "nenhum"
+            backup_b = Path(data.get("backup_b", "")).name if data.get("backup_b") else "nenhum"
+            backup_name = f"{backup_a} / {backup_b}"
+        else:
+            backup_name = Path(data.get("backup", "")).name if isinstance(data, dict) and data.get("backup") else "nenhum"
         text(screen, small_f, f"Recebido: {pokemon_display}", 50, HEADER_H + 170, TEXT)
-        text(screen, tiny_f, f"Backup: {backup_name}", 50, HEADER_H + 210, MUTED)
+        text(screen, tiny_f, f"Backup: {backup_name}", 50, HEADER_H + 210, MUTED, SCREEN_W - 100)
     else:
         text(screen, body_f, "Erro ou Cancelado", 50, HEADER_H + 100, RED)
         text(screen, small_f, str(data or "Trade nao completado")[:70], 50, HEADER_H + 180, RED, SCREEN_W - 100)
@@ -1459,6 +1537,22 @@ def main():
     pending_deposit_idx = -1
     pending_withdraw_pokemon = None
     evolution_anim_start = None
+    self_trade_save_a = None
+    self_trade_save_b = None
+    self_trade_pokemon_a = None
+    self_trade_pokemon_b = None
+    self_trade_context = {}
+    self_trade_pending_decision = ""
+    self_trade_decisions = {
+        "cancel_evolution_to_a": False,
+        "cancel_evolution_to_b": False,
+        "resolved_moves_to_a": {},
+        "resolved_moves_to_b": {},
+        "_evolution_to_a_done": False,
+        "_evolution_to_b_done": False,
+        "_moves_to_a_done": False,
+        "_moves_to_b_done": False,
+    }
     sprite_loader = SpriteLoader(state.server_url)
 
     def switch_screen(new_screen, reason):
@@ -1466,6 +1560,125 @@ def main():
         if current_screen != new_screen:
             logger.info("SCREEN %s -> %s (%s)", current_screen, new_screen, reason)
         current_screen = new_screen
+
+    def reset_self_trade_state():
+        nonlocal self_trade_save_a, self_trade_save_b, self_trade_pokemon_a, self_trade_pokemon_b
+        nonlocal self_trade_context, self_trade_pending_decision, self_trade_decisions
+        self_trade_save_a = None
+        self_trade_save_b = None
+        self_trade_pokemon_a = None
+        self_trade_pokemon_b = None
+        self_trade_context = {}
+        self_trade_pending_decision = ""
+        self_trade_decisions = {
+            "cancel_evolution_to_a": False,
+            "cancel_evolution_to_b": False,
+            "resolved_moves_to_a": {},
+            "resolved_moves_to_b": {},
+            "_evolution_to_a_done": False,
+            "_evolution_to_b_done": False,
+            "_moves_to_a_done": False,
+            "_moves_to_b_done": False,
+        }
+
+    def same_save_path(path_a, path_b):
+        if not path_a or not path_b:
+            return False
+        try:
+            return Path(path_a).resolve() == Path(path_b).resolve()
+        except OSError:
+            return str(Path(path_a).absolute()) == str(Path(path_b).absolute())
+
+    def load_self_trade_party(save_path):
+        nonlocal trade_status
+        state.selected_save = Path(save_path)
+        state.pokemon_source = "party"
+        state.selected_pokemon = None
+        state.get_pokemon_list("party", enrich=False)
+        trade_status = f"Party: {Path(save_path).name}"
+
+    def advance_self_trade_prompts():
+        nonlocal pending_removed_moves, resolve_current_idx, resolve_replacement_idx, resolved_moves_choices
+        nonlocal result_data, evolution_anim_start, self_trade_pending_decision, trade_status, menu_index
+        preflight_to_a = self_trade_context.get("preflight_to_a", {}) if isinstance(self_trade_context, dict) else {}
+        preflight_to_b = self_trade_context.get("preflight_to_b", {}) if isinstance(self_trade_context, dict) else {}
+
+        if not self_trade_decisions.get("_evolution_to_a_done"):
+            self_trade_decisions["_evolution_to_a_done"] = True
+            evolution = preflight_to_a.get("trade_evolution") if isinstance(preflight_to_a, dict) else {}
+            if isinstance(evolution, dict) and evolution.get("evolved"):
+                result_data = evolution
+                self_trade_pending_decision = "cancel_evolution_to_a"
+                evolution_anim_start = frame
+                trade_status = f"{Path(self_trade_save_a).name}: decidir evolucao"
+                switch_screen("evolution_cancel_prompt", "self_trade_evolution_to_a")
+                return
+
+        if not self_trade_decisions.get("_moves_to_a_done"):
+            self_trade_decisions["_moves_to_a_done"] = True
+            removed = list(preflight_to_a.get("removed_moves") or []) if isinstance(preflight_to_a, dict) else []
+            if removed:
+                pending_removed_moves = removed
+                resolve_current_idx = 0
+                resolve_replacement_idx = 0
+                resolved_moves_choices = {}
+                self_trade_pending_decision = "resolved_moves_to_a"
+                trade_status = f"{Path(self_trade_save_a).name}: resolver movimentos"
+                switch_screen("resolve_moves", "self_trade_moves_to_a")
+                return
+
+        if not self_trade_decisions.get("_evolution_to_b_done"):
+            self_trade_decisions["_evolution_to_b_done"] = True
+            evolution = preflight_to_b.get("trade_evolution") if isinstance(preflight_to_b, dict) else {}
+            if isinstance(evolution, dict) and evolution.get("evolved"):
+                result_data = evolution
+                self_trade_pending_decision = "cancel_evolution_to_b"
+                evolution_anim_start = frame
+                trade_status = f"{Path(self_trade_save_b).name}: decidir evolucao"
+                switch_screen("evolution_cancel_prompt", "self_trade_evolution_to_b")
+                return
+
+        if not self_trade_decisions.get("_moves_to_b_done"):
+            self_trade_decisions["_moves_to_b_done"] = True
+            removed = list(preflight_to_b.get("removed_moves") or []) if isinstance(preflight_to_b, dict) else []
+            if removed:
+                pending_removed_moves = removed
+                resolve_current_idx = 0
+                resolve_replacement_idx = 0
+                resolved_moves_choices = {}
+                self_trade_pending_decision = "resolved_moves_to_b"
+                trade_status = f"{Path(self_trade_save_b).name}: resolver movimentos"
+                switch_screen("resolve_moves", "self_trade_moves_to_b")
+                return
+
+        state.selected_pokemon = self_trade_pokemon_a
+        result_data = self_trade_context.get("payload_b", {}) if isinstance(self_trade_context, dict) else {}
+        trade_status = "Validacoes concluidas. Confirme a troca local."
+        menu_index = 0
+        switch_screen("self_trade_confirm", "self_trade_ready_to_confirm")
+
+    def finish_self_trade():
+        nonlocal result_data, trade_status, menu_index
+        trade_status = "Aplicando troca local..."
+        switch_screen("trading", "self_trade_commit")
+        try:
+            result_data = execute_self_trade(
+                self_trade_context,
+                cancel_evolution_to_a=bool(self_trade_decisions.get("cancel_evolution_to_a")),
+                cancel_evolution_to_b=bool(self_trade_decisions.get("cancel_evolution_to_b")),
+                resolved_moves_to_a=dict(self_trade_decisions.get("resolved_moves_to_a") or {}),
+                resolved_moves_to_b=dict(self_trade_decisions.get("resolved_moves_to_b") or {}),
+            )
+            trade_status = "Troca local concluida!"
+            state.save_analysis.clear()
+            switch_screen("trade_result", "self_trade_done")
+            menu_index = 0
+        except Exception as exc:
+            logger.exception("Self trade failed: %s", exc)
+            trade_status = f"Erro: {exc}"
+            result_data = {"success": False, "error": str(exc)}
+            switch_screen("trade_result", "self_trade_failed")
+            menu_index = 0
 
     while running:
         frame += 1
@@ -1564,9 +1777,9 @@ def main():
 
         if current_screen == "menu" and action:
             if action == "up":
-                menu_index = (menu_index - 1) % 3
+                menu_index = (menu_index - 1) % 4
             elif action == "down":
-                menu_index = (menu_index + 1) % 3
+                menu_index = (menu_index + 1) % 4
             elif action == "select":
                 if menu_index == 0:
                     reset_flow_state(state)
@@ -1575,10 +1788,17 @@ def main():
                     switch_screen("load_save", "menu_access_room")
                     menu_index = 0
                 elif menu_index == 1:
+                    reset_flow_state(state)
+                    reset_self_trade_state()
+                    state.find_saves()
+                    logger.info("Menu select: self trade")
+                    switch_screen("self_select_save_a", "menu_self_trade")
+                    menu_index = 0
+                elif menu_index == 2:
                     logger.info("Menu select: config")
                     switch_screen("config", "menu_config")
                     menu_index = 0
-                elif menu_index == 2:
+                elif menu_index == 3:
                     logger.info("Menu select: exit")
                     running = False
             elif action == "back":
@@ -1630,6 +1850,116 @@ def main():
                 menu_index = 0
             elif action == "back":
                 switch_screen("menu", "back_from_load_save")
+                menu_index = 0
+
+        elif current_screen == "self_select_save_a" and action:
+            if action == "up":
+                menu_index = max(0, menu_index - 1)
+            elif action == "down":
+                menu_index = min(max(0, len(state.saves) - 1), menu_index + 1)
+            elif action == "select" and state.saves:
+                self_trade_save_a = state.saves[menu_index]
+                logger.info("Self trade save A selected: %s", self_trade_save_a)
+                switch_screen("self_select_save_b", "self_save_a_selected")
+                menu_index = 0
+            elif action == "back":
+                reset_self_trade_state()
+                switch_screen("menu", "back_from_self_save_a")
+                menu_index = 0
+
+        elif current_screen == "self_select_save_b" and action:
+            if action == "up":
+                menu_index = max(0, menu_index - 1)
+            elif action == "down":
+                menu_index = min(max(0, len(state.saves) - 1), menu_index + 1)
+            elif action == "select" and state.saves:
+                candidate = state.saves[menu_index]
+                if same_save_path(self_trade_save_a, candidate):
+                    info_modal_data = {
+                        "title": "Save repetido",
+                        "message": "Escolha dois arquivos de save diferentes para trocar comigo.",
+                        "return_screen": "self_select_save_b",
+                    }
+                    switch_screen("info_modal", "self_same_save_blocked")
+                else:
+                    self_trade_save_b = candidate
+                    logger.info("Self trade save B selected: %s", self_trade_save_b)
+                    try:
+                        load_self_trade_party(self_trade_save_a)
+                        switch_screen("self_select_pokemon_a", "self_save_b_selected")
+                        menu_index = 0
+                    except Exception as exc:
+                        logger.exception("Failed to load self trade party A: %s", exc)
+                        info_modal_data = {
+                            "title": "Falha ao carregar Party",
+                            "message": str(exc),
+                            "return_screen": "self_select_save_a",
+                        }
+                        switch_screen("info_modal", "self_party_a_failed")
+            elif action == "back":
+                self_trade_save_b = None
+                switch_screen("self_select_save_a", "back_from_self_save_b")
+                menu_index = 0
+
+        elif current_screen == "self_select_pokemon_a" and action:
+            if action == "up":
+                menu_index = max(0, menu_index - 1)
+            elif action == "down":
+                menu_index = min(max(0, len(state.pokemon_list) - 1), menu_index + 1)
+            elif action == "select" and state.pokemon_list:
+                self_trade_pokemon_a = state.pokemon_list[menu_index]
+                logger.info("Self trade pokemon A selected: %s", self_trade_pokemon_a.get("location"))
+                try:
+                    load_self_trade_party(self_trade_save_b)
+                    switch_screen("self_select_pokemon_b", "self_pokemon_a_selected")
+                    menu_index = 0
+                except Exception as exc:
+                    logger.exception("Failed to load self trade party B: %s", exc)
+                    info_modal_data = {
+                        "title": "Falha ao carregar Party",
+                        "message": str(exc),
+                        "return_screen": "self_select_save_b",
+                    }
+                    switch_screen("info_modal", "self_party_b_failed")
+            elif action == "back":
+                self_trade_pokemon_a = None
+                switch_screen("self_select_save_b", "back_from_self_pokemon_a")
+                menu_index = 0
+
+        elif current_screen == "self_select_pokemon_b" and action:
+            if action == "up":
+                menu_index = max(0, menu_index - 1)
+            elif action == "down":
+                menu_index = min(max(0, len(state.pokemon_list) - 1), menu_index + 1)
+            elif action == "select" and state.pokemon_list:
+                self_trade_pokemon_b = state.pokemon_list[menu_index]
+                logger.info("Self trade pokemon B selected: %s", self_trade_pokemon_b.get("location"))
+                trade_status = "Validando troca local..."
+                switch_screen("trading", "self_trade_preflight")
+                try:
+                    self_trade_context = prepare_self_trade(
+                        state,
+                        self_trade_save_a,
+                        str(self_trade_pokemon_a.get("location") or "party:0"),
+                        self_trade_save_b,
+                        str(self_trade_pokemon_b.get("location") or "party:0"),
+                    )
+                    advance_self_trade_prompts()
+                except Exception as exc:
+                    logger.exception("Self trade preflight failed: %s", exc)
+                    info_modal_data = {
+                        "title": "Troca incompativel",
+                        "message": str(exc),
+                        "return_screen": "self_select_pokemon_b",
+                    }
+                    switch_screen("info_modal", "self_preflight_failed")
+            elif action == "back":
+                self_trade_pokemon_b = None
+                try:
+                    load_self_trade_party(self_trade_save_a)
+                except Exception:
+                    pass
+                switch_screen("self_select_pokemon_a", "back_from_self_pokemon_b")
                 menu_index = 0
 
         elif current_screen == "select_pokemon_source" and action:
@@ -1786,6 +2116,19 @@ def main():
                     switch_screen("enter_room_name", "back_from_password")
                     keyboard_index = 0
 
+        elif current_screen == "self_trade_confirm" and action:
+            if action == "select":
+                logger.info("Self trade confirmation accepted")
+                finish_self_trade()
+            elif action == "back":
+                logger.info("Self trade confirmation declined")
+                result_data = {}
+                trade_status = "Troca local cancelada."
+                reset_self_trade_state()
+                reset_flow_state(state)
+                switch_screen("menu", "self_trade_confirm_no")
+                menu_index = 0
+
         elif current_screen == "trade_confirm" and action:
             if action == "select":
                 logger.info("Trade confirmation accepted")
@@ -1830,14 +2173,26 @@ def main():
                 resolve_replacement_idx = 0
                 if resolve_current_idx >= len(pending_removed_moves):
                     logger.info("Move resolution complete: %s", resolved_moves_choices)
-                    confirm_queue.put(dict(resolved_moves_choices))
-                    pending_removed_moves = []
+                    if self_trade_pending_decision in ("resolved_moves_to_a", "resolved_moves_to_b"):
+                        self_trade_decisions[self_trade_pending_decision] = dict(resolved_moves_choices)
+                        self_trade_pending_decision = ""
+                        pending_removed_moves = []
+                        advance_self_trade_prompts()
+                    else:
+                        confirm_queue.put(dict(resolved_moves_choices))
+                        pending_removed_moves = []
 
         elif current_screen == "evolution_cancel_prompt" and action:
             if action == "select":
                 logger.info("Evolution cancellation skipped (A = let evolve)")
-                confirm_queue.put(False)
-                switch_screen("trading", "evolution_cancel_no")
+                if self_trade_pending_decision in ("cancel_evolution_to_a", "cancel_evolution_to_b"):
+                    self_trade_decisions[self_trade_pending_decision] = False
+                    self_trade_pending_decision = ""
+                    switch_screen("trading", "self_evolution_cancel_no")
+                    advance_self_trade_prompts()
+                else:
+                    confirm_queue.put(False)
+                    switch_screen("trading", "evolution_cancel_no")
             elif action == "back":
                 logger.info("Evolution cancellation requested (B = interrupt)")
                 switch_screen("evolution_cancel_confirm", "evolution_cancel_requested")
@@ -1845,12 +2200,24 @@ def main():
         elif current_screen == "evolution_cancel_confirm" and action:
             if action == "select":
                 logger.info("Evolution cancellation rejected (A = let evolve)")
-                confirm_queue.put(False)
-                switch_screen("trading", "evolution_cancel_rejected")
+                if self_trade_pending_decision in ("cancel_evolution_to_a", "cancel_evolution_to_b"):
+                    self_trade_decisions[self_trade_pending_decision] = False
+                    self_trade_pending_decision = ""
+                    switch_screen("trading", "self_evolution_cancel_rejected")
+                    advance_self_trade_prompts()
+                else:
+                    confirm_queue.put(False)
+                    switch_screen("trading", "evolution_cancel_rejected")
             elif action == "back":
                 logger.info("Evolution cancellation confirmed (B = interrupt)")
-                confirm_queue.put(True)
-                switch_screen("trading", "evolution_cancel_yes")
+                if self_trade_pending_decision in ("cancel_evolution_to_a", "cancel_evolution_to_b"):
+                    self_trade_decisions[self_trade_pending_decision] = True
+                    self_trade_pending_decision = ""
+                    switch_screen("trading", "self_evolution_cancel_yes")
+                    advance_self_trade_prompts()
+                else:
+                    confirm_queue.put(True)
+                    switch_screen("trading", "evolution_cancel_yes")
 
         elif current_screen == "withdraw_confirm" and action:
             if action == "select":
@@ -1971,6 +2338,7 @@ def main():
             else:
                 switch_screen("menu", "trade_result_ack")
                 reset_flow_state(state)
+                reset_self_trade_state()
 
         if current_screen == "menu":
             draw_menu(screen, fonts, menu_index, state.language)
@@ -1978,6 +2346,16 @@ def main():
             draw_config_menu(screen, fonts, menu_index, state.language, state.theme)
         elif current_screen == "load_save":
             draw_select_save(screen, fonts, menu_index, state.saves)
+        elif current_screen == "self_select_save_a":
+            draw_select_save(screen, fonts, menu_index, state.saves, "Trocar comigo: Save 1")
+        elif current_screen == "self_select_save_b":
+            draw_select_save(screen, fonts, menu_index, state.saves, "Trocar comigo: Save 2")
+        elif current_screen == "self_select_pokemon_a":
+            label = f"Party Save 1: {Path(self_trade_save_a).name}" if self_trade_save_a else "Party Save 1"
+            draw_select_pokemon(screen, fonts, menu_index, state.pokemon_list, label, sprite_loader, trade_status, False)
+        elif current_screen == "self_select_pokemon_b":
+            label = f"Party Save 2: {Path(self_trade_save_b).name}" if self_trade_save_b else "Party Save 2"
+            draw_select_pokemon(screen, fonts, menu_index, state.pokemon_list, label, sprite_loader, trade_status, False)
         elif current_screen == "select_pokemon_source":
             draw_select_pokemon_source(screen, fonts, menu_index, trade_status, state.room_name or room_name, state.room_password or room_password)
         elif current_screen == "select_pokemon":
@@ -1995,6 +2373,14 @@ def main():
             draw_cancel_waiting_confirm(screen, fonts)
         elif current_screen == "leave_room_confirm":
             draw_leave_room_confirm(screen, fonts)
+        elif current_screen == "self_trade_confirm":
+            draw_trade_confirm(
+                screen,
+                fonts,
+                self_trade_pokemon_a or {},
+                self_trade_context.get("payload_b", {}) if isinstance(self_trade_context, dict) else {},
+                sprite_loader,
+            )
         elif current_screen == "trade_confirm":
             draw_trade_confirm(
                 screen,

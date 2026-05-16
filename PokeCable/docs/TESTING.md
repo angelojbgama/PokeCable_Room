@@ -7,14 +7,23 @@ Documentação completa do sistema de testes para validar o pipeline de troca de
 O sistema de testes valida:
 - **Same-gen trades** - trocas dentro da mesma geração (Gen1↔Gen1, Gen2↔Gen2, Gen3↔Gen3)
 - **Cross-gen trades** - trocas entre gerações diferentes (Gen1→Gen2, Gen2→Gen3, etc)
+- **Trocar comigo** - troca local entre dois saves, sem backend/API
 - **Todas as combinações** - 9 combinações possíveis de gerações
-- **Todos os Pokémon** - 251 Pokémon em cobertura completa
+- **Pokémon modelados** - 251 Pokémon no conjunto completo de retrocompatibilidade atual
 - **Todos os movesets** - múltiplas combinações de ataques por Pokémon
 - **Compatibilidade de dados** - validação de perda/ganho de dados cross-gen
 
 ## Tipos de Teste
 
-### 1. Teste Rápido (Quick)
+### 1. Teste Focado Da Tool
+```bash
+pytest -q tests/test_pokecable_save_tool.py
+```
+- **Cobertura:** gerenciamento Party/PC, escrita em save, `Trocar comigo`, backup/rollback e runtime offline
+- **Propósito:** validar a tool atual antes de testar fluxos maiores
+- **Inclui:** evolução por troca, bloqueio de mesmo save, `resolved_moves` e preflight sem chamada online
+
+### 2. Teste Rápido (Quick)
 ```bash
 ./tests/test_pipeline.sh quick
 ```
@@ -23,7 +32,7 @@ O sistema de testes valida:
 - **Propósito:** Validação rápida do sistema
 - **Workers:** 8 threads paralelas
 
-### 2. Teste com API (API)
+### 3. Teste com API (API)
 ```bash
 ./tests/test_pipeline.sh api
 ```
@@ -33,7 +42,7 @@ O sistema de testes valida:
 - **Dados:** Saves de Gen1 (Blue, Red, Yellow) e Gen3 (Emerald, Ruby)
 - **Workers:** 4 threads paralelas
 
-### 3. Teste Completo (Full)
+### 4. Teste Completo (Full)
 ```bash
 ./tests/test_pipeline.sh full
 ```
@@ -42,7 +51,7 @@ O sistema de testes valida:
 - **Propósito:** Validação abrangente
 - **Workers:** 8 + 4 threads
 
-### 4. Teste de Retrocompatibilidade Completa (Complete)
+### 5. Teste de Retrocompatibilidade Completa (Complete)
 ```bash
 ./tests/test_pipeline.sh complete
 ```
@@ -55,7 +64,8 @@ O sistema de testes valida:
 
 ### Opção 1: Via script principal (recomendado)
 ```bash
-cd /mnt/c/Users/USER/Documents/meu/PokeCable_Room
+cd /mnt/c/Users/Angelo/Documents/projetos/PokeCable_Room
+pytest -q tests/test_pokecable_save_tool.py
 ./tests/test_pipeline.sh
 ```
 
@@ -178,6 +188,14 @@ cat /tmp/trade_tests/trade_tests_api_errors.txt
 - Cleanup de resources
 - Suporta 4 modos: quick, api, full, complete
 
+**test_pokecable_save_tool.py**
+- Exercita a tool atual em `Pokecable_tool`
+- Valida movimentacao Party/PC quando suportada pelo parser
+- Valida `prepare_self_trade` e `execute_self_trade`
+- Confirma que `Trocar comigo` usa runtime local vendorizado
+- Confirma que o preflight offline nao chama `_runtime_post`
+- Confirma que `resolved_moves` chega ao commit dos dois saves
+
 ## Pokémon Testados
 
 ### Quick/API (10 Pokémon)
@@ -193,7 +211,7 @@ cat /tmp/trade_tests/trade_tests_api_errors.txt
 10. Dratini
 
 ### Complete (251 Pokémon)
-Todos os Pokémon das gerações 1, 2 e 3
+Todos os Pokémon modelados no conjunto completo de retrocompatibilidade atual.
 
 ## Combinações de Gerações Testadas
 
@@ -222,6 +240,19 @@ Por Pokémon, validam-se:
 
 ## Troubleshooting
 
+### Validador local indisponivel
+```bash
+pytest -q tests/test_pokecable_save_tool.py
+```
+
+Se aparecer erro como `No module named runtime_services`, verifique se a pasta abaixo existe junto da tool:
+
+```text
+Pokecable_tool/pokecable_runtime/runtime_services.py
+```
+
+`Trocar comigo` nao deve tentar usar `PokeCable/api` ou `PokeCable/backend` como fallback.
+
 ### Backend não inicia
 ```bash
 # Verificar erros
@@ -239,11 +270,12 @@ python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ### Saves não encontrados
 ```bash
 # Verificar existência
-ls -la save/gen*/*.sav
+ls -la roms/test-saves/gen*/*.sav
+ls -la PokeCable/test-saves/gen*/*.sav
 
-# Caminho esperado
-./save/gen\ 1/Pokémon\ -\ Blue\ Version.sav
-./save/gen\ 3/Pokémon\ -\ Emerald\ Version.sav
+# Caminhos usados no repositório
+./roms/test-saves/gen\ 1/Pokémon\ -\ Blue\ Version.sav
+./PokeCable/test-saves/gen\ 3/Pokémon\ -\ Emerald\ Version.sav
 ```
 
 ### Testes timeout
@@ -273,24 +305,25 @@ Contém:
 
 Antes de considerar o pipeline pronto para produção:
 
+- [ ] Teste da tool passa
 - [ ] Teste quick passa (100%)
 - [ ] Teste api passa (100%)
 - [ ] Teste complete passa (100%)
 - [ ] Sem timeouts
 - [ ] Sem erros de compatibilidade
+- [ ] `Trocar comigo` funciona offline sem backend/API
 - [ ] Same-gen trades funcionam (todas as 3)
 - [ ] Cross-gen trades funcionam (todas as 6)
 - [ ] Moveset complexos são respeitados
-- [ ] Frontend sem erros no console
 - [ ] Backend não lança exceções
 
 ## Próximos Passos
 
 1. **Teste Manual Completo**
-   - Abrir navegador em http://localhost:8080
-   - Carregar Gen1 + Gen3 saves
+   - Abrir `Pokecable_tool/pokecable.sh`
+   - Executar `Trocar comigo` com dois saves diferentes
    - Fazer troca com múltiplos ataques
-   - Validar backup + save modificado
+   - Validar backup, evolucao por troca e save modificado
 
 2. **Teste com Mais Pokémon**
    - Expandir POKEMON_DATA em test_trade_pipeline.py
@@ -303,8 +336,8 @@ Antes de considerar o pipeline pronto para produção:
 
 ## Status
 
+- **Tool/Self Trade:** coberto por `tests/test_pokecable_save_tool.py`
 - **Cobertura Quick:** 10 Pokémon, 360 casos ✓
 - **Cobertura API:** 5 saves, 100 casos ✓
-- **Cobertura Complete:** 251 Pokémon, 9,027 casos ✓
-- **Validação Total:** 100% de sucesso ✓
-- **Pronto para Produção:** Sim ✓
+- **Cobertura Complete:** 251 Pokémon modelados, 9,027 casos ✓
+- **Validação Total:** depende da execucao local dos testes acima

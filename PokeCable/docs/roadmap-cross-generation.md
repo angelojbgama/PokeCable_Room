@@ -1,8 +1,8 @@
-# Roadmap Cross-Generation
+# Cross-Generation
 
-Cross-generation e uma direcao do PokeCable Room. A sala e unica: o usuario nao escolhe Time Capsule, Transfer ou Downconvert. O sistema deriva automaticamente o caminho de conversao necessario em cada direcao da troca.
+Cross-generation e uma capacidade do PokeCable Room. A sala e unica: o usuario nao escolhe Time Capsule, Transfer ou Downconvert. O sistema deriva automaticamente o caminho de conversao necessario em cada direcao da troca.
 
-Mesmo com conversores locais presentes, cross-generation continua atras de feature flags no client e no servidor.
+No fluxo online, cross-generation continua atras de feature flags no client e no servidor. No fluxo `Trocar comigo`, a validacao e a conversao rodam offline na `Pokecable_tool`, usando `Pokecable_tool/pokecable_runtime`.
 
 ## Modos Internos
 
@@ -22,6 +22,8 @@ Em uma troca Gen 1 <-> Gen 3, por exemplo, o jogador Gen 1 recebe pelo modo `leg
 - O servidor faz preflight de protocolo: se algum lado reportar incompatibilidade, ninguem recebe commit.
 - O client gera backup antes de qualquer escrita.
 - Se o save mudar enquanto a sala estiver aberta, a gravacao deve ser cancelada.
+- `Trocar comigo` deve validar os dois destinos localmente, criar backup dos dois saves e restaurar backups se uma escrita falhar.
+- Movimentos removidos por incompatibilidade podem ser substituidos por escolha do usuario antes da escrita quando a politica permitir.
 
 ## Time Capsule Gen 1/2
 

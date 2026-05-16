@@ -6,11 +6,12 @@ from pathlib import Path
 
 from canonical import CanonicalItem, CanonicalMove, CanonicalOriginalData, CanonicalPokemon, CanonicalStats
 from compatibility import CompatibilityReport, build_compatibility_report
+from data.base_stats import get_base_stats
 from data.gender_rates import gender_from_gen3_personality
 from data.growth_rates import level_from_species_experience
 from data.inventory_layouts import inventory_layout_for_game
 from data.items import equivalent_item_id, item_category, item_exists, item_name
-from data.moves import move_exists
+from data.moves import default_move_pp, move_exists
 from data.species import native_to_national, national_to_native, species_exists_in_generation
 from data.unown_forms import gen3_unown_form
 
@@ -45,6 +46,27 @@ PC_BUFFER_BOXES_OFFSET = 0x0004
 PC_BUFFER_BOXES_SIZE = 33600
 PC_BUFFER_NAMES_OFFSET = 0x8344
 BOX_NAME_SIZE = 9
+
+
+def _gen3_is_shiny(personality: int, trainer_id: int) -> bool:
+    personality = int(personality) & 0xFFFFFFFF
+    trainer_id = int(trainer_id) & 0xFFFFFFFF
+    shiny_value = (
+        (trainer_id & 0xFFFF)
+        ^ ((trainer_id >> 16) & 0xFFFF)
+        ^ (personality & 0xFFFF)
+        ^ ((personality >> 16) & 0xFFFF)
+    )
+    return shiny_value < 8
+
+
+def _make_gen3_personality_shiny(personality: int, trainer_id: int) -> int:
+    personality = int(personality) & 0xFFFFFFFF
+    trainer_id = int(trainer_id) & 0xFFFFFFFF
+    high = (personality >> 16) & 0xFFFF
+    low = ((trainer_id & 0xFFFF) ^ ((trainer_id >> 16) & 0xFFFF) ^ high) & 0xFFFF
+    shiny = ((high << 16) | low) & 0xFFFFFFFF
+    return shiny or 1
 
 SUBSTRUCT_ORDERS = (
     (0, 1, 2, 3),
@@ -433,12 +455,23 @@ class Gen3Parser:
         held_item_id = int.from_bytes(secure[growth + 2 : growth + 4], "little") or None
         is_egg = bool(details["is_egg"])
         national_id = 0 if is_egg else native_to_national(3, summary.species_id)
+        pp_bonuses = secure[growth + 8]
         moves = []
-        for offset in range(0, 8, 2):
-            move_id = int.from_bytes(secure[attacks + offset : attacks + offset + 2], "little")
+        for slot in range(4):
+            move_offset = slot * 2
+            move_id = int.from_bytes(secure[attacks + move_offset : attacks + move_offset + 2], "little")
             if move_id:
-                moves.append(CanonicalMove(move_id=move_id, source_generation=3))
-        
+                pp_ups = (pp_bonuses >> (slot * 2)) & 0x03
+                moves.append(
+                    CanonicalMove(
+                        move_id=move_id,
+                        pp=secure[attacks + 8 + slot],
+                        max_pp=default_move_pp(move_id, 3, pp_ups),
+                        pp_ups=pp_ups,
+                        source_generation=3,
+                    )
+                )
+
         # IVs and Misc
         iv_raw = int.from_bytes(secure[misc_offset : misc_offset + 4], "little")
         ivs = CanonicalStats(
@@ -492,6 +525,7 @@ class Gen3Parser:
                 "source_species_id_space": "gen3_internal",
                 "source_species_id": summary.species_id,
                 "is_egg": is_egg,
+                "is_shiny": _gen3_is_shiny(int.from_bytes(raw[0:4], "little"), summary.trainer_id),
                 "gender": summary.gender,
                 "unown_form": summary.unown_form,
             },
@@ -508,6 +542,8 @@ class Gen3Parser:
         self.validate_can_write("party:0", canonical_pokemon)
         personality = self._deterministic_personality(canonical_pokemon)
         trainer_id = int(canonical_pokemon.trainer_id) & 0xFFFFFFFF
+        if canonical_pokemon.metadata.get("is_shiny"):
+            personality = _make_gen3_personality_shiny(personality, trainer_id)
         species_id = national_to_native(3, canonical_pokemon.species.national_dex_id)
         secure = bytearray(SECURE_SIZE)
         
@@ -530,8 +566,14 @@ class Gen3Parser:
         # Attacks Substruct
         for offset, move in enumerate(canonical_pokemon.moves[:4]):
             if move_exists(move.move_id, 3):
+                pp_ups = max(0, min(3, int(move.pp_ups or 0)))
+                max_pp = int(move.max_pp or default_move_pp(move.move_id, 3, pp_ups))
+                pp = int(move.pp or max_pp or default_move_pp(move.move_id, 3, pp_ups))
+                if pp <= 0:
+                    pp = default_move_pp(move.move_id, 3, pp_ups)
                 secure[attacks + offset * 2 : attacks + offset * 2 + 2] = int(move.move_id).to_bytes(2, "little")
-                secure[attacks + 8 + offset] = min(99, int(move.pp or move.max_pp or 0))
+                secure[attacks + 8 + offset] = min(64, pp)
+                secure[growth + 8] |= (pp_ups & 0x03) << (offset * 2)
 
         # EVs Substruct (Effort Values)
         # Gen 1/2 Stat Exp (0-65535) -> Gen 3 EVs (0-255)
@@ -547,6 +589,7 @@ class Gen3Parser:
         # Misc Substruct (IVs, Egg, Ability)
         # Gen 1/2 DVs (0-15) -> Gen 3 IVs (0-31)
         # Mapping: DV * 2
+        hp_iv = atk_iv = def_iv = spd_iv = spatk_iv = spdef_iv = 0
         iv_data = 0
         if canonical_pokemon.ivs:
             hp_iv = min(31, int(canonical_pokemon.ivs.hp or 0) * 2)
@@ -555,7 +598,7 @@ class Gen3Parser:
             spd_iv = min(31, int(canonical_pokemon.ivs.speed or 0) * 2)
             spatk_iv = min(31, int(canonical_pokemon.ivs.special_attack or canonical_pokemon.ivs.special or 0) * 2)
             spdef_iv = min(31, int(canonical_pokemon.ivs.special_defense or canonical_pokemon.ivs.special or 0) * 2)
-            
+
             iv_data |= (hp_iv & 0x1F)
             iv_data |= (atk_iv & 0x1F) << 5
             iv_data |= (def_iv & 0x1F) << 10
@@ -579,7 +622,35 @@ class Gen3Parser:
         raw[20:27] = self._encode_text(canonical_pokemon.ot_name or "TRAINER", OT_NAME_SIZE)
         raw[28:30] = checksum.to_bytes(2, "little")
         raw[32:80] = encrypted
-        raw[84] = max(1, min(100, canonical_pokemon.level))
+        level = max(1, min(100, canonical_pokemon.level))
+        raw[84] = level
+
+        # Calculate and write party stat cache (bytes 86-99)
+        base = get_base_stats(canonical_pokemon.species.national_dex_id)
+        if base:
+            bs = base["stats"]
+            ev_hp = min(255, int((canonical_pokemon.evs.hp or 0) / 256)) if canonical_pokemon.evs else 0
+            ev_atk = min(255, int((canonical_pokemon.evs.attack or 0) / 256)) if canonical_pokemon.evs else 0
+            ev_def = min(255, int((canonical_pokemon.evs.defense or 0) / 256)) if canonical_pokemon.evs else 0
+            ev_spe = min(255, int((canonical_pokemon.evs.speed or 0) / 256)) if canonical_pokemon.evs else 0
+            ev_spa = min(255, int((canonical_pokemon.evs.special_attack or (canonical_pokemon.evs.special or 0)) / 256)) if canonical_pokemon.evs else 0
+            ev_spd = min(255, int((canonical_pokemon.evs.special_defense or (canonical_pokemon.evs.special or 0)) / 256)) if canonical_pokemon.evs else 0
+
+            max_hp = (2 * bs["hp"] + hp_iv + ev_hp // 4) * level // 100 + level + 10
+            stat_atk = (2 * bs["atk"] + atk_iv + ev_atk // 4) * level // 100 + 5
+            stat_def = (2 * bs["def"] + def_iv + ev_def // 4) * level // 100 + 5
+            stat_spe = (2 * bs["spe"] + spd_iv + ev_spe // 4) * level // 100 + 5
+            stat_spa = (2 * bs["spa"] + spatk_iv + ev_spa // 4) * level // 100 + 5
+            stat_spd = (2 * bs["spd"] + spdef_iv + ev_spd // 4) * level // 100 + 5
+
+            raw[86:88] = max_hp.to_bytes(2, "little")
+            raw[88:90] = max_hp.to_bytes(2, "little")
+            raw[90:92] = stat_atk.to_bytes(2, "little")
+            raw[92:94] = stat_def.to_bytes(2, "little")
+            raw[94:96] = stat_spe.to_bytes(2, "little")
+            raw[96:98] = stat_spa.to_bytes(2, "little")
+            raw[98:100] = stat_spd.to_bytes(2, "little")
+
         return bytes(raw)
 
     def write_party_mon(self, location: str, built_mon: bytes) -> None:

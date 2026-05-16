@@ -189,8 +189,6 @@ if (!wsClientModule) {
   console.error("POKECABLE_WS_CLIENT nao foi carregado. Verifique PokeCable/frontend/websocket-client.js.");
 }
 
-const LOCAL_FALLBACK_SPRITE = "pokemon-fallback.svg";
-
 const moveNames = window.POKECABLE_MOVE_NAMES;
 if (!moveNames) {
   console.error("POKECABLE_MOVE_NAMES nao foi carregado. Verifique PokeCable/frontend/move-names.js.");
@@ -369,23 +367,26 @@ function speciesNameFor(generation, speciesId, fallback = "") {
 function pokemonSpriteUrl(nationalDexId, form = "", isShiny = false) {
   const dex = Number(nationalDexId || 0);
   if (!dex) return "";
-  const shinyPath = isShiny ? "shiny/" : "";
-  let url = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${shinyPath}${dex}`;
-  if (dex === 201 && form) {
-    const f = String(form).toLowerCase().trim();
-    if (f === "!") url += "-exclamation";
-    else if (f === "?") url += "-question";
-    else if (f !== "a") url += `-${f}`;
-  }
-  return url + ".png";
+  const variant = isShiny ? "shiny" : "normal";
+  const normalizedForm = pokemonSpriteFormSlug(form);
+  const spriteName = normalizedForm ? `${dex}-${normalizedForm}` : `${dex}`;
+  return `sprites/pokemon/${variant}/${spriteName}.png`;
+}
+
+function pokemonSpriteFormSlug(form = "") {
+  let value = cleanName(form).toLowerCase();
+  if (!value || value === "a") return "";
+  if (value === "!") return "exclamation";
+  if (value === "?") return "question";
+  value = value.replace(/!/g, "exclamation").replace(/\?/g, "question");
+  value = value.replace(/['".:,()[\]]/g, "").replace(/[\s_]+/g, "-").replace(/-+/g, "-");
+  return value.replace(/^-|-$/g, "");
 }
 
 function pokemonSpriteImgHtml(nationalDexId, altText, className = "pokemon-sprite", form = "", isShiny = false) {
-  const remoteSprite = pokemonSpriteUrl(nationalDexId, form, isShiny);
-  const sprite = remoteSprite || LOCAL_FALLBACK_SPRITE;
+  const sprite = pokemonSpriteUrl(nationalDexId, form, isShiny);
   const escapedSrc = escapeAttribute(sprite);
-  const escapedFallback = escapeAttribute(LOCAL_FALLBACK_SPRITE);
-  return `<img class="${className}" src="${escapedSrc}" alt="" aria-hidden="true" loading="lazy" onerror="if(!this.dataset.fallbackApplied){this.dataset.fallbackApplied='1';this.src='${escapedFallback}';return;}this.style.display='none';" />`;
+  return `<img class="${className}" src="${escapedSrc}" alt="" aria-hidden="true" loading="lazy" onerror="this.style.display='none';" />`;
 }
 
 function sameName(left, right) {

@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 from canonical import CanonicalMove, CanonicalPokemon
 from compatibility import CompatibilityReport, build_compatibility_report
-from data.moves import move_exists, move_name
+from data.moves import default_move_pp, move_exists, move_name
 
 
 @dataclass(slots=True)
@@ -103,10 +103,14 @@ class BaseConverter:
                     # Aplica resolucao do usuario se existir
                     replacement_id = int(resolved_moves.get(m_id, resolved_moves.get(str(m_id), 0))) if resolved_moves else 0
                     if replacement_id > 0:
+                        replacement_pp = default_move_pp(replacement_id, self.target_generation)
                         new_moves.append(
                             CanonicalMove(
                                 move_id=replacement_id,
                                 name=move_name(replacement_id) or f"Move #{replacement_id}",
+                                pp=replacement_pp,
+                                max_pp=replacement_pp,
+                                pp_ups=0,
                                 source_generation=self.target_generation,
                             )
                         )
@@ -115,13 +119,17 @@ class BaseConverter:
                     new_moves.append(move)
             
             converted.moves = new_moves
-            
+
             should_apply_fallback = any("Pound sera aplicado" in item for item in report.transformations)
             if not converted.moves and should_apply_fallback:
+                fallback_pp = default_move_pp(1, self.target_generation)
                 converted.moves = [
                     CanonicalMove(
                         move_id=1,
                         name=move_name(1) or "Pound",
+                        pp=fallback_pp,
+                        max_pp=fallback_pp,
+                        pp_ups=0,
                         source_generation=self.target_generation,
                     )
                 ]

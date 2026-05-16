@@ -2,6 +2,8 @@
 
 Servidor FastAPI/WebSocket para salas privadas de troca por payload de Pokemon. O servidor nao edita saves, nao converte Pokemon e nao armazena ROMs ou saves completos.
 
+O servidor participa apenas do fluxo online `Acessar sala`. A opcao `Trocar comigo`, implementada na `Pokecable_tool`, roda 100% offline entre dois saves locais e nao usa API, WebSocket nem fallback online.
+
 ## Rodar Localmente
 
 ```bash
@@ -33,6 +35,7 @@ ws://127.0.0.1:8000/ws
 - Same-generation e o modo estavel atual.
 - Cross-generation fica protegido por feature guard global e por `ENABLED_TRADE_MODES`.
 - O servidor mantem `trade_mode` e `compatibility_status`, mas a escrita e conversao acontecem no client.
+- Quando um client envia `resolved_moves` na confirmacao, o servidor apenas encaminha essa escolha dentro do fluxo da sala.
 - O `/health` expõe o status da engine local de batalha.
 
 ## Cross-Generation
@@ -44,6 +47,8 @@ ALLOW_CROSS_GENERATION=true ENABLED_TRADE_MODES=time_capsule_gen1_gen2 docker co
 ```
 
 Se `ALLOW_CROSS_GENERATION=true` mas o modo nao estiver em `ENABLED_TRADE_MODES`, o servidor continua bloqueando a sala.
+
+Na `Pokecable_tool`, o mesmo preflight/conversao necessario para escrita local tambem existe em `pokecable_runtime`, permitindo `Trocar comigo` sem depender deste servidor.
 
 ## Engine de Batalha
 

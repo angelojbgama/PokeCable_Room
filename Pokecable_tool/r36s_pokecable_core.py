@@ -12,6 +12,7 @@ import os
 import queue
 import shutil
 import socket
+import sys
 import threading
 import urllib.error
 import urllib.parse
@@ -92,6 +93,13 @@ def _runtime_candidate_urls_from_api_base(api_base_url: str, path: str) -> List[
     if clean_path.startswith("/runtime/"):
         candidates.append(f"{base_url}/api{clean_path}")
     return candidates
+
+
+def _ensure_tool_runtime_import_path() -> None:
+    runtime_dir = Path(__file__).resolve().parent / "pokecable_runtime"
+    runtime_path = str(runtime_dir)
+    if runtime_dir.exists() and runtime_path not in sys.path:
+        sys.path.insert(0, runtime_path)
 
 
 class PokecableState:
@@ -398,7 +406,7 @@ class PokecableState:
         self.save_analysis.pop(key, None)
         return self.analyze_save(self.selected_save)
 
-    def get_pokemon_list(self, source: str = "party") -> List[Dict[str, Any]]:
+    def get_pokemon_list(self, source: str = "party", enrich: bool = True) -> List[Dict[str, Any]]:
         if not self.selected_save:
             return []
 
@@ -409,7 +417,8 @@ class PokecableState:
 
         save: SaveModel = analysis["save"]
         source_pokemon = save.get_pokemon(source)
-        self.enrich_pokemon(save, source_pokemon)
+        if enrich:
+            self.enrich_pokemon(save, source_pokemon)
 
         self.pokemon_list = []
         for pokemon in source_pokemon:
@@ -543,6 +552,161 @@ def _build_preflight(
         "server_preflight": server_preflight,
         "trade_evolution": server_preflight.get("trade_evolution") or {},
     }
+
+
+def _local_trade_preflight(received_payload: Dict[str, Any], target_save: SaveModel) -> Dict[str, Any]:
+    try:
+        _ensure_tool_runtime_import_path()
+        from runtime_services import build_trade_preflight  # type: ignore
+    except Exception as exc:
+        raise SaveError(f"Validador local da tool indisponivel: {exc}") from exc
+    try:
+        return build_trade_preflight(
+            {
+                "received_payload": received_payload,
+                "target_generation": target_save.generation,
+                "target_game": target_save.game,
+            }
+        )
+    except Exception as exc:
+        raise SaveError(f"Falha no preflight local: {exc}") from exc
+
+
+def _trade_preflight_for_target(
+    state: PokecableState,
+    received_payload: Dict[str, Any],
+    target_save: SaveModel,
+) -> Dict[str, Any]:
+    del state
+    return _local_trade_preflight(received_payload, target_save)
+
+
+def _preflight_block_message(preflight: Dict[str, Any]) -> str:
+    reasons = [str(reason) for reason in preflight.get("blocking_reasons", []) if reason]
+    if reasons:
+        return "; ".join(reasons)
+    if not preflight.get("compatible", True):
+        return "Troca incompativel."
+    return ""
+
+
+def prepare_self_trade(
+    state: PokecableState,
+    save_a_path: Path,
+    pokemon_a_location: str,
+    save_b_path: Path,
+    pokemon_b_location: str,
+) -> Dict[str, Any]:
+    """Builds both offers and runs the same preflight used by room trades."""
+    save_a_path = Path(save_a_path)
+    save_b_path = Path(save_b_path)
+    try:
+        if save_a_path.resolve() == save_b_path.resolve():
+            raise SaveError("Escolha dois arquivos de save diferentes.")
+    except OSError:
+        if str(save_a_path.absolute()) == str(save_b_path.absolute()):
+            raise SaveError("Escolha dois arquivos de save diferentes.")
+
+    save_a = load_save(save_a_path)
+    save_b = load_save(save_b_path)
+    payload_a = save_a.export_payload(pokemon_a_location)
+    payload_b = save_b.export_payload(pokemon_b_location)
+
+    preflight_to_a = _trade_preflight_for_target(state, payload_b, save_a)
+    preflight_to_b = _trade_preflight_for_target(state, payload_a, save_b)
+    block_to_a = _preflight_block_message(preflight_to_a)
+    block_to_b = _preflight_block_message(preflight_to_b)
+    if block_to_a or block_to_b:
+        messages = []
+        if block_to_a:
+            messages.append(f"{save_a_path.name} receberia troca invalida: {block_to_a}")
+        if block_to_b:
+            messages.append(f"{save_b_path.name} receberia troca invalida: {block_to_b}")
+        raise SaveError(" ".join(messages))
+
+    return {
+        "save_a_path": save_a_path,
+        "save_b_path": save_b_path,
+        "pokemon_a_location": pokemon_a_location,
+        "pokemon_b_location": pokemon_b_location,
+        "payload_a": payload_a,
+        "payload_b": payload_b,
+        "preflight_to_a": preflight_to_a,
+        "preflight_to_b": preflight_to_b,
+        "signature_a": save_a.signature(),
+        "signature_b": save_b.signature(),
+        "save_a_name": save_a_path.name,
+        "save_b_name": save_b_path.name,
+    }
+
+
+def execute_self_trade(
+    context: Dict[str, Any],
+    *,
+    cancel_evolution_to_a: bool = False,
+    cancel_evolution_to_b: bool = False,
+    resolved_moves_to_a: Optional[Dict[int, int]] = None,
+    resolved_moves_to_b: Optional[Dict[int, int]] = None,
+) -> Dict[str, Any]:
+    """Applies a prepared local two-save trade with backups and rollback."""
+    save_a_path = Path(context.get("save_a_path"))
+    save_b_path = Path(context.get("save_b_path"))
+    signature_a = context.get("signature_a") if isinstance(context.get("signature_a"), dict) else {}
+    signature_b = context.get("signature_b") if isinstance(context.get("signature_b"), dict) else {}
+    if not _save_unchanged_on_disk(signature_a, save_a_path):
+        raise SaveError(f"{save_a_path.name} mudou em disco. Recarregue e tente novamente.")
+    if not _save_unchanged_on_disk(signature_b, save_b_path):
+        raise SaveError(f"{save_b_path.name} mudou em disco. Recarregue e tente novamente.")
+
+    backup_a: Optional[Path] = None
+    backup_b: Optional[Path] = None
+    try:
+        save_a = load_save(save_a_path)
+        save_b = load_save(save_b_path)
+        payload_a = context.get("payload_a") if isinstance(context.get("payload_a"), dict) else {}
+        payload_b = context.get("payload_b") if isinstance(context.get("payload_b"), dict) else {}
+        preflight_to_a = context.get("preflight_to_a") if isinstance(context.get("preflight_to_a"), dict) else {}
+        preflight_to_b = context.get("preflight_to_b") if isinstance(context.get("preflight_to_b"), dict) else {}
+
+        backup_a = _create_backup(save_a_path)
+        backup_b = _create_backup(save_b_path)
+        received_a = save_a.apply_payload(
+            str(context.get("pokemon_a_location") or "party:0"),
+            payload_b,
+            trade_evolution=preflight_to_a.get("trade_evolution") or {},
+            cancel_trade_evolution=cancel_evolution_to_a,
+            resolved_moves=resolved_moves_to_a or {},
+        )
+        save_a.write_to_disk()
+        received_b = save_b.apply_payload(
+            str(context.get("pokemon_b_location") or "party:0"),
+            payload_a,
+            trade_evolution=preflight_to_b.get("trade_evolution") or {},
+            cancel_trade_evolution=cancel_evolution_to_b,
+            resolved_moves=resolved_moves_to_b or {},
+        )
+        save_b.write_to_disk()
+        return {
+            "success": True,
+            "peer": payload_b,
+            "received": received_a,
+            "received_a": received_a,
+            "received_b": received_b,
+            "save_a": str(save_a_path),
+            "save_b": str(save_b_path),
+            "backup": str(backup_a) if backup_a else "",
+            "backup_a": str(backup_a) if backup_a else "",
+            "backup_b": str(backup_b) if backup_b else "",
+        }
+    except Exception:
+        for backup_path, save_path in ((backup_a, save_a_path), (backup_b, save_b_path)):
+            if backup_path and backup_path.exists():
+                try:
+                    shutil.copy2(backup_path, save_path)
+                    logger.warning("Restored %s from backup after self trade failure", save_path)
+                except Exception as restore_exc:
+                    logger.exception("Failed to restore %s from %s: %s", save_path, backup_path, restore_exc)
+        raise
 
 
 _GAME_DISPLAY_NAMES = {
@@ -694,6 +858,7 @@ async def _websocket_trade(
             peer_game: str = ""
             cancel_trade_evolution = False
             trade_evolution: Dict[str, Any] = {}
+            resolved_moves: Dict[int, int] = {}
             client_id = ""
             local_slot = ""
 
@@ -944,7 +1109,7 @@ async def _websocket_trade(
                         cancel_trade_evolution = bool(await asyncio.to_thread(confirm_queue.get))
                         logger.info("Evolution cancel decision: %s", cancel_trade_evolution)
                     removed_moves = list(server_preflight.get("removed_moves") or [])
-                    resolved_moves: Dict[int, int] = {}
+                    resolved_moves = {}
                     if removed_moves:
                         ui.ui_queue.put(("resolve_moves_prompt", {"removed_moves": removed_moves}))
                         logger.info("Waiting for move resolution: %s removed moves", len(removed_moves))
@@ -1040,6 +1205,7 @@ async def _websocket_trade(
                             received_payload,
                             trade_evolution=trade_evolution,
                             cancel_trade_evolution=cancel_trade_evolution,
+                            resolved_moves=resolved_moves,
                         )
                         save.write_to_disk()
                         refreshed = state.refresh_selected_save()
@@ -1099,6 +1265,7 @@ async def _websocket_trade(
                     peer_offer = {}
                     saved_pokemon = {}
                     trade_evolution = {}
+                    resolved_moves = {}
                     backup_path = None
                     state.trade_phase = "waiting"
                     continue

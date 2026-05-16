@@ -28,10 +28,10 @@ logger = logging.getLogger("pokecable_save")
 
 
 def _ensure_backend_import_path() -> None:
-    backend_dir = Path(__file__).resolve().parent.parent / "PokeCable" / "backend"
-    backend_path = str(backend_dir)
-    if backend_dir.exists() and backend_path not in sys.path:
-        sys.path.insert(0, backend_path)
+    runtime_dir = Path(__file__).resolve().parent / "pokecable_runtime"
+    runtime_path = str(runtime_dir)
+    if runtime_dir.exists() and runtime_path not in sys.path:
+        sys.path.insert(0, runtime_path)
 
 
 def _resolve_national_dex_id(generation: int, species_id: int, pokemon: Dict[str, Any]) -> int:
@@ -1170,6 +1170,7 @@ class SaveModel:
         payload: Dict[str, Any],
         trade_evolution: Optional[Dict[str, Any]] = None,
         cancel_trade_evolution: bool = False,
+        resolved_moves: Optional[Dict[int, int]] = None,
     ) -> Dict[str, Any]:
         parsed = parse_location(location)
         payload_generation = int(payload.get("generation", 0))
@@ -1248,6 +1249,7 @@ class SaveModel:
                         location,
                         canonical,
                         policy="auto_retrocompat",
+                        resolved_moves=resolved_moves,
                     )
                     target_parser.save(tmp_path)
                     self.bytes = bytearray(tmp_path.read_bytes())
@@ -1774,10 +1776,90 @@ class SaveModel:
         self._write_gen3_pc_buffer(buffer)
 
     def _promote_gen3_box_to_party(self, raw: bytes, pokemon: Dict[str, Any]) -> bytes:
+        from pokecable_runtime.data.base_stats import get_base_stats
         promoted = bytearray(GEN3["mon_size"])
         promoted[:GEN3["box_mon_size"]] = raw[:GEN3["box_mon_size"]]
-        promoted[0x54] = max(1, int(pokemon.get("level", 1)))
+        level = max(1, int(pokemon.get("level", 1)))
+        promoted[0x54] = level
+
+        # Extract IVs and EVs from raw box data and calculate stats
+        personality = read_u32(raw, 0)
+        species_id = pokemon.get("species_id", 0)
+        if species_id > 0:
+            base = get_base_stats(species_id)
+            if base:
+                bs = base["stats"]
+                # Decrypt secure to extract IVs and EVs
+                secure = decrypt_gen3_secure(raw)
+                substruct_order = GEN3["substruct_orders"][personality % 24]
+                evs_offset = substruct_order[2] * 12
+                misc_offset = substruct_order[3] * 12
+
+                # Extract IVs from misc substruct
+                iv_raw = read_u32(secure, misc_offset)
+                hp_iv = iv_raw & 0x1F
+                atk_iv = (iv_raw >> 5) & 0x1F
+                def_iv = (iv_raw >> 10) & 0x1F
+                spe_iv = (iv_raw >> 15) & 0x1F
+                spa_iv = (iv_raw >> 20) & 0x1F
+                spd_iv = (iv_raw >> 25) & 0x1F
+
+                # Extract EVs from evs substruct
+                ev_hp = secure[evs_offset + 0]
+                ev_atk = secure[evs_offset + 1]
+                ev_def = secure[evs_offset + 2]
+                ev_spe = secure[evs_offset + 3]
+                ev_spa = secure[evs_offset + 4]
+                ev_spd = secure[evs_offset + 5]
+
+                # Calculate stats
+                max_hp = (2 * bs["hp"] + hp_iv + ev_hp // 4) * level // 100 + level + 10
+                stat_atk = (2 * bs["atk"] + atk_iv + ev_atk // 4) * level // 100 + 5
+                stat_def = (2 * bs["def"] + def_iv + ev_def // 4) * level // 100 + 5
+                stat_spe = (2 * bs["spe"] + spe_iv + ev_spe // 4) * level // 100 + 5
+                stat_spa = (2 * bs["spa"] + spa_iv + ev_spa // 4) * level // 100 + 5
+                stat_spd = (2 * bs["spd"] + spd_iv + ev_spd // 4) * level // 100 + 5
+
+                # Write stat cache
+                promoted[86:88] = max_hp.to_bytes(2, "little")
+                promoted[88:90] = max_hp.to_bytes(2, "little")
+                promoted[90:92] = stat_atk.to_bytes(2, "little")
+                promoted[92:94] = stat_def.to_bytes(2, "little")
+                promoted[94:96] = stat_spe.to_bytes(2, "little")
+                promoted[96:98] = stat_spa.to_bytes(2, "little")
+                promoted[98:100] = stat_spd.to_bytes(2, "little")
+
         return bytes(promoted)
+
+    def _mark_pokedex_caught(self, national_dex_id: int) -> None:
+        if national_dex_id <= 0:
+            return
+        dex_idx = national_dex_id - 1
+        byte_off = dex_idx >> 3
+        mask = 1 << (dex_idx & 7)
+        if self.generation == 1:
+            for base in [0x25A3, 0x25B6]:
+                self.bytes[base + byte_off] |= mask
+            self.bytes[GEN1["checksum_offset"]] = gen1_checksum(self.bytes)
+        elif self.generation == 2:
+            for base in [self.layout["pokedex_owned_offset"], self.layout["pokedex_seen_offset"]]:
+                self.bytes[base + byte_off] |= mask
+            write_gen2_checksums(self.bytes, self.layout)
+        elif self.generation == 3 and self.slot:
+            sec0 = self.slot["section_offsets"][0]
+            self.bytes[sec0 + 0x0028 + byte_off] |= mask
+            self.bytes[sec0 + 0x005C + byte_off] |= mask
+            write_u16(self.bytes, sec0 + 0xFF6, gen3_sector_checksum(self.bytes, sec0))
+            is_frlg = self.game in ("pokemon_firered", "pokemon_leafgreen")
+            is_emerald = self.game == "pokemon_emerald"
+            sec1 = self.slot["section_offsets"][1]
+            seen_b = 0x05F8 if is_frlg else (0x0988 if is_emerald else 0x0938)
+            self.bytes[sec1 + seen_b + byte_off] |= mask
+            write_u16(self.bytes, sec1 + 0xFF6, gen3_sector_checksum(self.bytes, sec1))
+            sec4 = self.slot["section_offsets"][4]
+            seen_c = 0x0B98 if is_frlg else (0x0CA4 if is_emerald else 0x0C0C)
+            self.bytes[sec4 + seen_c + byte_off] |= mask
+            write_u16(self.bytes, sec4 + 0xFF6, gen3_sector_checksum(self.bytes, sec4))
 
     def _apply_gen1_payload(self, parsed: Dict[str, Any], source_kind: str, raw: bytes) -> None:
         party_len = GEN1["mon_size"] + GEN1["name_size"] * 2
@@ -1786,15 +1868,18 @@ class SaveModel:
             if source_kind != "party" or len(raw) != party_len:
                 raise SaveError("Troca de box para party ainda não é suportada no R36S.")
             self._write_gen1_party_data(parsed["index"], raw[:GEN1["mon_size"]], raw[GEN1["mon_size"]:GEN1["mon_size"] + GEN1["name_size"]], raw[-GEN1["name_size"]:])
+            self._mark_pokedex_caught(_resolve_national_dex_id(1, raw[0], {}))
             return
         if source_kind == "party" and len(raw) == party_len:
             mon = raw[:GEN1["box_mon_size"]]
             ot = raw[GEN1["mon_size"]:GEN1["mon_size"] + GEN1["name_size"]]
             nick = raw[-GEN1["name_size"]:]
             self._write_gen1_box_data(parsed["box_index"], parsed["slot_index"], mon, ot, nick)
+            self._mark_pokedex_caught(_resolve_national_dex_id(1, raw[0], {}))
             return
         if source_kind == "box" and len(raw) == box_len:
             self._write_gen1_box_data(parsed["box_index"], parsed["slot_index"], raw[:GEN1["box_mon_size"]], raw[GEN1["box_mon_size"]:GEN1["box_mon_size"] + GEN1["name_size"]], raw[-GEN1["name_size"]:])
+            self._mark_pokedex_caught(_resolve_national_dex_id(1, raw[0], {}))
             return
         raise SaveError("Payload Gen 1 com tamanho inválido.")
 
@@ -1805,15 +1890,18 @@ class SaveModel:
             if source_kind != "party" or len(raw) != party_len:
                 raise SaveError("Troca de box para party ainda não é suportada no R36S.")
             self._write_gen2_party_data(parsed["index"], raw[:self.layout["mon_size"]], raw[self.layout["mon_size"]:self.layout["mon_size"] + self.layout["name_size"]], raw[-self.layout["name_size"]:])
+            self._mark_pokedex_caught(_resolve_national_dex_id(2, raw[0], {}))
             return
         if source_kind == "party" and len(raw) == party_len:
             mon = raw[:self.layout["box_mon_size"]]
             ot = raw[self.layout["mon_size"]:self.layout["mon_size"] + self.layout["name_size"]]
             nick = raw[-self.layout["name_size"]:]
             self._write_gen2_box_data(parsed["box_index"], parsed["slot_index"], mon, ot, nick)
+            self._mark_pokedex_caught(_resolve_national_dex_id(2, raw[0], {}))
             return
         if source_kind == "box" and len(raw) == box_len:
             self._write_gen2_box_data(parsed["box_index"], parsed["slot_index"], raw[:self.layout["box_mon_size"]], raw[self.layout["box_mon_size"]:self.layout["box_mon_size"] + self.layout["name_size"]], raw[-self.layout["name_size"]:])
+            self._mark_pokedex_caught(_resolve_national_dex_id(2, raw[0], {}))
             return
         raise SaveError("Payload Gen 2 com tamanho inválido.")
 
@@ -1821,11 +1909,16 @@ class SaveModel:
         if parsed["kind"] == "party":
             if source_kind != "party" or len(raw) != GEN3["mon_size"]:
                 raise SaveError("Troca de box para party ainda não é suportada no R36S.")
-            parse_gen3_pokemon(raw)
+            poke_data = parse_gen3_pokemon(raw)
+            species_id = poke_data.get("species_id", 0)
             self._write_gen3_party_data(parsed["index"], raw)
+            self._mark_pokedex_caught(_resolve_national_dex_id(3, species_id, {}))
             return
         if source_kind == "party" and len(raw) == GEN3["mon_size"]:
+            poke_data = parse_gen3_pokemon(raw)
+            species_id = poke_data.get("species_id", 0)
             self._write_gen3_box_data(parsed["box_index"], parsed["slot_index"], raw[:GEN3["box_mon_size"]])
+            self._mark_pokedex_caught(_resolve_national_dex_id(3, species_id, {}))
             return
         if source_kind == "box" and len(raw) == GEN3["box_mon_size"]:
             self._write_gen3_box_data(parsed["box_index"], parsed["slot_index"], raw)

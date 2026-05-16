@@ -12,11 +12,15 @@ Este documento **não** lista todos os itens existentes dos jogos. Ele lista os 
 
 Arquivos de referência no código:
 
-- [PokeCable/backend/pokecable_room/data/items.py](/srv/PokeCable/backend/pokecable_room/data/items.py)
-- [PokeCable/backend/pokecable_room/converters/gen2_to_gen1.py](/srv/PokeCable/backend/pokecable_room/converters/gen2_to_gen1.py)
-- [PokeCable/backend/pokecable_room/converters/gen2_to_gen3.py](/srv/PokeCable/backend/pokecable_room/converters/gen2_to_gen3.py)
-- [PokeCable/backend/pokecable_room/converters/gen3_to_gen1.py](/srv/PokeCable/backend/pokecable_room/converters/gen3_to_gen1.py)
-- [PokeCable/backend/pokecable_room/converters/gen3_to_gen2.py](/srv/PokeCable/backend/pokecable_room/converters/gen3_to_gen2.py)
+- `PokeCable/backend/data/items.py`
+- `PokeCable/backend/converters/gen2_to_gen1.py`
+- `PokeCable/backend/converters/gen2_to_gen3.py`
+- `PokeCable/backend/converters/gen3_to_gen1.py`
+- `PokeCable/backend/converters/gen3_to_gen2.py`
+- `Pokecable_tool/pokecable_runtime/data/items.py`
+- `Pokecable_tool/pokecable_runtime/converters/`
+
+A `Pokecable_tool` mantem uma copia vendorizada desses dados/conversores para o modo `Trocar comigo` funcionar offline.
 
 ## Regra principal
 

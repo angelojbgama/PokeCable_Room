@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import base64
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
 from canonical import CanonicalItem, CanonicalMove, CanonicalOriginalData, CanonicalPokemon, CanonicalStats
 from compatibility import CompatibilityReport, build_compatibility_report
+from data.base_stats import get_base_stats
 from data.gender_rates import gender_from_gen2_attack_dv
 from data.inventory_layouts import inventory_layout_for_game
 from data.items import equivalent_item_id, item_exists, item_name
-from data.moves import move_exists
+from data.moves import default_move_pp, move_exists
 from data.unown_forms import gen2_unown_form_from_dvs
 
 from .base import InventoryEntry, InventoryStoreResult, PokemonPayload, PokemonSummary, SaveData
@@ -41,6 +43,25 @@ GEN2_MAX_STACK = 99
 BOX_OT_OFFSET = 0x296
 BOX_NICK_OFFSET = 0x372
 STORED_BOX_OFFSETS = tuple(0x4000 + 0x450 * index for index in range(7)) + tuple(0x6000 + 0x450 * index for index in range(7))
+SHINY_ATTACK_DVS = {2, 3, 6, 7, 10, 11, 14, 15}
+
+
+def _legacy_shiny_dvs(attack_dv: int, defense_dv: int, speed_dv: int, special_dv: int) -> bool:
+    return (
+        int(attack_dv) in SHINY_ATTACK_DVS
+        and int(defense_dv) == 10
+        and int(speed_dv) == 10
+        and int(special_dv) == 10
+    )
+
+
+def _legacy_pp_byte(move: CanonicalMove, generation: int) -> int:
+    pp_ups = max(0, min(3, int(move.pp_ups or 0)))
+    max_pp = int(move.max_pp or default_move_pp(move.move_id, generation, pp_ups))
+    pp = int(move.pp or max_pp or default_move_pp(move.move_id, generation, pp_ups))
+    if pp <= 0:
+        pp = default_move_pp(move.move_id, generation, pp_ups)
+    return ((pp_ups & 0x03) << 6) | (max(0, min(63, pp)) & 0x3F)
 
 
 @dataclass(slots=True)
@@ -557,15 +578,28 @@ class Gen2Parser:
         mon = self._mon_bytes(index)
         raw = mon + self._ot_bytes(index) + self._nickname_bytes(index)
         held_item_id = mon[0x01] or None
-        moves = [CanonicalMove(move_id=move_id, source_generation=2) for move_id in mon[0x02:0x06] if move_id]
-        
-        # DVs
-        dv_raw = mon[0x1B:0x1D]
+
+        # DVs (Gen 2 struct: DVs at 0x15-0x16, not 0x1B-0x1C like Gen 1)
+        dv_raw = mon[0x15:0x17]
         atk_dv = dv_raw[0] >> 4
         def_dv = dv_raw[0] & 0x0F
         spd_dv = dv_raw[1] >> 4
         spc_dv = dv_raw[1] & 0x0F
         hp_dv = ((atk_dv & 1) << 3) | ((def_dv & 1) << 2) | ((spd_dv & 1) << 1) | (spc_dv & 1)
+        moves = []
+        for offset, move_id in enumerate(mon[0x02:0x06]):
+            if move_id:
+                pp_byte = mon[0x17 + offset]
+                pp_ups = (pp_byte >> 6) & 0x03
+                moves.append(
+                    CanonicalMove(
+                        move_id=move_id,
+                        pp=pp_byte & 0x3F,
+                        max_pp=default_move_pp(move_id, 2, pp_ups),
+                        pp_ups=pp_ups,
+                        source_generation=2,
+                    )
+                )
 
         ivs = CanonicalStats(
             hp=hp_dv,
@@ -578,13 +612,13 @@ class Gen2Parser:
         )
 
         evs = CanonicalStats(
-            hp=int.from_bytes(mon[0x11:0x13], "big"),
-            attack=int.from_bytes(mon[0x13:0x15], "big"),
-            defense=int.from_bytes(mon[0x15:0x17], "big"),
-            speed=int.from_bytes(mon[0x17:0x19], "big"),
-            special=int.from_bytes(mon[0x19:0x1B], "big"),
-            special_attack=int.from_bytes(mon[0x19:0x1B], "big"),
-            special_defense=int.from_bytes(mon[0x19:0x1B], "big"),
+            hp=int.from_bytes(mon[0x0B:0x0D], "big"),
+            attack=int.from_bytes(mon[0x0D:0x0F], "big"),
+            defense=int.from_bytes(mon[0x0F:0x11], "big"),
+            speed=int.from_bytes(mon[0x11:0x13], "big"),
+            special=int.from_bytes(mon[0x13:0x15], "big"),
+            special_attack=int.from_bytes(mon[0x13:0x15], "big"),
+            special_defense=int.from_bytes(mon[0x13:0x15], "big"),
         )
 
         return CanonicalPokemon(
@@ -611,7 +645,12 @@ class Gen2Parser:
                 checksum=f"{self._stored_checksum(self._require_layout().primary_checksum):04x}",
                 location=location,
             ),
-            metadata={"source_species_id_space": "national_dex", "gender": summary.gender, "unown_form": summary.unown_form},
+            metadata={
+                "source_species_id_space": "national_dex",
+                "gender": summary.gender,
+                "unown_form": summary.unown_form,
+                "is_shiny": _legacy_shiny_dvs(atk_dv, def_dv, spd_dv, spc_dv),
+            },
         )
 
     def import_pokemon(self, location: str, payload: PokemonPayload) -> None:
@@ -633,10 +672,83 @@ class Gen2Parser:
             mon[0x01] = item_id if item_exists(item_id, 2) else 0
         for offset, move in enumerate(canonical_pokemon.moves[:4]):
             mon[0x02 + offset] = move.move_id if move_exists(move.move_id, 2) and move.move_id <= 0xFF else 0
+            mon[0x17 + offset] = _legacy_pp_byte(move, 2)
         mon[0x06:0x08] = (int(canonical_pokemon.trainer_id) & 0xFFFF).to_bytes(2, "big", signed=False)
         experience = int(canonical_pokemon.experience or 0)
         mon[0x08:0x0B] = max(0, min(0xFFFFFF, experience)).to_bytes(3, "big")
         mon[0x1F] = max(1, min(100, canonical_pokemon.level))
+
+        # Write DVs (0x15-0x16, Gen 2 offsets)
+        atk_dv = min(15, int(canonical_pokemon.ivs.attack or 0) if canonical_pokemon.ivs else 0)
+        def_dv = min(15, int(canonical_pokemon.ivs.defense or 0) if canonical_pokemon.ivs else 0)
+        spd_dv = min(15, int(canonical_pokemon.ivs.speed or 0) if canonical_pokemon.ivs else 0)
+        spc_dv = min(15, int(canonical_pokemon.ivs.special or canonical_pokemon.ivs.special_attack or 0) if canonical_pokemon.ivs else 0)
+        # Convert Gen 3 IVs (0-31) to Gen 2 DVs (0-15) if needed
+        if canonical_pokemon.source_generation == 3:
+            atk_dv = min(15, atk_dv // 2)
+            def_dv = min(15, def_dv // 2)
+            spd_dv = min(15, spd_dv // 2)
+            spc_dv = min(15, spc_dv // 2)
+        if canonical_pokemon.metadata.get("is_shiny"):
+            atk_dv = atk_dv if atk_dv in SHINY_ATTACK_DVS else 10
+            def_dv = 10
+            spd_dv = 10
+            spc_dv = 10
+        mon[0x15] = ((atk_dv & 0xF) << 4) | (def_dv & 0xF)
+        mon[0x16] = ((spd_dv & 0xF) << 4) | (spc_dv & 0xF)
+
+        # Write stat exp (0x0B-0x14, Gen 2 offsets)
+        def _to_stat_exp(ev_val, src_gen):
+            if src_gen == 3:
+                return min(65535, int(ev_val) * 256)
+            return min(65535, int(ev_val))
+
+        if canonical_pokemon.evs:
+            sg = canonical_pokemon.source_generation
+            mon[0x0B:0x0D] = _to_stat_exp(canonical_pokemon.evs.hp or 0, sg).to_bytes(2, "big")
+            mon[0x0D:0x0F] = _to_stat_exp(canonical_pokemon.evs.attack or 0, sg).to_bytes(2, "big")
+            mon[0x0F:0x11] = _to_stat_exp(canonical_pokemon.evs.defense or 0, sg).to_bytes(2, "big")
+            mon[0x11:0x13] = _to_stat_exp(canonical_pokemon.evs.speed or 0, sg).to_bytes(2, "big")
+            mon[0x13:0x15] = _to_stat_exp(canonical_pokemon.evs.special or canonical_pokemon.evs.special_attack or 0, sg).to_bytes(2, "big")
+
+        # Calculate and write HP/max HP and party stats (Gen 2 offsets)
+        level = max(1, min(100, canonical_pokemon.level))
+        base = get_base_stats(species_id)
+        if base:
+            bs = base["stats"]
+            hp_stat_exp = int.from_bytes(mon[0x0B:0x0D], "big")
+            atk_stat_exp = int.from_bytes(mon[0x0D:0x0F], "big")
+            def_stat_exp = int.from_bytes(mon[0x0F:0x11], "big")
+            spd_stat_exp = int.from_bytes(mon[0x11:0x13], "big")
+            spc_stat_exp = int.from_bytes(mon[0x13:0x15], "big")
+            dv1 = mon[0x15]
+            dv2 = mon[0x16]
+            atk_dv2 = dv1 >> 4
+            def_dv2 = dv1 & 0xF
+            spd_dv2 = dv2 >> 4
+            spc_dv2 = dv2 & 0xF
+            hp_dv2 = ((atk_dv2 & 1) << 3) | ((def_dv2 & 1) << 2) | ((spd_dv2 & 1) << 1) | (spc_dv2 & 1)
+
+            def gen1_stat(base_val, dv, stat_exp, level, is_hp=False):
+                ev_bonus = math.floor(math.ceil(math.sqrt(stat_exp)) / 4) if stat_exp > 0 else 0
+                val = ((base_val + dv) * 2 + ev_bonus) * level // 100
+                return val + (level + 10 if is_hp else 5)
+
+            max_hp = gen1_stat(bs["hp"], hp_dv2, hp_stat_exp, level, is_hp=True)
+            stat_atk = gen1_stat(bs["atk"], atk_dv2, atk_stat_exp, level)
+            stat_def = gen1_stat(bs["def"], def_dv2, def_stat_exp, level)
+            stat_spe = gen1_stat(bs["spe"], spd_dv2, spd_stat_exp, level)
+            stat_spa = gen1_stat(bs["spa"], spc_dv2, spc_stat_exp, level)
+            stat_spd = gen1_stat(bs["spd"], spc_dv2, spc_stat_exp, level)
+
+            mon[0x22:0x24] = max_hp.to_bytes(2, "big")
+            mon[0x24:0x26] = max_hp.to_bytes(2, "big")
+            mon[0x26:0x28] = stat_atk.to_bytes(2, "big")
+            mon[0x28:0x2A] = stat_def.to_bytes(2, "big")
+            mon[0x2A:0x2C] = stat_spe.to_bytes(2, "big")
+            mon[0x2C:0x2E] = stat_spa.to_bytes(2, "big")
+            mon[0x2E:0x30] = stat_spd.to_bytes(2, "big")
+
         ot = self._encode_text(canonical_pokemon.ot_name or "TRAINER")
         nickname = self._encode_text(canonical_pokemon.nickname or canonical_pokemon.species.name)
         return bytes(mon) + ot + nickname

@@ -30,10 +30,15 @@ Não cobre ainda:
 
 ## Fonte de verdade no código
 
-- [inventory_layouts.py](/srv/PokeCable/backend/pokecable_room/data/inventory_layouts.py)
-- [item_transfer_policy.py](/srv/PokeCable/backend/pokecable_room/data/item_transfer_policy.py)
-- [items.py](/srv/PokeCable/backend/pokecable_room/data/items.py)
-- [item-catalog.md](/srv/PokeCable/docs/item-catalog.md)
+- `PokeCable/backend/data/inventory_layouts.py`
+- `PokeCable/backend/data/item_transfer_policy.py`
+- `PokeCable/backend/data/items.py`
+- `Pokecable_tool/pokecable_runtime/data/inventory_layouts.py`
+- `Pokecable_tool/pokecable_runtime/data/item_transfer_policy.py`
+- `Pokecable_tool/pokecable_runtime/data/items.py`
+- `PokeCable/docs/item-catalog.md`
+
+A pasta `Pokecable_tool/pokecable_runtime` e a copia usada pela tool para validar offline.
 
 ## Gen 1
 
@@ -155,7 +160,8 @@ Famílias:
 
 Implementada em:
 
-- [item_transfer_policy.py](/srv/PokeCable/backend/pokecable_room/data/item_transfer_policy.py)
+- `PokeCable/backend/data/item_transfer_policy.py`
+- `Pokecable_tool/pokecable_runtime/data/item_transfer_policy.py`
 
 ### Decisões possíveis
 

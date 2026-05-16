@@ -13,6 +13,8 @@ O servidor envia primeiro:
 {"type": "connected", "client_id": "..."}
 ```
 
+Este protocolo descreve apenas o fluxo online `Acessar sala`. A opcao `Trocar comigo` da `Pokecable_tool` nao abre WebSocket: ela cria os dois payloads localmente, roda preflight nos dois destinos e grava os saves depois de backup.
+
 ## Fluxo De Sala
 
 Criar:
@@ -214,8 +216,10 @@ Se qualquer lado falhar, o servidor envia `trade_blocked` para os dois jogadores
 ## Confirmacao
 
 ```json
-{"type": "confirm_trade"}
+{"type": "confirm_trade", "resolved_moves": {"100": 1}}
 ```
+
+`resolved_moves` e opcional. Quando o preflight indicar movimentos removidos por incompatibilidade de geracao, o client pode enviar um mapa do movimento removido para o movimento substituto escolhido pelo usuario. O servidor nao valida nem converte esses movimentos; ele guarda a escolha da sala e repassa no commit.
 
 Quando os dois preflights passam e os dois confirmam, o servidor nao manda a escrita final imediatamente. Primeiro ele pede preparo local:
 
@@ -311,3 +315,17 @@ ENABLED_TRADE_MODES=time_capsule_gen1_gen2,forward_transfer_to_gen3,legacy_downc
 ```
 
 Modos que nao aparecem em `ENABLED_TRADE_MODES` continuam bloqueados mesmo com a flag global ligada.
+
+## Fluxo Offline Da Tool
+
+`Trocar comigo` usa o mesmo modelo de payload/preflight, mas sem mensagens WebSocket:
+
+- o save A exporta o Pokemon escolhido;
+- o save B exporta o Pokemon escolhido;
+- o runtime local valida o que A receberia;
+- o runtime local valida o que B receberia;
+- a UI pede decisao para evolucao por troca e movimentos incompatíveis;
+- a tool cria backup dos dois arquivos;
+- a tool grava os dois saves e restaura backups se uma escrita falhar.
+
+O runtime usado nesse fluxo fica em `Pokecable_tool/pokecable_runtime`. Se ele nao estiver presente, o fluxo offline falha localmente e nao chama o backend.
