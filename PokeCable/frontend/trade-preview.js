@@ -225,7 +225,12 @@ window.POKECABLE_TRADE_PREVIEW = {
       }
 
       tradeEvolutionPreviewEl.hidden = false;
-      const isShiny = Boolean(payload.is_shiny || payload.canonical?.is_shiny || payload.metadata?.is_shiny);
+      const isShiny = Boolean(
+        payload.is_shiny ||
+        payload.canonical?.is_shiny ||
+        payload.canonical?.metadata?.is_shiny ||
+        payload.metadata?.is_shiny
+      );
       const baseSprite = pokemonSpriteUrl(preview.source_national_dex_id, "", isShiny);
       const targetSprite = pokemonSpriteUrl(preview.target_national_dex_id, "", isShiny);
 

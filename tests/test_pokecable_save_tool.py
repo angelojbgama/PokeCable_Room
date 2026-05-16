@@ -202,6 +202,78 @@ def _build_gen1_save_with_party0(species_id: int, level: int = 30) -> bytes:
     return bytes(data)
 
 
+def _build_gen2_save_with_party0(shiny: bool = False) -> bytes:
+    from pokecable_save import GEN2_CRYSTAL, write_gen2_checksums
+
+    data = bytearray(0x8000)
+    data[GEN2_CRYSTAL["player_name_offset"] : GEN2_CRYSTAL["player_name_offset"] + NAME_SIZE] = _encode_gbc("CHRIS")
+    data[GEN2_CRYSTAL["party_offset"]] = 1
+    data[GEN2_CRYSTAL["party_offset"] + 1] = 25
+    data[GEN2_CRYSTAL["party_offset"] + 2] = 0xFF
+    mon_start = GEN2_CRYSTAL["data_offset"]
+    data[mon_start] = 25
+    data[mon_start + 0x02] = 33
+    data[mon_start + 0x06 : mon_start + 0x08] = (12345).to_bytes(2, "big")
+    data[mon_start + 0x08 : mon_start + 0x0B] = (125000).to_bytes(3, "big")
+    data[mon_start + 0x15] = 0xAA if shiny else 0x00
+    data[mon_start + 0x16] = 0xAA if shiny else 0x00
+    data[mon_start + 0x1F] = 50
+    data[mon_start + 0x23] = 35
+    data[GEN2_CRYSTAL["ot_offset"] : GEN2_CRYSTAL["ot_offset"] + NAME_SIZE] = _encode_gbc("CHRIS")
+    data[GEN2_CRYSTAL["nick_offset"] : GEN2_CRYSTAL["nick_offset"] + NAME_SIZE] = _encode_gbc("PIKACHU")
+    data[GEN2_CRYSTAL["current_box_offset"]] = 0
+    write_gen2_checksums(data, GEN2_CRYSTAL)
+    return bytes(data)
+
+
+def test_gen2_tool_parser_preserves_shiny_in_export_payload(tmp_path):
+    from pokecable_save import load_save
+
+    save_path = tmp_path / "shiny_crystal.sav"
+    save_path.write_bytes(_build_gen2_save_with_party0(shiny=True))
+
+    save = load_save(save_path)
+    pokemon = save.party[0]
+    payload = save.export_payload("party:0")
+
+    assert pokemon["is_shiny"] is True
+    assert payload["is_shiny"] is True
+    assert payload["summary"]["is_shiny"] is True
+    assert payload["metadata"]["is_shiny"] is True
+    assert payload["canonical"]["metadata"]["is_shiny"] is True
+
+
+def test_gen2_tool_parser_keeps_non_shiny_false(tmp_path):
+    from pokecable_save import load_save
+
+    save_path = tmp_path / "normal_crystal.sav"
+    save_path.write_bytes(_build_gen2_save_with_party0(shiny=False))
+
+    save = load_save(save_path)
+    payload = save.export_payload("party:0")
+
+    assert save.party[0]["is_shiny"] is False
+    assert payload["canonical"]["metadata"]["is_shiny"] is False
+
+
+def test_gen2_shiny_reaches_tool_pokemon_list_and_sprite_key(tmp_path):
+    pytest.importorskip("pygame")
+    from r36s_pokecable_core import PokecableState
+    from r36s_pokecable_ui import SpriteLoader
+
+    save_path = tmp_path / "shiny_crystal.sav"
+    save_path.write_bytes(_build_gen2_save_with_party0(shiny=True))
+    state = PokecableState()
+    state.selected_save = save_path
+
+    pokemon = state.get_pokemon_list("party", enrich=False)[0]
+    key, lookup = SpriteLoader("")._identity(pokemon)
+
+    assert pokemon["is_shiny"] is True
+    assert key == "pixel-v1-shiny-25-front"
+    assert lookup["variant"] == "shiny"
+
+
 def _patch_core_backups(monkeypatch, tmp_path: Path):
     import r36s_pokecable_core as core
 
@@ -429,6 +501,19 @@ def test_sprite_loader_cache_key_is_pixel_versioned():
 
     assert key == "pixel-v1-normal-25-front"
     assert lookup["species_slug"] == "pikachu"
+
+
+def test_sprite_loader_resolves_gen1_internal_species_to_local_asset():
+    pytest.importorskip("pygame")
+    from r36s_pokecable_ui import SpriteLoader
+
+    key, lookup = SpriteLoader("")._identity(
+        {"species_name": "Kadabra", "species_id": 38, "generation": 1}
+    )
+
+    assert key == "pixel-v1-normal-64-front"
+    assert lookup["national_dex_id"] == 64
+    assert lookup["sprite_id"] == "64"
 
 
 def _pygame_for_sprite_tests():

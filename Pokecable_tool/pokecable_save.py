@@ -25,6 +25,7 @@ class SaveError(Exception):
 
 
 logger = logging.getLogger("pokecable_save")
+SHINY_ATTACK_DVS = {2, 3, 6, 7, 10, 11, 14, 15}
 
 
 def _ensure_backend_import_path() -> None:
@@ -49,6 +50,47 @@ def _resolve_national_dex_id(generation: int, species_id: int, pokemon: Dict[str
         return int(native_to_national(int(generation), int(species_id)))
     except Exception:
         return 0
+
+
+def _legacy_shiny_dvs(attack_dv: int, defense_dv: int, speed_dv: int, special_dv: int) -> bool:
+    return (
+        int(attack_dv) in SHINY_ATTACK_DVS
+        and int(defense_dv) == 10
+        and int(speed_dv) == 10
+        and int(special_dv) == 10
+    )
+
+
+def _legacy_shiny_from_mon(mon: bytes, offset: int) -> bool:
+    if len(mon) <= offset + 1:
+        return False
+    dv1 = int(mon[offset])
+    dv2 = int(mon[offset + 1])
+    return _legacy_shiny_dvs(dv1 >> 4, dv1 & 0x0F, dv2 >> 4, dv2 & 0x0F)
+
+
+def _gen3_is_shiny(personality: int, trainer_id: int) -> bool:
+    personality = int(personality) & 0xFFFFFFFF
+    trainer_id = int(trainer_id) & 0xFFFFFFFF
+    shiny_value = (
+        (trainer_id & 0xFFFF)
+        ^ ((trainer_id >> 16) & 0xFFFF)
+        ^ (personality & 0xFFFF)
+        ^ ((personality >> 16) & 0xFFFF)
+    )
+    return shiny_value < 8
+
+
+def _pokemon_is_shiny(pokemon: Dict[str, Any]) -> bool:
+    metadata = pokemon.get("metadata") if isinstance(pokemon.get("metadata"), dict) else {}
+    canonical = pokemon.get("canonical") if isinstance(pokemon.get("canonical"), dict) else {}
+    canonical_metadata = canonical.get("metadata") if isinstance(canonical.get("metadata"), dict) else {}
+    return bool(
+        pokemon.get("is_shiny")
+        or metadata.get("is_shiny")
+        or canonical.get("is_shiny")
+        or canonical_metadata.get("is_shiny")
+    )
 
 
 GEN1 = {
@@ -475,6 +517,7 @@ def parse_gen3_pokemon(raw: bytes) -> Dict[str, Any]:
         "held_item_id": read_u16(secure, growth + 2) or None,
         "moves": moves,
         "is_egg": is_egg,
+        "is_shiny": False if is_egg else _gen3_is_shiny(personality, trainer_id),
         "experience": read_u32(secure, growth + 4),
     }
 
@@ -515,6 +558,7 @@ def parse_gen3_box_pokemon(raw: bytes) -> Dict[str, Any]:
         "held_item_id": read_u16(secure, growth + 2) or None,
         "moves": moves,
         "is_egg": is_egg,
+        "is_shiny": False if is_egg else _gen3_is_shiny(personality, trainer_id),
         "experience": experience,
     }
 
@@ -679,6 +723,7 @@ class SaveModel:
 
         raw_b64 = base64.b64encode(raw).decode("ascii")
         display = pokemon.get("display_summary") or normalize_pokemon_display(pokemon)
+        is_shiny = _pokemon_is_shiny(pokemon)
         logger.info(
             "Export payload: path=%s generation=%s location=%s species=%s source_kind=%s raw_format=%s raw_size=%s",
             self.path,
@@ -708,6 +753,7 @@ class SaveModel:
             "held_item_category": pokemon.get("held_item_category"),
             "moves": pokemon.get("moves", []),
             "move_names": pokemon.get("move_names", []),
+            "is_shiny": is_shiny,
             "raw_data_base64": raw_b64,
             "display_summary": display,
             "summary": {
@@ -721,6 +767,7 @@ class SaveModel:
                 "held_item_category": pokemon.get("held_item_category"),
                 "moves": pokemon.get("moves", []),
                 "move_names": pokemon.get("move_names", []),
+                "is_shiny": is_shiny,
                 "display_summary": display,
                 "nature": pokemon.get("nature"),
                 "ability": (
@@ -751,7 +798,7 @@ class SaveModel:
                     else f"Index {pokemon['ability_index']}"
                 ),
                 "metadata": {
-                    "is_shiny": bool(pokemon.get("is_shiny")),
+                    "is_shiny": is_shiny,
                     "is_egg": bool(pokemon.get("is_egg")),
                     "source_species_id": species_id,
                     "source_species_id_space": "gen1_internal" if self.generation == 1 else ("national_dex" if self.generation == 2 else "gen3_internal"),
@@ -765,7 +812,7 @@ class SaveModel:
             },
             "raw": {"format": raw_format, "data_base64": raw_b64},
             "compatibility_report": preflight_report(True, self.generation),
-            "metadata": {"format": raw_format, "source": "r36s-local-save", "location": location},
+            "metadata": {"format": raw_format, "source": "r36s-local-save", "location": location, "is_shiny": is_shiny},
         }
 
     def _count_total_pokemon(self) -> int:
@@ -1419,6 +1466,7 @@ class SaveModel:
                 "trainer_id": (mon[0x0C] << 8) | mon[0x0D],
                 "moves": [move for move in mon[0x08:0x0C] if move],
                 "is_egg": False,
+                "is_shiny": _legacy_shiny_from_mon(mon, 0x1B),
             }
             pokemon["display_summary"] = normalize_pokemon_display(pokemon)
             party.append(pokemon)
@@ -1453,6 +1501,7 @@ class SaveModel:
                     "trainer_id": (mon[0x0C] << 8) | mon[0x0D] if len(mon) > 0x0D else 0,
                     "moves": [move for move in mon[0x08:0x0C] if move],
                     "is_egg": False,
+                    "is_shiny": _legacy_shiny_from_mon(mon, 0x1B),
                     "box_index": box_index,
                     "slot_index": slot_index,
                     "box_name": self.box_names[box_index],
@@ -1490,6 +1539,7 @@ class SaveModel:
                 "held_item_id": int(mon[0x01]) or None,
                 "moves": [move for move in mon[0x02:0x06] if move],
                 "is_egg": is_egg,
+                "is_shiny": False if is_egg else _legacy_shiny_from_mon(mon, 0x15),
             }
             pokemon["display_summary"] = normalize_pokemon_display(pokemon)
             party.append(pokemon)
@@ -1530,6 +1580,7 @@ class SaveModel:
                     "held_item_id": int(mon[0x01]) or None,
                     "moves": [move for move in mon[0x02:0x06] if move],
                     "is_egg": False,
+                    "is_shiny": _legacy_shiny_from_mon(mon, 0x15),
                     "box_index": box_index,
                     "slot_index": slot_index,
                     "box_name": self.box_names[box_index],
@@ -1568,6 +1619,7 @@ class SaveModel:
                 "ability_index": details["ability_index"],
                 "experience": details["experience"],
                 "is_egg": details["is_egg"],
+                "is_shiny": details["is_shiny"],
             }
             pokemon["display_summary"] = normalize_pokemon_display(pokemon)
             party.append(pokemon)
@@ -1614,6 +1666,7 @@ class SaveModel:
                     "ability_index": details["ability_index"],
                     "experience": details["experience"],
                     "is_egg": details["is_egg"],
+                    "is_shiny": details["is_shiny"],
                     "box_index": box_index,
                     "slot_index": slot_index,
                     "box_name": box_name,

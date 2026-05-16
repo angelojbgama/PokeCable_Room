@@ -449,6 +449,7 @@ def pokemon_sprite_variant(pokemon):
         or (raw.get("is_shiny") if isinstance(raw, dict) else False)
         or (metadata.get("is_shiny") if isinstance(metadata, dict) else False)
         or (raw_metadata.get("is_shiny") if isinstance(raw_metadata, dict) else False)
+        or (canonical.get("is_shiny") if isinstance(canonical, dict) else False)
         or (canonical_metadata.get("is_shiny") if isinstance(canonical_metadata, dict) else False)
     )
     form = (
@@ -464,6 +465,36 @@ def pokemon_sprite_variant(pokemon):
         or (canonical_metadata.get("form") if isinstance(canonical_metadata, dict) else "")
     )
     return "shiny" if is_shiny else "normal", sprite_form_slug(form)
+
+
+def resolve_sprite_national_dex_id(generation, species_id, pokemon=None):
+    raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
+    canonical = (pokemon or {}).get("canonical", {}) if isinstance(pokemon, dict) else {}
+    species_block = canonical.get("species", {}) if isinstance(canonical, dict) else {}
+    for value in (
+        (pokemon or {}).get("national_dex_id") if isinstance(pokemon, dict) else None,
+        raw.get("national_dex_id") if isinstance(raw, dict) else None,
+        canonical.get("species_national_id") if isinstance(canonical, dict) else None,
+        species_block.get("national_dex_id") if isinstance(species_block, dict) else None,
+    ):
+        try:
+            national_id = int(value or 0)
+        except (TypeError, ValueError):
+            national_id = 0
+        if national_id > 0:
+            return national_id
+    try:
+        generation = int(generation or 0)
+        species_id = int(species_id or 0)
+        if generation <= 0 or species_id <= 0:
+            return 0
+        _ensure_backend_import_path()
+        from data.species import native_to_national  # type: ignore
+
+        return int(native_to_national(generation, species_id) or 0)
+    except Exception as exc:
+        logger.debug("Sprite national dex lookup failed: generation=%s species_id=%s error=%s", generation, species_id, exc)
+        return 0
 
 
 class SpriteLoader:
@@ -482,7 +513,7 @@ class SpriteLoader:
 
         generation = int((pokemon or {}).get("generation") or 0)
         raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
-        national_dex_id = int((pokemon or {}).get("national_dex_id") or raw.get("national_dex_id") or 0)
+        national_dex_id = resolve_sprite_national_dex_id(generation, species_id, pokemon)
         slug = pokemon_sprite_slug(species_name)
         if not slug and not national_dex_id:
             return "", {}
@@ -515,6 +546,7 @@ class SpriteLoader:
         species_id = int((pokemon or {}).get("species_id") or 0)
         logger.debug("Sprite request: species_id=%s species_name=%s", species_id, species_name)
         key, lookup = self._identity(pokemon)
+        should_load = False
         with self.lock:
             self.current_key = key
             if not key:
@@ -523,7 +555,9 @@ class SpriteLoader:
             if entry and (entry.get("loading") or entry.get("surface") is not None):
                 return
             self.entries[key] = {"surface": None, "loading": True, "error": "", "started_at": time.monotonic()}
-        threading.Thread(target=self._load, args=(key, lookup), daemon=True).start()
+            should_load = True
+        if should_load:
+            self._load(key, lookup)
 
     def _sprite_path(self, lookup):
         variant = str(lookup.get("variant") or "normal")

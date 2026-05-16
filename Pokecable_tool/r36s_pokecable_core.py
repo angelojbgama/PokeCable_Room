@@ -425,6 +425,15 @@ class PokecableState:
             species_id = int(pokemon.get("species_id") or 0)
             if species_id <= 0:
                 continue
+            metadata = pokemon.get("metadata") if isinstance(pokemon.get("metadata"), dict) else {}
+            canonical = pokemon.get("canonical") if isinstance(pokemon.get("canonical"), dict) else {}
+            canonical_metadata = canonical.get("metadata") if isinstance(canonical.get("metadata"), dict) else {}
+            is_shiny = bool(
+                pokemon.get("is_shiny")
+                or metadata.get("is_shiny")
+                or canonical.get("is_shiny")
+                or canonical_metadata.get("is_shiny")
+            )
             self.pokemon_list.append(
                 {
                     "index": pokemon.get("index"),
@@ -438,6 +447,7 @@ class PokecableState:
                     "held_item_category": pokemon.get("held_item_category"),
                     "moves": pokemon.get("moves", []),
                     "move_names": pokemon.get("move_names", []),
+                    "is_shiny": is_shiny,
                     "level": pokemon.get("level", 0),
                     "nickname": pokemon.get("nickname", ""),
                     "location": pokemon.get("location", "party:0"),
