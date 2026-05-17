@@ -108,23 +108,23 @@ class TradeEvolutionParserTests(unittest.TestCase):
         self.assertEqual(parser.get_species_id("party:0"), 1)
         self.assertEqual(parser.set_calls, [])
 
-    def test_item_evolution_does_not_run_when_feature_flag_is_false(self) -> None:
+    def test_item_evolution_runs_without_feature_flag(self) -> None:
         parser = FakeParser(2, 95, held_item_id=0x8F)
-        result = apply_trade_evolution_to_parser(parser, "party:0", item_based_evolutions_enabled=False)
-        self.assertFalse(result.evolved)
-        self.assertEqual(result.reason, "item_trade_evolution_disabled")
-        self.assertEqual(parser.get_species_id("party:0"), 95)
-        self.assertEqual(parser.clear_calls, 0)
+        result = apply_trade_evolution_to_parser(parser, "party:0")
+        self.assertTrue(result.evolved)
+        self.assertEqual(result.reason, "item_trade_evolution")
+        self.assertEqual(parser.get_species_id("party:0"), 208)
+        self.assertEqual(parser.clear_calls, 1)
 
     def test_wrong_item_does_not_evolve(self) -> None:
         parser = FakeParser(2, 95, held_item_id=0x52)
-        result = apply_trade_evolution_to_parser(parser, "party:0", item_based_evolutions_enabled=True)
+        result = apply_trade_evolution_to_parser(parser, "party:0")
         self.assertFalse(result.evolved)
         self.assertEqual(result.reason, "wrong_held_item")
         self.assertEqual(parser.get_species_id("party:0"), 95)
         self.assertEqual(parser.clear_calls, 0)
 
-    def test_clear_held_item_only_when_item_rule_is_enabled_and_consumed(self) -> None:
+    def test_clear_held_item_when_item_rule_is_consumed(self) -> None:
         original = engine.item_trade_rules_for_generation
         try:
             engine.item_trade_rules_for_generation = lambda generation: (
@@ -138,30 +138,17 @@ class TradeEvolutionParserTests(unittest.TestCase):
                     required_item_name="Metal Coat",
                 ),
             )
-            disabled_parser = FakeParser(2, 95, held_item_id=999)
-            disabled = apply_trade_evolution_to_parser(
-                disabled_parser,
-                "party:0",
-                item_based_evolutions_enabled=False,
-            )
-            self.assertFalse(disabled.evolved)
-            self.assertEqual(disabled_parser.clear_calls, 0)
-
-            enabled_parser = FakeParser(2, 95, held_item_id=999)
-            enabled = apply_trade_evolution_to_parser(
-                enabled_parser,
-                "party:0",
-                item_based_evolutions_enabled=True,
-            )
-            self.assertTrue(enabled.evolved)
-            self.assertEqual(enabled_parser.get_species_id("party:0"), 208)
-            self.assertEqual(enabled_parser.clear_calls, 1)
+            parser = FakeParser(2, 95, held_item_id=999)
+            result = apply_trade_evolution_to_parser(parser, "party:0")
+            self.assertTrue(result.evolved)
+            self.assertEqual(parser.get_species_id("party:0"), 208)
+            self.assertEqual(parser.clear_calls, 1)
         finally:
             engine.item_trade_rules_for_generation = original
 
-    def test_gen2_item_rule_without_validated_item_id_does_not_evolve_when_enabled(self) -> None:
+    def test_gen2_item_rule_without_validated_item_id_does_not_evolve(self) -> None:
         parser = FakeParser(2, 95, held_item_id=999)
-        result = apply_trade_evolution_to_parser(parser, "party:0", item_based_evolutions_enabled=True)
+        result = apply_trade_evolution_to_parser(parser, "party:0")
         self.assertFalse(result.evolved)
         self.assertEqual(parser.clear_calls, 0)
 
@@ -177,11 +164,7 @@ class TradeEvolutionParserTests(unittest.TestCase):
         for source, item_id, target, item_name in cases:
             with self.subTest(source=source, item=item_name):
                 parser = FakeParser(2, source, held_item_id=item_id)
-                result = apply_trade_evolution_to_parser(
-                    parser,
-                    "party:0",
-                    item_based_evolutions_enabled=True,
-                )
+                result = apply_trade_evolution_to_parser(parser, "party:0")
                 self.assertTrue(result.evolved)
                 self.assertEqual(parser.get_species_id("party:0"), target)
                 self.assertEqual(result.consumed_item_id, item_id)
@@ -207,11 +190,7 @@ class TradeEvolutionParserTests(unittest.TestCase):
                     parser.set_species_id("party:0", source)
                     parser.set_held_item_id("party:0", item_id)
 
-                    result = apply_trade_evolution_to_parser(
-                        parser,
-                        "party:0",
-                        item_based_evolutions_enabled=True,
-                    )
+                    result = apply_trade_evolution_to_parser(parser, "party:0")
 
                     self.assertTrue(result.evolved)
                     self.assertEqual(result.consumed_item_name, item_name)
@@ -228,11 +207,7 @@ class TradeEvolutionParserTests(unittest.TestCase):
         for item_id, target, item_name in cases:
             with self.subTest(item=item_name):
                 parser = FakeParser(3, 373, held_item_id=item_id)
-                result = apply_trade_evolution_to_parser(
-                    parser,
-                    "party:0",
-                    item_based_evolutions_enabled=True,
-                )
+                result = apply_trade_evolution_to_parser(parser, "party:0")
                 self.assertTrue(result.evolved)
                 self.assertEqual(parser.get_species_id("party:0"), target)
                 self.assertEqual(result.consumed_item_name, item_name)
@@ -259,11 +234,7 @@ class TradeEvolutionParserTests(unittest.TestCase):
                     parser.set_species_id("party:0", source)
                     parser.set_held_item_id("party:0", item_id)
 
-                    result = apply_trade_evolution_to_parser(
-                        parser,
-                        "party:0",
-                        item_based_evolutions_enabled=True,
-                    )
+                    result = apply_trade_evolution_to_parser(parser, "party:0")
 
                     self.assertTrue(result.evolved)
                     self.assertEqual(result.consumed_item_name, item_name)

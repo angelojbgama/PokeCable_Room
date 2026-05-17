@@ -36,7 +36,6 @@ Estavel:
 - Sala unica: criar sala, entrar sala, escolher save e Pokemon.
 - Same-generation trade usando raw payload somente entre saves da mesma geracao.
 - Cross-generation trade usando payload canonico, preflight local e conversores locais.
-- Evolucao simples por troca aplicada localmente depois da troca, quando `auto_trade_evolution` esta ligado.
 - Display normalizado no R36S e web: National Dex, nome, level, held item, sexo quando existir e apelido quando for diferente.
 - Salas de batalha separadas das salas de troca.
 - Exportacao de times canonicos para o formato textual usado pela engine de batalha.
@@ -50,7 +49,7 @@ Experimental protegido por flags:
 - Modelo canonico separando National Dex, ID nativo da geracao e espaco de ID.
 - Tabelas locais de especies, moves e held items usadas pela compatibilidade.
 - Conversores locais para Gen 1 <-> Gen 2, Gen 1/2 -> Gen 3 e Gen 3 -> Gen 1/2.
-- Evolucao por item com IDs validados para Gen 2/3, desligada por padrao por `item_trade_evolutions_enabled=false`.
+- Evolucao por item com IDs validados para Gen 2/3 e consumo automatico do item correto.
 
 ## O Que Nao Faz
 
@@ -77,7 +76,6 @@ Experimental protegido por flags:
 
 - Same-generation usa raw payload da propria geracao.
 - Cross-generation usa modelo canonico, `CompatibilityReport` e conversores locais.
-- O servidor bloqueia cross-generation se a flag global estiver desligada ou se algum modo derivado da troca nao estiver em `ENABLED_TRADE_MODES`.
 - O client anuncia suporte tecnico a `canonical_cross_generation`; a compatibilidade real e decidida no preflight.
 - A compatibilidade e calculada por Pokemon recebido durante o preflight, antes da confirmacao final.
 
@@ -124,24 +122,6 @@ Exemplos:
 - Permitido: Gen 2 Mew <-> Gen 3 Mew.
 - Bloqueado: Gen 2 Chikorita -> Gen 1, porque Chikorita #152 nao existe na Gen 1.
 
-Servidor:
-
-```text
-ALLOW_CROSS_GENERATION=true
-ENABLED_TRADE_MODES=time_capsule_gen1_gen2,forward_transfer_to_gen3,legacy_downconvert_experimental
-```
-
-Client:
-
-```json
-{
-  "cross_generation": {
-    "policy": "auto_retrocompat",
-    "unsafe_auto_confirm_data_loss": false
-  }
-}
-```
-
 Politicas:
 
 - `strict`: bloqueia perdas de dados relevantes.
@@ -173,9 +153,8 @@ Seguranca:
 
 Evolucao por troca e aplicada localmente no client depois que o Pokemon recebido e escrito no slot do save. A engine altera apenas o parser em memoria; o fluxo do client cria backup antes da gravacao, valida o save e entao salva o arquivo.
 
-`auto_trade_evolution=true` liga evolucoes simples por troca. `item_trade_evolutions_enabled=false` e o padrao: evolucoes por item existem para testes/beta, mas so acontecem quando essa opcao e ativada no `config.json`. Gen 1 nao possui held item.
 
-Quando a evolucao por item acontece, o item correto e consumido no save local. Se o item estiver errado ou a flag estiver desligada, o Pokemon recebido permanece sem evoluir e a troca continua normalmente.
+Quando a evolucao por item acontece, o item correto e consumido no save local. Se o item estiver errado, o Pokemon recebido permanece sem evoluir e a troca continua normalmente.
 
 Suporte Gen 1:
 
@@ -211,125 +190,6 @@ Suporte Gen 3:
 - Porygon + Up-Grade -> Porygon2
 - Clamperl + Deep Sea Tooth -> Huntail
 - Clamperl + Deep Sea Scale -> Gorebyss
-
-## Battle Mode
-
-O modo de batalha e separado da troca por save:
-
-- Troca por save altera o arquivo local com backup.
-- Batalha nao altera save.
-- Batalha envia somente `CanonicalPokemon` sanitizado do time escolhido.
-- `original_data.raw_data_base64` e removido do payload de batalha antes de ir ao servidor.
-- O servidor cria uma `BattleRoom`, recebe dois times, espera confirmacao dos dois jogadores e passa eventos para a engine local de batalha.
-
-Formatos iniciais:
-
-- Gen 1: `gen1customgame`
-- Gen 2: `gen2customgame`
-- Gen 3: `gen3customgame`
-
-Eventos WebSocket de batalha:
-
-- `create_battle_room`
-- `join_battle_room`
-- `offer_battle_team`
-- `confirm_battle`
-- `battle_action`
-- `battle_forfeit`
-- `battle_room_created`
-- `battle_room_joined`
-- `battle_team_received`
-- `battle_ready`
-- `battle_started`
-- `battle_log`
-- `battle_request_action`
-- `battle_finished`
-- `battle_error`
-
-Engine de batalha:
-
-- O servidor usa apenas a engine local em processo.
-- O antigo worker Node foi removido do projeto.
-- O endpoint `/health` expõe o status dessa engine local.
-
-Configuracao do servidor:
-
-```text
-BATTLE_ENGINE=local
-```
-
-Client R36S:
-
-```bash
-PYTHONPATH=PokeCable/backend python3 PokeCable/backend/pokecable_room/client.py \
-  --mode battle \
-  --action create \
-  --server ws://127.0.0.1:8000/ws \
-  --room batalha \
-  --password 123 \
-  --save /caminho/para/save.sav
-```
-
-O menu do R36S tambem possui:
-
-- Criar sala de batalha
-- Entrar em sala de batalha
-- Escolher time do save
-- Ver time de batalha
-- Confirmar batalha
-- Enviar acao simplificada
-- Receber acoes reais por jogador a partir do `request` da engine de batalha
-
-Frontend web:
-
-- Cria/entra em sala de troca.
-- Cria/entra em sala de batalha.
-- Mostra party com display normalizado.
-- Envia time canonico para batalha.
-- Mostra logs de batalha.
-
-Limites atuais:
-
-- A UI visual de batalha ainda e simplificada.
-- Sprites, animacoes e seletores completos de move/switch podem ser adicionados depois.
-- A engine atual ainda e simplificada e deterministica.
-- O front web continua sem editar save no servidor; ele edita localmente no navegador apenas no fluxo de troca.
-
-## Feature Flags
-
-Config local do client:
-
-```json
-{
-  "auto_trade_evolution": true,
-  "item_trade_evolutions_enabled": false,
-  "cross_generation": {
-    "enabled": true,
-    "enabled_modes": ["time_capsule_gen1_gen2", "forward_transfer_to_gen3", "legacy_downconvert_experimental"],
-    "policy": "auto_retrocompat",
-    "unsafe_auto_confirm_data_loss": false
-  }
-}
-```
-
-Servidor em producao/cross-generation:
-
-```text
-ALLOW_CROSS_GENERATION=true
-ENABLED_TRADE_MODES=time_capsule_gen1_gen2,forward_transfer_to_gen3,legacy_downconvert_experimental
-BATTLE_ENGINE=local
-```
-
-`ALLOW_CROSS_GENERATION=true` sozinho nao libera tudo. Cada modo derivado precisa aparecer em `ENABLED_TRADE_MODES`.
-
-Variaveis e opcoes:
-
-- `ALLOW_CROSS_GENERATION`: liga a feature guard global do servidor.
-- `ENABLED_TRADE_MODES`: lista os modos cross-generation permitidos no servidor.
-- `item_trade_evolutions_enabled`: liga evolucoes por item no client; padrao `false`.
-- `cross_generation.policy`: `auto_retrocompat`, `safe_default`, `strict` ou `permissive`.
-- `cross_generation.unsafe_auto_confirm_data_loss`: permite auto-confirm com perda de dados; padrao `false` e nao recomendado.
-- `BATTLE_ENGINE`: seleciona a engine de batalha atual; neste momento apenas `local`.
 
 ## Rodar Servidor
 

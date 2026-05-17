@@ -63,10 +63,9 @@ async def run_trade(
     initial_save_signature: dict[str, object] | None,
     ui: TerminalUI,
     trade_mode: str = SAME_GENERATION,
-    auto_trade_evolution: bool = True,
-    item_based_evolutions_enabled: bool = False,
-    cross_generation_policy: str = "auto_retrocompat",
-    unsafe_auto_confirm_data_loss: bool = False,
+    auto_trade_evolution: bool | None = None,
+    cross_generation_policy: str | None = None,
+    unsafe_auto_confirm_data_loss: bool | None = None,
 ) -> PokemonPayload:
     local_generation = parser.get_generation()
     local_game = parser.get_game_id()
@@ -113,7 +112,6 @@ async def run_trade(
             parser,
             pokemon_location,
             target_generation=target_generation,
-            cross_generation_policy=cross_generation_policy,
         )
         ui.print(f"Pokemon selecionado: {offer.display_summary} ({local_game}, Gen {local_generation})")
 
@@ -125,9 +123,7 @@ async def run_trade(
         preflight_ok, received_report = _preflight_result_for_payload(
             received_preview,
             local_generation,
-            cross_generation_policy=cross_generation_policy,
             auto_confirm=auto_confirm,
-            unsafe_auto_confirm_data_loss=unsafe_auto_confirm_data_loss,
             ui=ui,
         )
         await network.send(
@@ -145,16 +141,12 @@ async def run_trade(
             local_generation,
             _preview_species_id_for_local_generation(received_preview, local_generation),
             held_item_id=_preview_held_item_id_for_local_generation(received_preview, local_generation),
-            item_based_evolutions_enabled=item_based_evolutions_enabled,
         )
-        if auto_trade_evolution and preview.evolved:
+        if preview.evolved:
             message = f"Preview: {preview.source_name} evoluira para {preview.target_name} apos a troca."
             if preview.consumed_item_name:
                 message += f" {preview.consumed_item_name} sera consumido."
             ui.print(message)
-        elif auto_trade_evolution and preview.reason == "item_trade_evolution_disabled":
-            ui.print("Evolucao por item esta desligada. Ative item_trade_evolutions_enabled para testar.")
-
         if not auto_confirm and not ui.confirm("Confirmar troca agora?", default=False):
             await network.send({"type": "cancel_trade"})
             raise RuntimeError("Troca cancelada pelo usuario.")
@@ -167,9 +159,7 @@ async def run_trade(
         _committed_ok, conversion_report_dict = _preflight_result_for_payload(
             received_payload,
             local_generation,
-            cross_generation_policy=cross_generation_policy,
             auto_confirm=False,
-            unsafe_auto_confirm_data_loss=True,
             ui=ui,
             prompt_user=False,
         )
@@ -304,7 +294,7 @@ async def run_trade(
                         parser,
                         pokemon_location,
                         canonical,
-                        policy=cross_generation_policy,
+                        policy="auto_retrocompat",
                     )
                     conversion_report = conversion.compatibility_report
                 received_canonical = CanonicalPokemon.from_dict(received_payload.canonical) if received_payload.canonical else None
@@ -315,13 +305,10 @@ async def run_trade(
                         canonical_pokemon=received_canonical,
                         ui=ui,
                     )
-                evolution_result = None
-                if auto_trade_evolution:
-                    evolution_result = apply_trade_evolution_to_parser(
-                        parser,
-                        pokemon_location,
-                        item_based_evolutions_enabled=item_based_evolutions_enabled,
-                    )
+                evolution_result = apply_trade_evolution_to_parser(
+                    parser,
+                    pokemon_location,
+                )
                 parser.save(save_path)
                 save_signature_after_write = capture_save_signature(save_path)
                 update_backup_metadata(
@@ -406,7 +393,6 @@ def _build_offer_payload(
     location: str,
     *,
     target_generation: int,
-    cross_generation_policy: str,
 ) -> PokemonPayload:
     local_generation = parser.get_generation()
     trade_mode = get_trade_mode(local_generation, target_generation)
@@ -416,7 +402,7 @@ def _build_offer_payload(
         canonical,
         target_generation,
         cross_generation_enabled=True,
-        policy=cross_generation_policy,
+        policy="auto_retrocompat",
     )
     offer.source_generation = canonical.source_generation
     offer.source_game = canonical.source_game
@@ -448,9 +434,9 @@ def _preflight_result_for_payload(
     payload: PokemonPayload,
     local_generation: int,
     *,
-    cross_generation_policy: str,
+    cross_generation_policy: str | None = None,
     auto_confirm: bool,
-    unsafe_auto_confirm_data_loss: bool,
+    unsafe_auto_confirm_data_loss: bool | None = None,
     ui: TerminalUI,
     prompt_user: bool = True,
 ) -> tuple[bool, dict]:
@@ -493,19 +479,14 @@ def _preflight_result_for_payload(
         canonical,
         local_generation,
         cross_generation_enabled=True,
-        policy=cross_generation_policy,
+        policy="auto_retrocompat",
     )
     report_dict = report.to_dict()
     _print_report(ui, report_dict)
     if not report.compatible:
         return False, report_dict
-    if report.requires_user_confirmation and cross_generation_policy != "auto_retrocompat":
-        if auto_confirm and not unsafe_auto_confirm_data_loss:
-            report_dict.setdefault("blocking_reasons", []).append(
-                "Esta conversao possui perda de dados e exige confirmacao manual."
-            )
-            return False, report_dict
-        if prompt_user and not auto_confirm and not ui.confirm("A conversao tem avisos/perdas. Confirmar mesmo assim?", default=False):
+    if report.requires_user_confirmation and prompt_user and not auto_confirm:
+        if not ui.confirm("A conversao tem avisos/perdas. Confirmar mesmo assim?", default=False):
             report_dict.setdefault("blocking_reasons", []).append("Troca recusada pelo usuario apos relatorio de compatibilidade.")
             return False, report_dict
     return True, report_dict
@@ -545,7 +526,7 @@ def _client_supported_protocols() -> list[str]:
     return [RAW_SAME_GENERATION_PROTOCOL, CANONICAL_CROSS_GENERATION_PROTOCOL]
 
 
-def _can_continue_with_report(report, *, auto_confirm: bool, unsafe_auto_confirm_data_loss: bool) -> bool:
+def _can_continue_with_report(report, *, auto_confirm: bool, unsafe_auto_confirm_data_loss: bool = False) -> bool:
     if not report.requires_user_confirmation:
         return True
     return not auto_confirm or unsafe_auto_confirm_data_loss
@@ -816,7 +797,6 @@ async def automated_or_prompted_trade(args: argparse.Namespace) -> int:
     password = args.password or ui.input_password("Senha da sala")
     server_url = args.server or config["server_url"]
     action = args.action or ui.choose("Escolha o fluxo:", ["create", "join"], ["Criar sala", "Entrar em sala"])
-    cross_generation_config = dict(config.get("cross_generation") or {})
     try:
         await run_trade(
             server_url=server_url,
@@ -831,10 +811,6 @@ async def automated_or_prompted_trade(args: argparse.Namespace) -> int:
             initial_save_signature=initial_signature,
             ui=ui,
             trade_mode=getattr(args, "trade_mode", SAME_GENERATION),
-            auto_trade_evolution=bool(config.get("auto_trade_evolution", True)),
-            item_based_evolutions_enabled=bool(config.get("item_trade_evolutions_enabled", False)),
-            cross_generation_policy=str(cross_generation_config.get("policy") or "auto_retrocompat"),
-            unsafe_auto_confirm_data_loss=bool(cross_generation_config.get("unsafe_auto_confirm_data_loss", False)),
         )
     except Exception as exc:
         logger.exception("Trade failed")

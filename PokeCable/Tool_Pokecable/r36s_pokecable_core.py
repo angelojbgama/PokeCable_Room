@@ -255,10 +255,6 @@ def _run_trade_bg(
                 initial_save_signature=None,
                 ui=ui,
                 trade_mode="same_generation",
-                auto_trade_evolution=config.get("auto_trade_evolution", True),
-                item_based_evolutions_enabled=config.get("item_based_evolutions_enabled", False),
-                cross_generation_policy=config.get("cross_generation", {}).get("policy", "auto_retrocompat"),
-                unsafe_auto_confirm_data_loss=False,
             )
         )
 

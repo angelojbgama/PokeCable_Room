@@ -30,6 +30,7 @@ from r36s_pokecable_core import (
     PokecableState,
     execute_self_trade,
     prepare_self_trade,
+    validate_self_trade_candidate,
     start_trade_thread,
     request_trade_cancel,
     request_leave_room,
@@ -1623,13 +1624,17 @@ def main():
         except OSError:
             return str(Path(path_a).absolute()) == str(Path(path_b).absolute())
 
-    def load_self_trade_party(save_path):
+    def load_self_trade_party(save_path, *, target_save_path=None, require_compatible_to_target=False):
         nonlocal trade_status
         state.selected_save = Path(save_path)
         state.pokemon_source = "party"
         state.selected_pokemon = None
         state.get_pokemon_list("party", enrich=False)
-        trade_status = f"Party: {Path(save_path).name}"
+        base_status = f"Party: {Path(save_path).name}"
+        if not require_compatible_to_target or not target_save_path or not self_trade_pokemon_a:
+            trade_status = base_status
+            return
+        trade_status = base_status
 
     def advance_self_trade_prompts():
         nonlocal pending_removed_moves, resolve_current_idx, resolve_replacement_idx, resolved_moves_choices
@@ -1968,6 +1973,31 @@ def main():
             elif action == "select" and state.pokemon_list:
                 self_trade_pokemon_b = state.pokemon_list[menu_index]
                 logger.info("Self trade pokemon B selected: %s", self_trade_pokemon_b.get("location"))
+                try:
+                    preview = validate_self_trade_candidate(
+                        state,
+                        source_save_path=Path(self_trade_save_b),
+                        source_pokemon_location=str(self_trade_pokemon_b.get("location") or "party:0"),
+                        target_save_path=Path(self_trade_save_a),
+                    )
+                except Exception as exc:
+                    logger.exception("Self trade candidate validation failed: %s", exc)
+                    info_modal_data = {
+                        "title": "Falha na validacao",
+                        "message": str(exc),
+                        "return_screen": "self_select_pokemon_b",
+                    }
+                    switch_screen("info_modal", "self_candidate_validation_failed")
+                    continue
+                if not preview.get("compatible"):
+                    message = str(preview.get("blocking_message") or "Pokemon incompativel com o save de destino.")
+                    info_modal_data = {
+                        "title": "Pokemon incompativel",
+                        "message": message,
+                        "return_screen": "self_select_pokemon_b",
+                    }
+                    switch_screen("info_modal", "self_candidate_incompatible")
+                    continue
                 trade_status = "Validando troca local..."
                 switch_screen("trading", "self_trade_preflight")
                 try:

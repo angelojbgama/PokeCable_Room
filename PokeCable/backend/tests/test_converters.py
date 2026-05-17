@@ -333,11 +333,7 @@ class ConverterTests(unittest.TestCase):
                         source.export_canonical("party:0"),
                         policy="auto_retrocompat",
                     )
-                    evolution = apply_trade_evolution_to_parser(
-                        target,
-                        "party:1",
-                        item_based_evolutions_enabled=True,
-                    )
+                    evolution = apply_trade_evolution_to_parser(target, "party:1")
 
                     self.assertTrue(conversion.wrote_to_save)
                     self.assertIn("held_item", conversion.data_loss)

@@ -650,6 +650,25 @@ def prepare_self_trade(
     }
 
 
+def validate_self_trade_candidate(
+    state: PokecableState,
+    *,
+    source_save_path: Path,
+    source_pokemon_location: str,
+    target_save_path: Path,
+) -> Dict[str, Any]:
+    """Validate only one direction of a self trade candidate for UI filtering."""
+    source_save = load_save(Path(source_save_path))
+    target_save = load_save(Path(target_save_path))
+    payload = source_save.export_payload(source_pokemon_location)
+    preflight = _trade_preflight_for_target(state, payload, target_save)
+    return {
+        "compatible": not bool(_preflight_block_message(preflight)),
+        "preflight": preflight,
+        "blocking_message": _preflight_block_message(preflight),
+    }
+
+
 def execute_self_trade(
     context: Dict[str, Any],
     *,

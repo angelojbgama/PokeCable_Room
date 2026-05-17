@@ -202,7 +202,7 @@ class ClientSafetyTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertTrue(report["compatible"])
 
-    def test_preflight_data_loss_blocks_auto_confirm_without_unsafe_flag(self) -> None:
+    def test_preflight_data_loss_allows_auto_confirm_in_default_policy(self) -> None:
         payload = canonical_payload(3, 1, 151, "Mew", native_id=151, ability="Synchronize", nature="Timid")
         ok, report = _preflight_result_for_payload(
             payload,
@@ -212,8 +212,8 @@ class ClientSafetyTests(unittest.TestCase):
             unsafe_auto_confirm_data_loss=False,
             ui=FakeUI(),
         )
-        self.assertFalse(ok)
-        self.assertIn("confirmacao manual", " ".join(report["blocking_reasons"]))
+        self.assertTrue(ok)
+        self.assertTrue(report["compatible"])
 
     def test_preflight_auto_retrocompat_does_not_block_data_loss(self) -> None:
         payload = canonical_payload(3, 1, 151, "Mew", native_id=151, ability="Synchronize", nature="Timid")

@@ -13,7 +13,6 @@ from data.species import native_to_national
 def preview_trade_evolution_for_parser(
     parser,
     location: str,
-    item_based_evolutions_enabled: bool = False,
 ) -> TradeEvolutionResult:
     generation = int(parser.get_generation())
     species_id = int(parser.get_species_id(location))
@@ -22,39 +21,34 @@ def preview_trade_evolution_for_parser(
         return _result_from_rule(rule, consumed_item_id=None, evolved=True, reason="simple_trade_evolution")
     if _find_simple_candidate(generation, species_id) is not None:
         return _not_evolved(species_id, reason="target_species_not_supported")
-    if item_based_evolutions_enabled:
-        held_item_id = parser.get_held_item_id(location)
-        item_rule = _find_item_rule(generation, species_id, held_item_id)
-        if item_rule is not None:
-            return _result_from_rule(
-                item_rule,
-                consumed_item_id=held_item_id,
-                evolved=True,
-                reason="item_trade_evolution",
-            )
-        if _find_item_candidate_for_item(generation, species_id, held_item_id) is not None:
-            return _not_evolved(species_id, reason="target_species_not_supported")
-        if any(rule.source_species_id == species_id for rule in item_trade_rules_for_generation(generation)):
-            return _not_evolved(species_id, reason="wrong_held_item")
-    elif any(rule.source_species_id == species_id for rule in item_trade_rules_for_generation(generation)):
-        return _not_evolved(species_id, reason="item_trade_evolution_disabled")
+    held_item_id = parser.get_held_item_id(location)
+    item_rule = _find_item_rule(generation, species_id, held_item_id)
+    if item_rule is not None:
+        return _result_from_rule(
+            item_rule,
+            consumed_item_id=held_item_id,
+            evolved=True,
+            reason="item_trade_evolution",
+        )
+    if _find_item_candidate_for_item(generation, species_id, held_item_id) is not None:
+        return _not_evolved(species_id, reason="target_species_not_supported")
+    if any(rule.source_species_id == species_id for rule in item_trade_rules_for_generation(generation)):
+        return _not_evolved(species_id, reason="wrong_held_item")
     return _not_evolved(species_id, reason="no_trade_evolution_rule")
 
 
 def apply_trade_evolution_to_parser(
     parser,
     location: str,
-    item_based_evolutions_enabled: bool = False,
 ) -> TradeEvolutionResult:
     result = preview_trade_evolution_for_parser(
         parser,
         location,
-        item_based_evolutions_enabled=item_based_evolutions_enabled,
     )
     if not result.evolved:
         return result
     parser.set_species_id(location, result.target_species_id)
-    if item_based_evolutions_enabled and result.consumed_item_id is not None:
+    if result.consumed_item_id is not None:
         parser.clear_held_item(location)
     if hasattr(parser, "mark_pokedex_caught"):
         parser.mark_pokedex_caught(native_to_national(int(parser.get_generation()), result.target_species_id))
@@ -65,7 +59,6 @@ def preview_trade_evolution(
     generation: int,
     species_id: int,
     held_item_id: int | None = None,
-    item_based_evolutions_enabled: bool = False,
 ) -> TradeEvolutionResult:
     generation = int(generation)
     species_id = int(species_id)
@@ -74,21 +67,18 @@ def preview_trade_evolution(
         return _result_from_rule(rule, consumed_item_id=None, evolved=True, reason="simple_trade_evolution")
     if _find_simple_candidate(generation, species_id) is not None:
         return _not_evolved(species_id, reason="target_species_not_supported")
-    if item_based_evolutions_enabled:
-        item_rule = _find_item_rule(generation, species_id, held_item_id)
-        if item_rule is not None:
-            return _result_from_rule(
-                item_rule,
-                consumed_item_id=held_item_id,
-                evolved=True,
-                reason="item_trade_evolution",
-            )
-        if _find_item_candidate_for_item(generation, species_id, held_item_id) is not None:
-            return _not_evolved(species_id, reason="target_species_not_supported")
-        if any(rule.source_species_id == species_id for rule in item_trade_rules_for_generation(generation)):
-            return _not_evolved(species_id, reason="wrong_held_item")
-    elif any(rule.source_species_id == species_id for rule in item_trade_rules_for_generation(generation)):
-        return _not_evolved(species_id, reason="item_trade_evolution_disabled")
+    item_rule = _find_item_rule(generation, species_id, held_item_id)
+    if item_rule is not None:
+        return _result_from_rule(
+            item_rule,
+            consumed_item_id=held_item_id,
+            evolved=True,
+            reason="item_trade_evolution",
+        )
+    if _find_item_candidate_for_item(generation, species_id, held_item_id) is not None:
+        return _not_evolved(species_id, reason="target_species_not_supported")
+    if any(rule.source_species_id == species_id for rule in item_trade_rules_for_generation(generation)):
+        return _not_evolved(species_id, reason="wrong_held_item")
     return _not_evolved(species_id, reason="no_trade_evolution_rule")
 
 

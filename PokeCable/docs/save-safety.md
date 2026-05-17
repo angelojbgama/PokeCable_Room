@@ -14,7 +14,7 @@ Regras obrigatorias:
 - Aplique evolucao simples por troca somente depois do backup e antes de salvar.
 - Resolva movimentos incompativeis antes da escrita quando a politica permitir substituicao.
 - Em troca entre dois saves locais, restaure os backups se qualquer lado falhar durante a gravacao.
-- Mantenha evolucao por item desligada por padrao; os IDs de Gen 2/3 estao mapeados, mas o uso em saves reais deve ser opt-in por `item_trade_evolutions_enabled`.
+- Aplique evolucao por item em Gen 2/3 quando o Pokemon recebido foi trocado segurando o item correto, consumindo o item antes de salvar.
 
 ## Por Que Fechar O Jogo
 

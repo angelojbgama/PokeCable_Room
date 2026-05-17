@@ -63,3 +63,25 @@ def test_trade_preflight_reports_trade_evolution() -> None:
     assert result["trade_evolution"]["evolved"] is True
     assert result["trade_evolution"]["target_species_id"] == 65
     assert result["trade_evolution"]["target_name"] == "Alakazam"
+
+
+def test_trade_preflight_reports_item_trade_evolution_without_flag() -> None:
+    result = build_trade_preflight(
+        {
+            "target_generation": 2,
+            "received_payload": {
+                "generation": 2,
+                "game": "pokemon_crystal",
+                "species_id": 95,
+                "level": 34,
+                "nickname": "ONIX",
+                "held_item_id": 143,
+                "raw_data_base64": "ZmFrZQ==",
+            },
+        }
+    )
+    assert result["compatible"] is True
+    assert result["trade_evolution"]["evolved"] is True
+    assert result["trade_evolution"]["reason"] == "item_trade_evolution"
+    assert result["trade_evolution"]["target_species_id"] == 208
+    assert result["trade_evolution"]["consumed_item_id"] == 143

@@ -71,11 +71,9 @@ O client atualizado ja anuncia suporte tecnico a cross-generation. Use `Configur
   "enabled": true,
   "enabled_modes": ["time_capsule_gen1_gen2", "forward_transfer_to_gen3", "legacy_downconvert_experimental"],
   "policy": "auto_retrocompat",
-  "unsafe_auto_confirm_data_loss": false
 }
 ```
 
-Na troca online, o servidor tambem precisa estar com os mesmos modos em `ENABLED_TRADE_MODES`. Se qualquer lado falhar no preflight, a troca inteira e bloqueada antes de gravar save.
 
 Em `Trocar comigo`, a validacao roda localmente em `Pokecable_tool/pokecable_runtime`. Esse fluxo usa os mesmos validadores e conversores locais para retrocompatibilidade, evolucao por troca e movimentos incompatíveis, mas nunca chama o backend/API.
 

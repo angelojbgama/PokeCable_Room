@@ -314,7 +314,7 @@ class RealSaveIntegrationTests(unittest.TestCase):
                     parser.set_species_id("party:0", source_species)
                     parser.set_held_item_id("party:0", item_id)
 
-                    result = apply_trade_evolution_to_parser(parser, "party:0", item_based_evolutions_enabled=True)
+                    result = apply_trade_evolution_to_parser(parser, "party:0")
                     parser.save(save_path)
 
                     reloaded = Gen2Parser()
@@ -347,7 +347,7 @@ class RealSaveIntegrationTests(unittest.TestCase):
                     parser.set_species_id("party:0", source_species)
                     parser.set_held_item_id("party:0", item_id)
 
-                    result = apply_trade_evolution_to_parser(parser, "party:0", item_based_evolutions_enabled=True)
+                    result = apply_trade_evolution_to_parser(parser, "party:0")
                     parser.save(save_path)
 
                     reloaded = Gen3Parser()

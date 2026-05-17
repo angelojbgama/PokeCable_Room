@@ -202,16 +202,21 @@ def _build_gen1_save_with_party0(species_id: int, level: int = 30) -> bytes:
     return bytes(data)
 
 
-def _build_gen2_save_with_party0(shiny: bool = False) -> bytes:
+def _build_gen2_save_with_party0(
+    shiny: bool = False,
+    species_id: int = 25,
+    held_item_id: int | None = None,
+) -> bytes:
     from pokecable_save import GEN2_CRYSTAL, write_gen2_checksums
 
     data = bytearray(0x8000)
     data[GEN2_CRYSTAL["player_name_offset"] : GEN2_CRYSTAL["player_name_offset"] + NAME_SIZE] = _encode_gbc("CHRIS")
     data[GEN2_CRYSTAL["party_offset"]] = 1
-    data[GEN2_CRYSTAL["party_offset"] + 1] = 25
+    data[GEN2_CRYSTAL["party_offset"] + 1] = species_id
     data[GEN2_CRYSTAL["party_offset"] + 2] = 0xFF
     mon_start = GEN2_CRYSTAL["data_offset"]
-    data[mon_start] = 25
+    data[mon_start] = species_id
+    data[mon_start + 0x01] = int(held_item_id or 0) & 0xFF
     data[mon_start + 0x02] = 33
     data[mon_start + 0x06 : mon_start + 0x08] = (12345).to_bytes(2, "big")
     data[mon_start + 0x08 : mon_start + 0x0B] = (125000).to_bytes(3, "big")
@@ -220,7 +225,7 @@ def _build_gen2_save_with_party0(shiny: bool = False) -> bytes:
     data[mon_start + 0x1F] = 50
     data[mon_start + 0x23] = 35
     data[GEN2_CRYSTAL["ot_offset"] : GEN2_CRYSTAL["ot_offset"] + NAME_SIZE] = _encode_gbc("CHRIS")
-    data[GEN2_CRYSTAL["nick_offset"] : GEN2_CRYSTAL["nick_offset"] + NAME_SIZE] = _encode_gbc("PIKACHU")
+    data[GEN2_CRYSTAL["nick_offset"] : GEN2_CRYSTAL["nick_offset"] + NAME_SIZE] = _encode_gbc("POKE")
     data[GEN2_CRYSTAL["current_box_offset"]] = 0
     write_gen2_checksums(data, GEN2_CRYSTAL)
     return bytes(data)
@@ -306,6 +311,29 @@ def test_self_trade_swaps_two_gen1_saves(tmp_path, monkeypatch):
     assert load_save(save_b_path).party[0]["species_id"] == 149  # Alakazam
     assert Path(result["backup_a"]).exists()
     assert Path(result["backup_b"]).exists()
+
+
+def test_self_trade_gen2_item_evolution_consumes_held_item(tmp_path, monkeypatch):
+    from pokecable_save import load_save
+    from r36s_pokecable_core import PokecableState, execute_self_trade, prepare_self_trade
+
+    _patch_core_backups(monkeypatch, tmp_path)
+    save_a_path = tmp_path / "a.sav"
+    save_b_path = tmp_path / "b.sav"
+    save_a_path.write_bytes(_build_gen2_save_with_party0(species_id=95, held_item_id=0x8F))
+    save_b_path.write_bytes(_build_gen2_save_with_party0(species_id=25))
+
+    context = prepare_self_trade(PokecableState(), save_a_path, "party:0", save_b_path, "party:0")
+
+    assert context["preflight_to_b"]["trade_evolution"]["reason"] == "item_trade_evolution"
+    assert context["preflight_to_b"]["trade_evolution"]["consumed_item_id"] == 0x8F
+
+    result = execute_self_trade(context)
+    reloaded_b = load_save(save_b_path)
+
+    assert result["success"] is True
+    assert reloaded_b.party[0]["species_id"] == 208
+    assert reloaded_b.party[0]["held_item_id"] is None
 
 
 def test_self_trade_blocks_same_save(gen1_save_path):

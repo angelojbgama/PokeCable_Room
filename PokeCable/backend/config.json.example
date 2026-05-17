@@ -11,11 +11,5 @@
     "/roms2/saves"
   ],
   "backup_dir": "/roms/tools/pokecable_room/backups",
-  "log_dir": "/roms/tools/pokecable_room/logs",
-  "auto_trade_evolution": true,
-  "item_trade_evolutions_enabled": false,
-  "cross_generation": {
-    "policy": "auto_retrocompat",
-    "unsafe_auto_confirm_data_loss": false
-  }
+  "log_dir": "/roms/tools/pokecable_room/logs"
 }

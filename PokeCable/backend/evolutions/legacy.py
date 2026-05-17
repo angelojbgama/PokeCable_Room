@@ -13,7 +13,6 @@ class EvolutionContext:
     source_generation: int
     target_generation: int
     trade_mode: str
-    item_based_evolutions_enabled: bool = False
 
 
 def trade_evolution_target(species_id: int, context: EvolutionContext, held_item_id: int | None = None) -> int | None:
@@ -21,7 +20,6 @@ def trade_evolution_target(species_id: int, context: EvolutionContext, held_item
         context.target_generation,
         species_id,
         held_item_id=held_item_id,
-        item_based_evolutions_enabled=context.item_based_evolutions_enabled,
     )
     return result.target_species_id if result.evolved else None
 

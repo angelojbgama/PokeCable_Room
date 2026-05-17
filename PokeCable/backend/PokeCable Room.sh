@@ -149,14 +149,6 @@ default = {
     "default_save_dirs": ["/roms/gb", "/roms/gbc", "/roms/gba", "/roms/saves", "/roms2/gb", "/roms2/gbc", "/roms2/gba", "/roms2/saves"],
     "backup_dir": backup_dir,
     "log_dir": log_dir,
-    "auto_trade_evolution": True,
-    "item_trade_evolutions_enabled": False,
-    "cross_generation": {
-        "enabled": False,
-        "enabled_modes": [],
-        "policy": "safe_default",
-        "unsafe_auto_confirm_data_loss": False,
-    },
 }
 if path.exists():
     try:
@@ -167,16 +159,8 @@ if path.exists():
 default["backup_dir"] = backup_dir
 default["log_dir"] = log_dir
 default.pop("allow_cross_generation", None)
-cross_generation = {
-    "enabled": False,
-    "enabled_modes": [],
-    "policy": "safe_default",
-    "unsafe_auto_confirm_data_loss": False,
-}
-cross_generation.update(default.get("cross_generation") or {})
-if not cross_generation.get("enabled"):
-    cross_generation["enabled_modes"] = []
-default["cross_generation"] = cross_generation
+default.pop("auto_trade_evolution", None)
+default.pop("cross_generation", None)
 path.write_text(json.dumps(default, indent=2), encoding="utf-8")
 PY
 }
@@ -214,14 +198,6 @@ default = {
     "default_save_dirs": ["/roms/gb", "/roms/gbc", "/roms/gba", "/roms/saves", "/roms2/gb", "/roms2/gbc", "/roms2/gba", "/roms2/saves"],
     "backup_dir": "/roms/tools/pokecable_room/backups",
     "log_dir": "/roms/tools/pokecable_room/logs",
-    "auto_trade_evolution": True,
-    "item_trade_evolutions_enabled": False,
-    "cross_generation": {
-        "enabled": False,
-        "enabled_modes": [],
-        "policy": "safe_default",
-        "unsafe_auto_confirm_data_loss": False,
-    },
 }
 if path.exists():
     try:
@@ -231,16 +207,8 @@ if path.exists():
         pass
 default["server_url"] = server_url
 default.pop("allow_cross_generation", None)
-cross_generation = {
-    "enabled": False,
-    "enabled_modes": [],
-    "policy": "safe_default",
-    "unsafe_auto_confirm_data_loss": False,
-}
-cross_generation.update(default.get("cross_generation") or {})
-if not cross_generation.get("enabled"):
-    cross_generation["enabled_modes"] = []
-default["cross_generation"] = cross_generation
+default.pop("auto_trade_evolution", None)
+default.pop("cross_generation", None)
 path.write_text(json.dumps(default, indent=2), encoding="utf-8")
 PY
 }

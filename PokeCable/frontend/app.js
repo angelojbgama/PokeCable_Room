@@ -1,4 +1,3 @@
-window.POKECABLE_TRADE_EVOLUTION_ENABLED = true;
 window.POKECABLE_PUBLIC_SERVER_URL = window.POKECABLE_PUBLIC_SERVER_URL || "https://9kernel.vps-kinghost.net";
 
 const statusEl = document.querySelector("#connectionStatus");
@@ -2336,7 +2335,6 @@ function compatibleMovesForGeneration(canonical, generation) {
 }
 
 function getAppliedTradeEvolution(payload, targetGeneration) {
-  if (!window.POKECABLE_TRADE_EVOLUTION_ENABLED) return null;
   const canonical = canonicalFromPayload(payload);
   if (!canonical) return null;
 

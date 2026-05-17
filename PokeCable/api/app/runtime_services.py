@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -34,12 +33,6 @@ def _as_int(value: Any, default: int = 0) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
-
-
-def _item_trade_evolutions_enabled(payload: dict[str, Any] | None = None) -> bool:
-    if payload and "item_trade_evolutions_enabled" in payload:
-        return str(payload.get("item_trade_evolutions_enabled")).lower() in ("1", "true", "yes", "on")
-    return os.getenv("ITEM_TRADE_EVOLUTIONS_ENABLED", "0").lower() in ("1", "true", "yes", "on")
 
 
 def _native_species(generation: int, species_id: int) -> tuple[int | None, str | None]:
@@ -148,12 +141,10 @@ def enrich_pokemon_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def trade_evolution_dict(payload: dict[str, Any], item_based_evolutions_enabled: bool | None = None) -> dict[str, Any]:
+def trade_evolution_dict(payload: dict[str, Any]) -> dict[str, Any]:
     generation = _as_int(payload.get("generation") or payload.get("source_generation"), 0)
     species_id = _as_int(payload.get("species_id"), 0)
     held_item_id = _as_int(payload.get("held_item_id") or (payload.get("summary") or {}).get("held_item_id"), 0) or None
-    if item_based_evolutions_enabled is None:
-        item_based_evolutions_enabled = _item_trade_evolutions_enabled()
     national_dex_id, species_error = _native_species(generation, species_id)
     if species_error:
         return {
@@ -169,7 +160,6 @@ def trade_evolution_dict(payload: dict[str, Any], item_based_evolutions_enabled:
         generation,
         species_id,
         held_item_id=held_item_id,
-        item_based_evolutions_enabled=item_based_evolutions_enabled,
     )
     return {
         "generation": generation,
@@ -204,10 +194,7 @@ def build_trade_preflight(payload: dict[str, Any]) -> dict[str, Any]:
     if enriched.get("invalid_moves"):
         warnings.append(f"Movimentos invalidos nessa geracao: {', '.join(str(move) for move in enriched['invalid_moves'])}.")
 
-    evolution = trade_evolution_dict(
-        received,
-        item_based_evolutions_enabled=_item_trade_evolutions_enabled(payload),
-    )
+    evolution = trade_evolution_dict(received)
     mode = "same_generation" if source_generation == target_generation else "cross_generation"
     removed_moves: list[dict[str, Any]] = []
     if mode == "cross_generation" and source_generation and target_generation:

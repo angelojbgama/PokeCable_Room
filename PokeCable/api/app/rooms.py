@@ -4,7 +4,6 @@ import asyncio
 import os
 import secrets
 from datetime import timedelta
-from typing import Iterable
 
 from .models import (
     CANONICAL_CROSS_GENERATION,
@@ -14,10 +13,7 @@ from .models import (
     RAW_SAME_GENERATION,
     Room,
     RoomError,
-    FORWARD_TRANSFER_TO_GEN3,
-    LEGACY_DOWNCONVERT_EXPERIMENTAL,
     SAME_GENERATION,
-    TIME_CAPSULE_GEN1_GEN2,
     game_family_for_generation,
     generation_mismatch_message,
     now_utc,
@@ -36,14 +32,9 @@ class RoomManager:
         self,
         room_timeout_seconds: int | None = None,
         max_rooms: int | None = None,
-        enabled_trade_modes: object | None = None,
     ) -> None:
         self.room_timeout_seconds = room_timeout_seconds or int(os.getenv("ROOM_TIMEOUT_SECONDS", "900"))
         self.max_rooms = max_rooms or int(os.getenv("MAX_ROOMS", "200"))
-        configured_modes = enabled_trade_modes
-        if configured_modes is None:
-            configured_modes = [TIME_CAPSULE_GEN1_GEN2, FORWARD_TRANSFER_TO_GEN3, LEGACY_DOWNCONVERT_EXPERIMENTAL]
-        self.enabled_trade_modes = self._normalize_enabled_trade_modes(configured_modes)
         self.rooms: dict[str, Room] = {}
         self.client_rooms: dict[str, tuple[str, PlayerSlot]] = {}
         self._lock = asyncio.Lock()
@@ -520,11 +511,3 @@ class RoomManager:
             "suggested_actions": [],
         }
 
-    def _normalize_enabled_trade_modes(self, enabled_trade_modes: object) -> set[str]:
-        if isinstance(enabled_trade_modes, str):
-            values = [item.strip() for item in enabled_trade_modes.split(",") if item.strip()]
-        elif isinstance(enabled_trade_modes, Iterable):
-            values = [str(item).strip() for item in enabled_trade_modes if str(item).strip()]
-        else:
-            values = []
-        return {value for value in values if value in {TIME_CAPSULE_GEN1_GEN2, FORWARD_TRANSFER_TO_GEN3, LEGACY_DOWNCONVERT_EXPERIMENTAL}}

@@ -45,7 +45,7 @@ Suporte de troca atual: party de Gen 1, party de Gen 2 Gold/Silver/Crystal e par
 
 Use `Configurar cross-generation` no menu apenas para trocar a politica ou desligar testes. Na politica padrao, campos incompatíveis com geracoes antigas sao removidos/normalizados automaticamente e registrados no relatorio/log.
 
-Evolucao por item esta implementada para Gen 2/3, mas `item_trade_evolutions_enabled` permanece `false` por padrao para testes controlados.
+Evolucao por item em Gen 2/3 e obrigatoria quando o Pokemon recebido foi trocado segurando o item correto; o item e consumido no save local.
 
 ## Trocar Comigo
 

@@ -33,30 +33,9 @@ ws://127.0.0.1:8000/ws
 - O servidor recebe apenas o payload do Pokemon selecionado.
 - Payload raw e canonical nao devem ser logados completos.
 - Same-generation e o modo estavel atual.
-- Cross-generation fica protegido por feature guard global e por `ENABLED_TRADE_MODES`.
+- Cross-generation usa modos derivados automaticamente por geracao dos dois jogadores.
 - O servidor mantem `trade_mode` e `compatibility_status`, mas a escrita e conversao acontecem no client.
 - Quando um client envia `resolved_moves` na confirmacao, o servidor apenas encaminha essa escolha dentro do fluxo da sala.
-- O `/health` expõe o status da engine local de batalha.
-
-## Cross-Generation
-
-O servidor nunca converte e nunca grava save. Para liberar um modo em teste:
-
-```bash
-ALLOW_CROSS_GENERATION=true ENABLED_TRADE_MODES=time_capsule_gen1_gen2 docker compose up -d
-```
-
-Se `ALLOW_CROSS_GENERATION=true` mas o modo nao estiver em `ENABLED_TRADE_MODES`, o servidor continua bloqueando a sala.
+- O `/health` retorna apenas o status da API.
 
 Na `Pokecable_tool`, o mesmo preflight/conversao necessario para escrita local tambem existe em `pokecable_runtime`, permitindo `Trocar comigo` sem depender deste servidor.
-
-## Engine de Batalha
-
-Variaveis relevantes:
-
-```bash
-BATTLE_ENGINE=local
-```
-
-- O servidor usa apenas a engine local em processo.
-- O worker Node externo foi removido do projeto.

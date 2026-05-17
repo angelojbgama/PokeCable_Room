@@ -1016,7 +1016,10 @@ class SaveModel:
     def _compact_gen3_party(self, party_index: int) -> None:
         if not self.slot:
             raise SaveError("Slot Gen 3 nao detectado.")
-        section1 = self.slot["section_offsets"][1]
+        section_offsets = self.slot.get("section_offsets") or {}
+        section1 = section_offsets.get(1)
+        if section1 is None:
+            raise SaveError("Save Gen 3 inválido: seção 1 ausente no slot ativo.")
         count_addr = section1 + self.layout["party_count_offset"]
         count = int(self.bytes[count_addr])
         if count <= 0:
@@ -1049,7 +1052,10 @@ class SaveModel:
             party_capacity = GEN3["party_capacity"]
             if not self.slot:
                 raise SaveError("Slot Gen 3 nao detectado.")
-            section1 = self.slot["section_offsets"][1]
+            section_offsets = self.slot.get("section_offsets") or {}
+            section1 = section_offsets.get(1)
+            if section1 is None:
+                raise SaveError("Save Gen 3 inválido: seção 1 ausente no slot ativo.")
             party_count = int(self.bytes[section1 + self.layout["party_count_offset"]])
         else:
             raise SaveError(f"Geracao nao suportada para retirada: {self.generation}")
@@ -1203,7 +1209,10 @@ class SaveModel:
         self._write_gen3_party_data(party_index, promoted)
         if not self.slot:
             raise SaveError("Slot Gen 3 nao detectado.")
-        section1 = self.slot["section_offsets"][1]
+        section_offsets = self.slot.get("section_offsets") or {}
+        section1 = section_offsets.get(1)
+        if section1 is None:
+            raise SaveError("Save Gen 3 inválido: seção 1 ausente no slot ativo.")
         count_addr = section1 + self.layout["party_count_offset"]
         self.bytes[count_addr] = int(self.bytes[count_addr]) + 1
         write_u16(self.bytes, section1 + 0xFF6, gen3_sector_checksum(self.bytes, section1))
@@ -1271,6 +1280,8 @@ class SaveModel:
                     old_species_name = getattr(canonical.species, "name", "") or ""
                     canonical.species.national_dex_id = target_national
                     canonical.species.name = target_name
+                    if trade_evolution.get("consumed_item_id"):
+                        canonical.held_item = None
                     nick_match = nickname_matches_species(canonical.nickname or "", old_species_name) or \
                         nickname_matches_species(canonical.nickname or "", source_name)
                     if nick_match:
@@ -1592,7 +1603,10 @@ class SaveModel:
     def _parse_gen3_party(self) -> List[Dict[str, Any]]:
         if not self.slot:
             raise SaveError("Slot Gen 3 não detectado.")
-        section1 = self.slot["section_offsets"][1]
+        section_offsets = self.slot.get("section_offsets") or {}
+        section1 = section_offsets.get(1)
+        if section1 is None:
+            raise SaveError("Save Gen 3 inválido: seção 1 ausente no slot ativo.")
         count = int(self.bytes[section1 + self.layout["party_count_offset"]])
         party = []
         for index in range(count):
@@ -1774,18 +1788,30 @@ class SaveModel:
     def _read_gen3_party_data(self, index: int) -> bytes:
         if not self.slot:
             raise SaveError("Slot Gen 3 não detectado.")
-        section1 = self.slot["section_offsets"][1]
+        section_offsets = self.slot.get("section_offsets") or {}
+        section1 = section_offsets.get(1)
+        if section1 is None:
+            raise SaveError("Save Gen 3 inválido: seção 1 ausente no slot ativo.")
         start = section1 + self.layout["party_offset"] + index * GEN3["mon_size"]
         return bytes(self.bytes[start:start + GEN3["mon_size"]])
 
     def _gen3_pc_buffer(self) -> bytearray:
         if not self.slot:
             raise SaveError("Slot Gen 3 não detectado.")
+        section_offsets = self.slot.get("section_offsets") or {}
+        required_sections = list(range(5, 13)) + [13]
+        missing_sections = [section_id for section_id in required_sections if section_id not in section_offsets]
+        if missing_sections:
+            missing_str = ", ".join(str(section_id) for section_id in missing_sections)
+            raise SaveError(
+                "Save Gen 3 incompleto/corrompido no slot ativo: "
+                f"faltam seções de PC ({missing_str})."
+            )
         chunks = []
         for section_id in range(5, 13):
-            offset = self.slot["section_offsets"][section_id]
+            offset = section_offsets[section_id]
             chunks.append(bytes(self.bytes[offset:offset + GEN3["sector_data_size"]]))
-        section13 = self.slot["section_offsets"][13]
+        section13 = section_offsets[13]
         chunks.append(bytes(self.bytes[section13:section13 + 2000]))
         merged = bytearray(sum(len(chunk) for chunk in chunks))
         cursor = 0
@@ -1797,14 +1823,23 @@ class SaveModel:
     def _write_gen3_pc_buffer(self, buffer: bytearray) -> None:
         if not self.slot:
             raise SaveError("Slot Gen 3 não detectado.")
+        section_offsets = self.slot.get("section_offsets") or {}
+        required_sections = list(range(5, 13)) + [13]
+        missing_sections = [section_id for section_id in required_sections if section_id not in section_offsets]
+        if missing_sections:
+            missing_str = ", ".join(str(section_id) for section_id in missing_sections)
+            raise SaveError(
+                "Save Gen 3 incompleto/corrompido no slot ativo: "
+                f"faltam seções de PC ({missing_str})."
+            )
         cursor = 0
         for section_id in range(5, 13):
-            offset = self.slot["section_offsets"][section_id]
+            offset = section_offsets[section_id]
             chunk = buffer[cursor:cursor + GEN3["sector_data_size"]]
             self.bytes[offset:offset + GEN3["sector_data_size"]] = chunk
             write_u16(self.bytes, offset + 0xFF6, gen3_sector_checksum(self.bytes, offset))
             cursor += GEN3["sector_data_size"]
-        offset13 = self.slot["section_offsets"][13]
+        offset13 = section_offsets[13]
         tail = buffer[cursor:cursor + 2000]
         self.bytes[offset13:offset13 + 2000] = tail
         write_u16(self.bytes, offset13 + 0xFF6, gen3_sector_checksum(self.bytes, offset13))
@@ -1817,7 +1852,10 @@ class SaveModel:
     def _write_gen3_party_data(self, index: int, raw: bytes) -> None:
         if not self.slot:
             raise SaveError("Slot Gen 3 não detectado.")
-        section1 = self.slot["section_offsets"][1]
+        section_offsets = self.slot.get("section_offsets") or {}
+        section1 = section_offsets.get(1)
+        if section1 is None:
+            raise SaveError("Save Gen 3 inválido: seção 1 ausente no slot ativo.")
         start = section1 + self.layout["party_offset"] + index * GEN3["mon_size"]
         self.bytes[start:start + GEN3["mon_size"]] = raw
         write_u16(self.bytes, section1 + 0xFF6, gen3_sector_checksum(self.bytes, section1))
@@ -1895,11 +1933,18 @@ class SaveModel:
                 self.bytes[base + byte_off] |= mask
             self.bytes[GEN1["checksum_offset"]] = gen1_checksum(self.bytes)
         elif self.generation == 2:
-            for base in [self.layout["pokedex_owned_offset"], self.layout["pokedex_seen_offset"]]:
+            owned_offset = self.layout.get("pokedex_owned_offset")
+            seen_offset = self.layout.get("pokedex_seen_offset")
+            if owned_offset is None or seen_offset is None:
+                return
+            for base in [owned_offset, seen_offset]:
                 self.bytes[base + byte_off] |= mask
             write_gen2_checksums(self.bytes, self.layout)
         elif self.generation == 3 and self.slot:
-            sec0 = self.slot["section_offsets"][0]
+            section_offsets = self.slot.get("section_offsets") or {}
+            sec0 = section_offsets.get(0)
+            if sec0 is None:
+                return
             self.bytes[sec0 + 0x0028 + byte_off] |= mask
             self.bytes[sec0 + 0x005C + byte_off] |= mask
             write_u16(self.bytes, sec0 + 0xFF6, gen3_sector_checksum(self.bytes, sec0))

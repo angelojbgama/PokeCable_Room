@@ -310,11 +310,8 @@ O client valida o Pokemon recebido no preflight antes de qualquer gravacao. Spec
 Para liberar um modo cross-generation no servidor:
 
 ```text
-ALLOW_CROSS_GENERATION=true
-ENABLED_TRADE_MODES=time_capsule_gen1_gen2,forward_transfer_to_gen3,legacy_downconvert_experimental
 ```
 
-Modos que nao aparecem em `ENABLED_TRADE_MODES` continuam bloqueados mesmo com a flag global ligada.
 
 ## Fluxo Offline Da Tool
 

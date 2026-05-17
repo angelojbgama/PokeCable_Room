@@ -238,45 +238,24 @@ window.POKECABLE_TRADE_PREVIEW = {
         ? `${preview.source_name} deve evoluir ao chegar no save local. ${preview.consumed_item_name} será consumido.`
         : `${preview.source_name} deve evoluir ao chegar no save local.`;
 
-      const isInterrupted = !window.POKECABLE_TRADE_EVOLUTION_ENABLED;
-
       tradeEvolutionPreviewEl.className = "trade-preview-body";
       tradeEvolutionPreviewEl.innerHTML = `
         <div class="trade-evolution-caption">${escapeHtml(caption)}</div>
         <div class="evolution-interactive-area">
-          <div class="evolution-sprite-container ${isInterrupted ? "is-interrupted" : ""}" id="evolutionAnimationContainer">
+          <div class="evolution-sprite-container" id="evolutionAnimationContainer">
             <img src="${escapeHtml(baseSprite)}" alt="" class="evolution-sprite-base" />
             <img src="${escapeHtml(targetSprite)}" alt="" class="evolution-sprite-target" />
           </div>
-          
-          <label class="evolution-toggle-wrap">
-            <input type="checkbox" id="evolutionToggle" ${window.POKECABLE_TRADE_EVOLUTION_ENABLED ? "checked" : ""}>
-            <span>Permitir evolução</span>
-          </label>
         </div>
       `;
 
       const container = document.getElementById("evolutionAnimationContainer");
-      const toggle = document.getElementById("evolutionToggle");
 
       if (container) {
         container.addEventListener("click", () => {
-          if (!window.POKECABLE_TRADE_EVOLUTION_ENABLED) return;
           container.classList.remove("is-evolving");
           void container.offsetWidth; // Trigger reflow
           container.classList.add("is-evolving");
-        });
-      }
-
-      if (toggle) {
-        toggle.addEventListener("change", (e) => {
-          window.POKECABLE_TRADE_EVOLUTION_ENABLED = e.target.checked;
-          if (window.POKECABLE_TRADE_EVOLUTION_ENABLED) {
-            container.classList.remove("is-interrupted");
-          } else {
-            container.classList.add("is-interrupted");
-            container.classList.remove("is-evolving");
-          }
         });
       }
     }
