@@ -47,6 +47,10 @@ SUPPORTED_PROTOCOLS = ["raw_same_generation", "canonical_cross_generation"]
 CONNECT_ATTEMPTS = 8
 CONNECT_OPEN_TIMEOUT = 20
 RUNTIME_HTTP_TIMEOUT = 10
+_ITEM_LOOKUP_LOADED = False
+_ITEM_LOOKUP_FAILED = False
+_RUNTIME_ITEM_NAME = None
+_RUNTIME_ITEM_CATEGORY = None
 
 
 def _enabled(value: str | None) -> bool:
@@ -100,6 +104,44 @@ def _ensure_tool_runtime_import_path() -> None:
     runtime_path = str(runtime_dir)
     if runtime_dir.exists() and runtime_path not in sys.path:
         sys.path.insert(0, runtime_path)
+
+
+def _load_runtime_item_lookup() -> None:
+    global _ITEM_LOOKUP_LOADED, _ITEM_LOOKUP_FAILED, _RUNTIME_ITEM_NAME, _RUNTIME_ITEM_CATEGORY
+    if _ITEM_LOOKUP_LOADED or _ITEM_LOOKUP_FAILED:
+        return
+    try:
+        _ensure_tool_runtime_import_path()
+        from data.items import item_category, item_name  # type: ignore
+
+        _RUNTIME_ITEM_NAME = item_name
+        _RUNTIME_ITEM_CATEGORY = item_category
+        _ITEM_LOOKUP_LOADED = True
+    except Exception as exc:
+        _ITEM_LOOKUP_FAILED = True
+        logger.debug("Local item lookup unavailable: %s", exc)
+
+
+def _resolve_local_item_metadata(item_id: Any, generation: Any) -> tuple[str | None, str | None]:
+    try:
+        normalized_id = int(item_id or 0)
+    except (TypeError, ValueError):
+        normalized_id = 0
+    if normalized_id <= 0:
+        return None, None
+    try:
+        normalized_generation = int(generation or 0)
+    except (TypeError, ValueError):
+        normalized_generation = 0
+    _load_runtime_item_lookup()
+    if not _ITEM_LOOKUP_LOADED or _RUNTIME_ITEM_NAME is None or _RUNTIME_ITEM_CATEGORY is None:
+        return None, None
+    try:
+        name = _RUNTIME_ITEM_NAME(normalized_id, normalized_generation)
+        category = _RUNTIME_ITEM_CATEGORY(normalized_id, normalized_generation)
+        return (str(name) if name else None, str(category) if category else None)
+    except Exception:
+        return None, None
 
 
 class PokecableState:
@@ -428,6 +470,16 @@ class PokecableState:
             metadata = pokemon.get("metadata") if isinstance(pokemon.get("metadata"), dict) else {}
             canonical = pokemon.get("canonical") if isinstance(pokemon.get("canonical"), dict) else {}
             canonical_metadata = canonical.get("metadata") if isinstance(canonical.get("metadata"), dict) else {}
+            generation_value = int(analysis.get("generation", 0) or pokemon.get("generation") or pokemon.get("source_generation") or 0)
+            held_item_id = pokemon.get("held_item_id")
+            held_item_name = pokemon.get("held_item_name")
+            held_item_category = pokemon.get("held_item_category")
+            if held_item_id and (not held_item_name or str(held_item_name).startswith("#")):
+                local_item_name, local_item_category = _resolve_local_item_metadata(held_item_id, generation_value)
+                if local_item_name:
+                    held_item_name = local_item_name
+                if local_item_category:
+                    held_item_category = local_item_category
             is_shiny = bool(
                 pokemon.get("is_shiny")
                 or metadata.get("is_shiny")
@@ -442,9 +494,9 @@ class PokecableState:
                     "species_name": pokemon.get("species_name", "Pokemon"),
                     "national_dex_id": pokemon.get("national_dex_id"),
                     "types": pokemon.get("types", []),
-                    "held_item_id": pokemon.get("held_item_id"),
-                    "held_item_name": pokemon.get("held_item_name"),
-                    "held_item_category": pokemon.get("held_item_category"),
+                    "held_item_id": held_item_id,
+                    "held_item_name": held_item_name,
+                    "held_item_category": held_item_category,
                     "moves": pokemon.get("moves", []),
                     "move_names": pokemon.get("move_names", []),
                     "is_shiny": is_shiny,
@@ -454,7 +506,7 @@ class PokecableState:
                     "source": pokemon.get("source", source),
                     "box_name": pokemon.get("box_name", ""),
                     "display": pokemon.get("display_summary", "Pokemon"),
-                    "generation": analysis.get("generation", 0),
+                    "generation": generation_value,
                     "raw": pokemon,
                 }
             )
@@ -591,6 +643,85 @@ def _trade_preflight_for_target(
     return _local_trade_preflight(received_payload, target_save)
 
 
+def _self_trade_evolution_preview_for_target(
+    received_payload: Dict[str, Any],
+    target_save: SaveModel,
+) -> Dict[str, Any]:
+    try:
+        _ensure_tool_runtime_import_path()
+        from evolutions import preview_trade_evolution  # type: ignore
+        from data.items import equivalent_item_id  # type: ignore
+        from data.species import national_to_native  # type: ignore
+    except Exception as exc:
+        logger.warning("Self-trade evolution preview unavailable: %s", exc)
+        return {}
+
+    target_generation = int(target_save.generation or 0)
+    canonical = received_payload.get("canonical") if isinstance(received_payload.get("canonical"), dict) else {}
+    source_generation = int(
+        canonical.get("source_generation")
+        or received_payload.get("source_generation")
+        or received_payload.get("generation")
+        or 0
+    )
+    national_dex_id = int(
+        (canonical.get("species") or {}).get("national_dex_id")
+        or canonical.get("species_national_id")
+        or received_payload.get("national_dex_id")
+        or 0
+    )
+    if national_dex_id <= 0:
+        return {}
+    try:
+        target_species_id = int(national_to_native(target_generation, national_dex_id))
+    except Exception:
+        return {}
+
+    held_item: Dict[str, Any] = canonical.get("held_item") if isinstance(canonical.get("held_item"), dict) else {}
+    received_held_item_id = int(
+        held_item.get("item_id")
+        or received_payload.get("held_item_id")
+        or (received_payload.get("summary") or {}).get("held_item_id")
+        or 0
+    )
+    held_item_id_for_target: int | None = None
+    if received_held_item_id > 0:
+        item_source_generation = int(held_item.get("source_generation") or source_generation or 0)
+        if item_source_generation and item_source_generation != target_generation:
+            held_item_id_for_target = equivalent_item_id(received_held_item_id, item_source_generation, target_generation)
+        else:
+            held_item_id_for_target = received_held_item_id
+
+    result = preview_trade_evolution(
+        target_generation,
+        target_species_id,
+        held_item_id=held_item_id_for_target,
+    )
+    preview = {
+        "generation": target_generation,
+        "evolved": bool(result.evolved),
+        "source_species_id": int(result.source_species_id),
+        "target_species_id": int(result.target_species_id),
+        "source_name": result.source_name,
+        "target_name": result.target_name,
+        "consumed_item_id": result.consumed_item_id,
+        "consumed_item_name": result.consumed_item_name,
+        "reason": result.reason,
+    }
+    logger.info(
+        "Self-trade evolution preview: target_gen=%s source_gen=%s national=%s target_species=%s held_item_in=%s held_item_target=%s evolved=%s reason=%s",
+        target_generation,
+        source_generation,
+        national_dex_id,
+        target_species_id,
+        received_held_item_id or None,
+        held_item_id_for_target,
+        preview["evolved"],
+        preview["reason"],
+    )
+    return preview
+
+
 def _preflight_block_message(preflight: Dict[str, Any]) -> str:
     reasons = [str(reason) for reason in preflight.get("blocking_reasons", []) if reason]
     if reasons:
@@ -624,6 +755,8 @@ def prepare_self_trade(
 
     preflight_to_a = _trade_preflight_for_target(state, payload_b, save_a)
     preflight_to_b = _trade_preflight_for_target(state, payload_a, save_b)
+    trade_evolution_to_a = _self_trade_evolution_preview_for_target(payload_b, save_a)
+    trade_evolution_to_b = _self_trade_evolution_preview_for_target(payload_a, save_b)
     block_to_a = _preflight_block_message(preflight_to_a)
     block_to_b = _preflight_block_message(preflight_to_b)
     if block_to_a or block_to_b:
@@ -643,6 +776,8 @@ def prepare_self_trade(
         "payload_b": payload_b,
         "preflight_to_a": preflight_to_a,
         "preflight_to_b": preflight_to_b,
+        "trade_evolution_to_a": trade_evolution_to_a,
+        "trade_evolution_to_b": trade_evolution_to_b,
         "signature_a": save_a.signature(),
         "signature_b": save_b.signature(),
         "save_a_name": save_a_path.name,
@@ -696,13 +831,15 @@ def execute_self_trade(
         payload_b = context.get("payload_b") if isinstance(context.get("payload_b"), dict) else {}
         preflight_to_a = context.get("preflight_to_a") if isinstance(context.get("preflight_to_a"), dict) else {}
         preflight_to_b = context.get("preflight_to_b") if isinstance(context.get("preflight_to_b"), dict) else {}
+        trade_evolution_to_a = context.get("trade_evolution_to_a") if isinstance(context.get("trade_evolution_to_a"), dict) else {}
+        trade_evolution_to_b = context.get("trade_evolution_to_b") if isinstance(context.get("trade_evolution_to_b"), dict) else {}
 
         backup_a = _create_backup(save_a_path)
         backup_b = _create_backup(save_b_path)
         received_a = save_a.apply_payload(
             str(context.get("pokemon_a_location") or "party:0"),
             payload_b,
-            trade_evolution=preflight_to_a.get("trade_evolution") or {},
+            trade_evolution=trade_evolution_to_a or preflight_to_a.get("trade_evolution") or {},
             cancel_trade_evolution=cancel_evolution_to_a,
             resolved_moves=resolved_moves_to_a or {},
         )
@@ -710,7 +847,7 @@ def execute_self_trade(
         received_b = save_b.apply_payload(
             str(context.get("pokemon_b_location") or "party:0"),
             payload_a,
-            trade_evolution=preflight_to_b.get("trade_evolution") or {},
+            trade_evolution=trade_evolution_to_b or preflight_to_b.get("trade_evolution") or {},
             cancel_trade_evolution=cancel_evolution_to_b,
             resolved_moves=resolved_moves_to_b or {},
         )

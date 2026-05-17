@@ -15,6 +15,8 @@ import threading
 from pathlib import Path
 
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+os.environ.setdefault("AUDIODEV", "null")
 
 DEBUG = os.getenv("POKECABLE_DEBUG", "0").lower() in ("1", "true", "yes")
 
@@ -1509,16 +1511,22 @@ def reset_flow_state(state):
 
 
 def main():
+    boot_start = time.perf_counter()
     logger.info("Init pygame...")
     logger.info("Debug mode: %s", DEBUG)
-    pygame.init()
+    pygame.display.init()
     pygame.font.init()
+    pygame.time.get_ticks()
     pygame.key.set_repeat(int(NAV_REPEAT_DELAY * 1000), int(NAV_REPEAT_INTERVAL * 1000))
+    logger.info("Boot timing: pygame modules init %.3fs", time.perf_counter() - boot_start)
+    joystick_start = time.perf_counter()
     try:
         pygame.joystick.init()
     except Exception as exc:
         logger.warning(f"Joystick init failed: {exc}")
+    logger.info("Boot timing: joystick init %.3fs", time.perf_counter() - joystick_start)
 
+    joystick_enum_start = time.perf_counter()
     joysticks = []
     for index in range(pygame.joystick.get_count()):
         joy = pygame.joystick.Joystick(index)
@@ -1532,18 +1540,23 @@ def main():
             joy.get_numaxes(),
             joy.get_numhats(),
         )
+    logger.info("Boot timing: joystick enumeration %.3fs (count=%s)", time.perf_counter() - joystick_enum_start, len(joysticks))
 
     pygame.mouse.set_visible(False)
+    display_start = time.perf_counter()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("PokeCable Room")
     clock = pygame.time.Clock()
     fonts = (font(22, True), font(18), font(16), font(14))
+    logger.info("Boot timing: display + fonts %.3fs", time.perf_counter() - display_start)
 
+    saves_start = time.perf_counter()
     state = PokecableState()
     state.find_saves()
+    logger.info("Boot timing: save scan %.3fs", time.perf_counter() - saves_start)
     state.action = "access"
     apply_theme(state.theme)
-    logger.info("UI boot complete: saves=%s server=%s", len(state.saves), state.server_url)
+    logger.info("UI boot complete: saves=%s server=%s total=%.3fs", len(state.saves), state.server_url, time.perf_counter() - boot_start)
 
     current_screen = "menu"
     menu_index = 0
@@ -1578,6 +1591,7 @@ def main():
     self_trade_pokemon_b = None
     self_trade_context = {}
     self_trade_pending_decision = ""
+    evolution_prompt_input_unlock_until = 0.0
     self_trade_decisions = {
         "cancel_evolution_to_a": False,
         "cancel_evolution_to_b": False,
@@ -1591,10 +1605,13 @@ def main():
     sprite_loader = SpriteLoader(state.server_url)
 
     def switch_screen(new_screen, reason):
-        nonlocal current_screen
+        nonlocal current_screen, evolution_prompt_input_unlock_until
         if current_screen != new_screen:
             logger.info("SCREEN %s -> %s (%s)", current_screen, new_screen, reason)
         current_screen = new_screen
+        if new_screen in ("evolution_cancel_prompt", "evolution_cancel_confirm"):
+            # Prevent residual A/B input from the previous screen from auto-confirming.
+            evolution_prompt_input_unlock_until = time.monotonic() + 0.25
 
     def reset_self_trade_state():
         nonlocal self_trade_save_a, self_trade_save_b, self_trade_pokemon_a, self_trade_pokemon_b
@@ -1641,10 +1658,15 @@ def main():
         nonlocal result_data, evolution_anim_start, self_trade_pending_decision, trade_status, menu_index
         preflight_to_a = self_trade_context.get("preflight_to_a", {}) if isinstance(self_trade_context, dict) else {}
         preflight_to_b = self_trade_context.get("preflight_to_b", {}) if isinstance(self_trade_context, dict) else {}
+        evolution_to_a = self_trade_context.get("trade_evolution_to_a", {}) if isinstance(self_trade_context, dict) else {}
+        evolution_to_b = self_trade_context.get("trade_evolution_to_b", {}) if isinstance(self_trade_context, dict) else {}
 
         if not self_trade_decisions.get("_evolution_to_a_done"):
             self_trade_decisions["_evolution_to_a_done"] = True
-            evolution = preflight_to_a.get("trade_evolution") if isinstance(preflight_to_a, dict) else {}
+            evolution = evolution_to_a if isinstance(evolution_to_a, dict) and evolution_to_a else {}
+            if not evolution and isinstance(preflight_to_a, dict):
+                evolution = preflight_to_a.get("trade_evolution") or {}
+                logger.warning("Self-trade evolution fallback used for save A preflight payload")
             if isinstance(evolution, dict) and evolution.get("evolved"):
                 result_data = evolution
                 self_trade_pending_decision = "cancel_evolution_to_a"
@@ -1652,6 +1674,7 @@ def main():
                 trade_status = f"{Path(self_trade_save_a).name}: decidir evolucao"
                 switch_screen("evolution_cancel_prompt", "self_trade_evolution_to_a")
                 return
+            logger.info("Self-trade no evolution prompt for save A: evolved=%s reason=%s", evolution.get("evolved"), evolution.get("reason"))
 
         if not self_trade_decisions.get("_moves_to_a_done"):
             self_trade_decisions["_moves_to_a_done"] = True
@@ -1668,7 +1691,10 @@ def main():
 
         if not self_trade_decisions.get("_evolution_to_b_done"):
             self_trade_decisions["_evolution_to_b_done"] = True
-            evolution = preflight_to_b.get("trade_evolution") if isinstance(preflight_to_b, dict) else {}
+            evolution = evolution_to_b if isinstance(evolution_to_b, dict) and evolution_to_b else {}
+            if not evolution and isinstance(preflight_to_b, dict):
+                evolution = preflight_to_b.get("trade_evolution") or {}
+                logger.warning("Self-trade evolution fallback used for save B preflight payload")
             if isinstance(evolution, dict) and evolution.get("evolved"):
                 result_data = evolution
                 self_trade_pending_decision = "cancel_evolution_to_b"
@@ -1676,6 +1702,7 @@ def main():
                 trade_status = f"{Path(self_trade_save_b).name}: decidir evolucao"
                 switch_screen("evolution_cancel_prompt", "self_trade_evolution_to_b")
                 return
+            logger.info("Self-trade no evolution prompt for save B: evolved=%s reason=%s", evolution.get("evolved"), evolution.get("reason"))
 
         if not self_trade_decisions.get("_moves_to_b_done"):
             self_trade_decisions["_moves_to_b_done"] = True
@@ -2247,6 +2274,8 @@ def main():
                         pending_removed_moves = []
 
         elif current_screen == "evolution_cancel_prompt" and action:
+            if time.monotonic() < evolution_prompt_input_unlock_until:
+                continue
             if action == "select":
                 logger.info("Evolution cancellation skipped (A = let evolve)")
                 if self_trade_pending_decision in ("cancel_evolution_to_a", "cancel_evolution_to_b"):
@@ -2262,6 +2291,8 @@ def main():
                 switch_screen("evolution_cancel_confirm", "evolution_cancel_requested")
 
         elif current_screen == "evolution_cancel_confirm" and action:
+            if time.monotonic() < evolution_prompt_input_unlock_until:
+                continue
             if action == "select":
                 logger.info("Evolution cancellation rejected (A = let evolve)")
                 if self_trade_pending_decision in ("cancel_evolution_to_a", "cancel_evolution_to_b"):
