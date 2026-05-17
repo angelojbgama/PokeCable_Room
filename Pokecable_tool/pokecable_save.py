@@ -52,6 +52,20 @@ def _resolve_national_dex_id(generation: int, species_id: int, pokemon: Dict[str
         return 0
 
 
+def _level_from_experience(generation: int, species_id: int, experience: int) -> int:
+    try:
+        _ensure_backend_import_path()
+        from data.growth_rates import level_from_species_experience  # type: ignore
+        from data.species import native_to_national  # type: ignore
+
+        national_dex_id = int(native_to_national(int(generation), int(species_id)) or 0)
+        if national_dex_id:
+            return max(1, min(100, int(level_from_species_experience(national_dex_id, int(experience)))))
+    except Exception as exc:
+        logger.debug("Level-from-exp Gen%s failed: %s", generation, exc)
+    return 1
+
+
 def _legacy_shiny_dvs(attack_dv: int, defense_dv: int, speed_dv: int, special_dv: int) -> bool:
     return (
         int(attack_dv) in SHINY_ATTACK_DVS
@@ -549,7 +563,7 @@ def parse_gen3_box_pokemon(raw: bytes) -> Dict[str, Any]:
         "species_id": species_id,
         "species_name": species_name,
         "types": [],
-        "level": 1 if is_egg else 0,
+        "level": 1 if is_egg else _level_from_experience(3, species_id, experience),
         "nickname": nickname or species_name,
         "ot_name": decode_gen3_text(raw[0x14:0x1B]),
         "trainer_id": trainer_id,
@@ -1156,25 +1170,10 @@ class SaveModel:
         self._sync_gen2_current_box_to_stored(box_index)
 
     def _level_from_experience_gen1(self, species_id: int, experience: int) -> int:
-        try:
-            _ensure_backend_import_path()
-            from data.species import native_to_national
-            from data.growth_rates import level_from_species_experience
-            ndex = int(native_to_national(1, int(species_id)) or 0)
-            if ndex:
-                return max(1, min(100, int(level_from_species_experience(ndex, int(experience)))))
-        except Exception as exc:
-            logger.debug("Level-from-exp Gen1 failed: %s", exc)
-        return 1
+        return _level_from_experience(1, species_id, experience)
 
     def _level_from_experience_gen2(self, species_id: int, experience: int) -> int:
-        try:
-            _ensure_backend_import_path()
-            from data.growth_rates import level_from_species_experience
-            return max(1, min(100, int(level_from_species_experience(int(species_id), int(experience)))))
-        except Exception as exc:
-            logger.debug("Level-from-exp Gen2 failed: %s", exc)
-        return 1
+        return _level_from_experience(2, species_id, experience)
 
     def _withdraw_gen1_box_to_party(self, box_index: int, slot_index: int, party_index: int) -> None:
         box_mon, ot, nick = self._read_gen1_box_data(box_index, slot_index)
@@ -1505,7 +1504,7 @@ class SaveModel:
                     "species_id": species_id,
                     "species_name": species_name,
                     "types": [],
-                    "level": 0,
+                    "level": self._level_from_experience_gen1(species_id, experience),
                     "experience": experience,
                     "nickname": nickname or species_name,
                     "ot_name": decode_gbc_text(ot),
@@ -1583,7 +1582,7 @@ class SaveModel:
                     "species_id": species_id,
                     "species_name": species_name,
                     "types": [],
-                    "level": 0,
+                    "level": self._level_from_experience_gen2(species_id, experience),
                     "experience": experience,
                     "nickname": nickname or species_name,
                     "ot_name": decode_gbc_text(ot),

@@ -97,6 +97,24 @@ def test_gen1_deposit_preserves_total(gen1_save_path):
     assert len(save.boxes) == 2
 
 
+def test_gen1_box_pokemon_has_local_level(gen1_save_path):
+    from pokecable_save import load_save
+
+    save = load_save(gen1_save_path)
+
+    assert save.boxes
+    assert all(int(pokemon.get("level") or 0) >= 1 for pokemon in save.boxes)
+
+
+def test_box_level_from_experience_supports_all_tool_generations():
+    from pokecable_save import _level_from_experience
+
+    assert _level_from_experience(1, 25, 125000) == 50
+    assert _level_from_experience(2, 25, 125000) == 50
+    assert _level_from_experience(3, 25, 125000) == 50
+    assert _level_from_experience(3, 9999, 125000) == 1
+
+
 def test_gen1_withdraw_preserves_total(gen1_save_path):
     from pokecable_save import load_save
 

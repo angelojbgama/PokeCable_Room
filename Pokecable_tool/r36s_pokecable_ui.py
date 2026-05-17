@@ -1118,8 +1118,31 @@ def wrap_text(surface, fnt, value, area, color=None, line_gap=4, max_lines=None)
     return area.y + min(len(lines), limit) * (line_h + line_gap)
 
 
+def normalized_rect(area):
+    try:
+        normalized = pygame.Rect(area)
+    except (TypeError, ValueError):
+        try:
+            normalized = pygame.Rect(int(area.x), int(area.y), int(area.w), int(area.h))
+        except (AttributeError, TypeError, ValueError):
+            return None
+    normalized.normalize()
+    if normalized.w <= 0 or normalized.h <= 0:
+        return None
+    return normalized
+
+
 def rect(surface, color, area, radius=0):
-    pygame.draw.rect(surface, color, area, border_radius=radius)
+    normalized = normalized_rect(area)
+    if not normalized:
+        logger.warning("Skipping invalid rect draw: area=%r radius=%r", area, radius)
+        return None
+    try:
+        safe_radius = max(0, min(int(radius or 0), min(normalized.w, normalized.h) // 2))
+        return pygame.draw.rect(surface, color, normalized, border_radius=safe_radius)
+    except (TypeError, ValueError) as exc:
+        logger.warning("Skipping invalid rect draw: area=%r color=%r radius=%r error=%s", area, color, radius, exc)
+        return None
 
 
 def compact_action_label(value):
@@ -2786,6 +2809,10 @@ def main():
             return t(state.language, key, slot=slot, name=Path(save_path).name)
         return t(state.language, key, slot=slot)
 
+    def reload_after_pc_management(source):
+        self_trade_local = str(pending_pc_return_screen or "").startswith("self_")
+        state.get_pokemon_list(source, enrich=not self_trade_local)
+
     def advance_self_trade_prompts():
         nonlocal pending_removed_moves, resolve_current_idx, resolve_replacement_idx, resolved_moves_choices
         nonlocal result_data, evolution_anim_start, self_trade_pending_decision, trade_status, menu_index
@@ -3557,7 +3584,7 @@ def main():
                         save_model.write_to_disk()
                         state.expected_signature = save_model.signature()
                         state.refresh_selected_save()
-                        state.get_pokemon_list(state.pokemon_source or "boxes")
+                        reload_after_pc_management(state.pokemon_source or "boxes")
                         trade_status = f"{result.get('species_name', 'Pokemon')} agora esta na Party."
                         menu_index = min(menu_index, max(0, len(state.pokemon_list) - 1))
                         switch_screen(pending_pc_return_screen, "withdraw_done")
@@ -3591,7 +3618,7 @@ def main():
                         save_model.write_to_disk()
                         state.expected_signature = save_model.signature()
                         state.refresh_selected_save()
-                        state.get_pokemon_list("party")
+                        reload_after_pc_management("party")
                         trade_status = f"{result.get('species_name', 'Pokemon')} movido para o PC."
                         menu_index = min(menu_index, max(0, len(state.pokemon_list) - 1))
                         switch_screen(pending_pc_return_screen, "deposit_done")
