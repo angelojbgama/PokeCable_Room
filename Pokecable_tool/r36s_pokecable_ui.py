@@ -57,6 +57,7 @@ AXIS_X = 0
 AXIS_Y = 1
 AXIS_THRESHOLD = 0.7
 ACTION_DEBOUNCE = 0.05
+INPUT_TRANSITION_GUARD_SECONDS = 0.25
 NAV_REPEAT_DELAY = 0.25
 NAV_REPEAT_INTERVAL = 0.06
 QUIT_COMBO_WINDOW = 0.35
@@ -64,6 +65,7 @@ JOY_BUTTON_START = 13
 JOY_BUTTON_SELECT = 12
 ROW_H = 45
 ROW_VISIBLE = 7
+GUARDED_INPUT_ACTIONS = {"select", "back", "x", "y", "up", "down", "left", "right"}
 
 # GO-Super Gamepad mapping from /opt/inttools/gamecontrollerdb.txt
 JOY_MAP = {
@@ -78,29 +80,198 @@ JOY_MAP = {
 }
 
 THEMES = {
+    "pokedex_red": {
+        "bg": (234, 247, 255),
+        "shell": (245, 27, 79),
+        "shell_2": (199, 31, 85),
+        "panel": (244, 241, 232),
+        "panel_2": (216, 213, 205),
+        "screen": (15, 44, 101),
+        "screen_text": (234, 251, 255),
+        "border": (40, 36, 93),
+        "shadow": (108, 36, 81),
+        "text": (23, 27, 63),
+        "muted": (94, 102, 133),
+        "accent": (24, 212, 242),
+        "ok": (22, 182, 95),
+        "red": (245, 27, 79),
+        "warn": (255, 217, 31),
+    },
     "pokedex_dark": {
-        "bg": (15, 20, 24),
-        "panel": (29, 38, 45),
-        "panel_2": (43, 55, 65),
-        "text": (233, 239, 244),
-        "muted": (154, 166, 178),
-        "accent": (233, 70, 92),
-        "ok": (76, 206, 139),
-        "red": (245, 74, 91),
-        "warn": (255, 190, 88),
+        "bg": (225, 239, 252),
+        "shell": (33, 100, 178),
+        "shell_2": (245, 250, 255),
+        "panel": (248, 252, 255),
+        "panel_2": (219, 237, 252),
+        "screen": (16, 38, 75),
+        "screen_text": (238, 248, 255),
+        "border": (27, 58, 103),
+        "shadow": (35, 69, 112),
+        "text": (12, 31, 56),
+        "muted": (78, 105, 135),
+        "accent": (22, 172, 217),
+        "ok": (35, 128, 206),
+        "red": (224, 55, 76),
+        "warn": (230, 163, 31),
     },
     "pokedex_white": {
-        "bg": (236, 239, 243),
-        "panel": (251, 252, 254),
-        "panel_2": (218, 223, 230),
-        "text": (23, 31, 39),
-        "muted": (91, 105, 122),
-        "accent": (213, 56, 83),
-        "ok": (38, 166, 106),
-        "red": (211, 54, 73),
-        "warn": (196, 138, 44),
+        "bg": (239, 248, 255),
+        "shell": (244, 249, 254),
+        "shell_2": (35, 103, 183),
+        "panel": (252, 254, 255),
+        "panel_2": (222, 239, 253),
+        "screen": (18, 44, 83),
+        "screen_text": (238, 248, 255),
+        "border": (31, 73, 124),
+        "shadow": (168, 196, 224),
+        "text": (13, 32, 58),
+        "muted": (83, 111, 141),
+        "accent": (18, 173, 218),
+        "ok": (32, 125, 207),
+        "red": (224, 55, 76),
+        "warn": (232, 169, 37),
     },
 }
+
+THEME_COLORSETS = {
+    "ink_wash": ("Ink wash", ["#252525", "#CFCFCF", "#7D7D7D", "#545454"]),
+    "neutral_elegance": ("Neutral elegance", ["#FFDBBB", "#CCBEB1", "#997E67", "#664930"]),
+    "jade_pebble_morning": ("Jade pebble morning", ["#7B9669", "#E6E6E6", "#6C8480", "#BAC8B1", "#404E3B"]),
+    "woodland": ("Woodland", ["#9F7560", "#9E9E9E", "#AAD31E", "#D4AF9F", "#525034"]),
+    "driftwood_pearl_morning": ("Driftwood pearl morning", ["#BC7B6F", "#5A322A", "#E4A499", "#718A9E", "#CCCDC7"]),
+    "graphite": ("Graphite", ["#C1C0C2", "#F5E9E7", "#837D68", "#8A9DB1", "#ECC5C6"]),
+    "urban_slate": ("Urban slate", ["#E9E6E7", "#5E5653", "#7B7F8A", "#AB978C", "#6B7C98"]),
+    "pearl": ("Pearl", ["#E9E3DE", "#A5937B", "#E3C49B", "#666161", "#AF9AC9"]),
+    "vichy": ("Vichy", ["#BBBFBF", "#878787", "#05AD98", "#FFFFFF"]),
+    "sorbet": ("Sorbet", ["#CCCCCC", "#EDECEC", "#B7C396", "#FEFEFE", "#E0E7D7", "#BA9A91"]),
+    "frozen_mist": ("Frozen mist", ["#7C7D75", "#ADACA7", "#FCF8D8", "#D9DADF", "#DD700B"]),
+    "yacht_club": ("Yacht club", ["#F2F0EF", "#BBBDBC", "#245F73", "#733E24"]),
+    "amber_walnut_morning": ("Amber walnut morning", ["#EBEFEE", "#CCB499", "#C8906D", "#BB6C43", "#4A413C"]),
+    "copper_aquamarine_dream": ("Copper aquamarine dream", ["#DCAA89", "#30525C", "#C35627", "#D6794D", "#4C848D", "#BFB9B5"]),
+    "cocoa_topaz_noonday": ("Cocoa topaz noonday", ["#742F14", "#5A84AC", "#C7AC9F", "#FC9C44", "#5C3C2C"]),
+    "sandstone_aquamarine_serenity": ("Sandstone aquamarine serenity", ["#BC6C50", "#304C53", "#DDAD9C", "#5A2F25", "#AFE0E7"]),
+    "honey_opal_sunset": ("Honey opal sunset", ["#ECB914", "#F6D579", "#9D8108", "#CBB8A0", "#4F3D35"]),
+    "seashell_garnet_afternoon": ("Seashell garnet afternoon", ["#F6C992", "#30525C", "#ACC0D3", "#D396A6", "#09A1A1", "#5484A4"]),
+    "rose_quartz_evening": ("Rose quartz evening", ["#64242F", "#B44446", "#FC8F8F", "#DFD9D8"]),
+    "calcite": ("Calcite", ["#DDDCD8", "#FD7B41", "#EDBF9B", "#3C4044"]),
+    "fireside": ("Fireside", ["#E76814", "#D8D4BC", "#891A10", "#DC8236", "#B8210F", "#714236"]),
+    "terrazzo": ("Terrazzo", ["#EDBD95", "#374F4E", "#D1801E", "#DACCC4", "#AA8552"]),
+    "sapphire_nightfall_whisper": ("Sapphire nightfall whisper", ["#0474C4", "#5379AE", "#2C444C", "#A8C4EC", "#06457F", "#262B40"]),
+    "lapis_velvet_evening": ("Lapis velvet evening", ["#213885", "#ECDFD2", "#5F3475", "#081849", "#CCCACC", "#893172"]),
+    "marina": ("Marina", ["#FFF1E7", "#B5D2E6", "#326080", "#805232"]),
+    "emerald_lavender_lake": ("Emerald lavender lake", ["#248C54", "#89618E", "#95DCE4"]),
+    "sage_peridot_morning": ("Sage peridot morning", ["#345C32", "#9CAC54", "#A7F0DD", "#97CD97"]),
+    "amethyst_dawn_haze": ("Amethyst dawn haze", ["#341C67", "#472F5B", "#C4AEF4", "#CCA4B4", "#DCCE40"]),
+    "moon_dust": ("Moon dust", ["#D3D3FF", "#CEB5FF", "#8EC1DE", "#80A8FF"]),
+    "turquoise_amber_autumn": ("Turquoise amber autumn", ["#304C64", "#26788E", "#A4CCD4", "#E2480C", "#631B08"]),
+    "sapphire_ash_morning": ("Sapphire ash morning", ["#35627A", "#E5AEA9", "#B46258", "#A6A9D0", "#F5F5F5", "#8E9A98"]),
+    "frosted_aura": ("Frosted aura", ["#5C7E8F", "#A2A2A2", "#D4DDE2", "#FFFFFF"]),
+    "royal_glimmer": ("Royal glimmer", ["#AD7C4B", "#293C7C", "#C7984F", "#024944", "#812B4A"]),
+    "neptune": ("Neptune", ["#8FD9FB", "#4AB5B5", "#6D8BC0", "#525AFF"]),
+    "tropical_jade_sunrise": ("Tropical jade sunrise", ["#FCA47C", "#23CED9", "#F9D779", "#A1CCA6", "#097C87"]),
+    "amethyst_mint_harmony": ("Amethyst mint harmony", ["#2A3F38", "#8DF688", "#562F54", "#57585D", "#F650BD"]),
+    "hibiscus_aura": ("Hibiscus aura", ["#EA44D4", "#DD3027", "#733D6F", "#5848B3"]),
+    "ocean_ruby_radiance": ("Ocean ruby radiance", ["#D8226C", "#B2DAE4", "#F86A38", "#029456", "#005BB3"]),
+    "tropical_heat": ("Tropical heat", ["#00CEC8", "#FCEFC3", "#FF9C5F", "#EB4203"]),
+    "celestial": ("Celestial", ["#2323FF", "#807D52", "#FFBD24", "#FFF224"]),
+    "festive_eve": ("Festive eve", ["#2323FF", "#24AEFF", "#C04AFF", "#7E3DFF"]),
+    "freshly_squeezed": ("Freshly squeezed", ["#FFBF00", "#F2CF7E", "#FFE642", "#FF7900"]),
+    "jelly_shoes": ("Jelly shoes", ["#E0AFFF", "#C4D6FF", "#DD68E3", "#8866DE"]),
+    "opaline": ("Opaline", ["#F4F4F6", "#E7E7E7", "#D2D2D4", "#FF634A"]),
+    "gossamer": ("Gossamer", ["#FAFAFA", "#939599", "#CDCDCF", "#2BCFCE", "#EC4D25"]),
+    "clockwork": ("Clockwork", ["#919599", "#F8F8F8", "#CDCDCB", "#FBA45C", "#E56515"]),
+    "lemon_granite_morning": ("Lemon granite morning", ["#F3E308", "#B8BFC1", "#6C8494", "#2C4C5C"]),
+    "arctic_reflection": ("Arctic reflection", ["#5289AD", "#243C4C", "#ACBCBF", "#F4FCFB", "#698696"]),
+    "slate": ("Slate", ["#BEBEBE", "#79ED91", "#4DBE55", "#71776D", "#698696"]),
+    "autumn_luxe": ("Autumn luxe", ["#E2E1EB", "#AAAAAE", "#7F7265", "#BF8440", "#322D27"]),
+    "inked": ("Inked", ["#000000", "#DFDEDC", "#464545", "#00ACAC", "#A6A7A2"]),
+    "wraith": ("Wraith", ["#1E1702", "#E5E3E4", "#8C886B", "#047C58", "#342005"]),
+    "urban_nocturne": ("Urban nocturne", ["#141414", "#444444", "#D6D6D6", "#E2E800", "#979797"]),
+}
+
+THEME_NAMES = {
+    "pokedex_red": "Pokedex vermelha",
+    "pokedex_dark": "Azul tecnico",
+    "pokedex_white": "Branco + azul",
+}
+THEME_NAMES.update({theme_id: data[0] for theme_id, data in THEME_COLORSETS.items()})
+THEME_ORDER = ["pokedex_red", "pokedex_white", "pokedex_dark"] + list(THEME_COLORSETS.keys())
+
+
+def hex_color(value):
+    value = str(value or "").strip().lstrip("#")
+    return tuple(int(value[index:index + 2], 16) for index in (0, 2, 4))
+
+
+def mix_color(a, b, amount):
+    amount = max(0.0, min(1.0, float(amount)))
+    return tuple(int(round(a[idx] * (1.0 - amount) + b[idx] * amount)) for idx in range(3))
+
+
+def luminance(color):
+    return color[0] * 0.2126 + color[1] * 0.7152 + color[2] * 0.0722
+
+
+def saturation(color):
+    return max(color) - min(color)
+
+
+def readable_text_color(background):
+    return (13, 32, 58) if luminance(background) >= 150 else (238, 248, 255)
+
+
+def muted_text_color(text_color, panel_color):
+    return mix_color(text_color, panel_color, 0.45)
+
+
+def generated_palette(hex_values):
+    colors = [hex_color(value) for value in hex_values]
+    by_luminance = sorted(colors, key=luminance)
+    base_darkest = by_luminance[0]
+    lightest = by_luminance[-1]
+    second_lightest = by_luminance[-2] if len(by_luminance) > 1 else lightest
+    shell = colors[0]
+    shell_2 = colors[1] if len(colors) > 1 else mix_color(shell, lightest, 0.55)
+    raw_accent = max(colors, key=lambda color: saturation(color) * 2.0 + luminance(color) * 0.35)
+    accent = raw_accent
+    if luminance(accent) < 95:
+        accent = mix_color(accent, (255, 255, 255), 0.42)
+    screen_base = next((color for color in by_luminance if color != raw_accent), base_darkest)
+    panel = mix_color(lightest, (255, 255, 255), 0.72)
+    panel_2 = mix_color(second_lightest, (255, 255, 255), 0.48)
+    screen = mix_color(screen_base, (0, 0, 0), 0.18)
+    text_color = readable_text_color(panel)
+    return {
+        "bg": mix_color(lightest, (255, 255, 255), 0.55),
+        "shell": shell,
+        "shell_2": shell_2,
+        "panel": panel,
+        "panel_2": panel_2,
+        "screen": screen,
+        "screen_text": readable_text_color(screen),
+        "border": mix_color(base_darkest, (0, 0, 0), 0.28),
+        "shadow": mix_color(base_darkest, (0, 0, 0), 0.08),
+        "text": text_color,
+        "muted": muted_text_color(text_color, panel),
+        "accent": accent,
+        "ok": max(colors, key=lambda color: color[1] - color[0] * 0.25 - color[2] * 0.15),
+        "red": max(colors, key=lambda color: color[0] - color[1] * 0.35),
+        "warn": max(colors, key=lambda color: color[0] + color[1] - color[2] * 0.45),
+    }
+
+
+THEMES.update({theme_id: generated_palette(colors) for theme_id, (_, colors) in THEME_COLORSETS.items()})
+
+
+def theme_display_name(theme_name):
+    key = str(theme_name or "").strip().lower()
+    return THEME_NAMES.get(key, THEME_NAMES["pokedex_white"])
+
+
+def next_theme(theme_name, direction):
+    key = str(theme_name or "").strip().lower()
+    index = THEME_ORDER.index(key) if key in THEME_ORDER else 0
+    return THEME_ORDER[(index + int(direction)) % len(THEME_ORDER)]
 
 STRINGS = {
     "pt": {
@@ -115,8 +286,119 @@ STRINGS = {
         "lang_pt": "Portugues",
         "lang_en": "English",
         "lang_es": "Espanol",
-        "theme_dark": "Dark Pokedex",
-        "theme_white": "White Pokedex",
+        "theme_dark": "Azul tecnico",
+        "theme_white": "Branco + azul",
+        "action_title": "Acao",
+        "action_create_room": "Criar sala",
+        "action_join_room": "Entrar em sala",
+        "choose": "Escolha",
+        "select_save": "Selecionar save",
+        "self_save_1": "Trocar comigo: Save 1",
+        "self_save_2": "Trocar comigo: Save 2",
+        "no_saves": "Nenhum save encontrado.",
+        "selected_save": "Save selecionado",
+        "save_file": "Arquivo",
+        "save_folder": "Pasta",
+        "save_pick_hint": "Escolha o save que vai entrar na troca.",
+        "choose_source": "Escolher origem",
+        "source_helper": "Escolha de onde sair o Pokemon para a troca.",
+        "room": "Sala",
+        "password": "Senha",
+        "no_name": "(sem nome)",
+        "no_password": "(sem senha)",
+        "share_room": "Compartilhe estes dados com seu parceiro para entrar na mesma sala.",
+        "choose_pokemon": "Escolher Pokemon",
+        "waiting_partner": "Aguardando segundo jogador",
+        "no_pokemon": "Nenhum Pokemon encontrado.",
+        "loading_sprite": "Carregando sprite...",
+        "loading_sprites": "Carregando sprites...",
+        "no_sprite": "Sem sprite",
+        "item_none": "Sem item",
+        "item_label": "Item: {name}",
+        "item_label_none": "Item: nenhum",
+        "level": "Nivel: {level}",
+        "level_short": "Nivel {level}",
+        "level_tag": "Nv. {level}",
+        "level_unknown": "Nivel ?",
+        "moves": "Ataques",
+        "no_moves": "Sem ataques",
+        "party": "Party",
+        "pc": "PC",
+        "your_party": "Sua Party",
+        "your_pc": "Seu PC",
+        "party_save": "Party Save {slot}",
+        "party_save_named": "Party Save {slot}: {name}",
+        "pc_save": "PC Save {slot}",
+        "pc_save_named": "PC Save {slot}: {name}",
+        "connecting": "Conectando",
+        "connecting_server": "Conectando ao servidor{dots}",
+        "please_wait": "Aguarde...",
+        "leave_room_title": "Sair da sala?",
+        "leave_room_question": "Deseja encerrar esta sala?",
+        "leave_room_help": "Voce e o parceiro voltarao ao menu.",
+        "leave_room_more": "Para mais trocas, escolha A=NAO.",
+        "deposit_title": "Mover para PC?",
+        "deposit_question": "Enviar {name} para o PC?",
+        "deposit_help": "Ele ira para o primeiro slot livre.",
+        "backup_help": "Um backup do save sera criado antes.",
+        "withdraw_title": "Retirar do PC?",
+        "withdraw_question": "Trazer {name} para a Party?",
+        "withdraw_from": "De: {box}",
+        "withdraw_help": "Sera adicionado no proximo slot livre da Party.",
+        "notice": "Aviso",
+        "no_details": "Sem detalhes.",
+        "trade_cancelled_room_open": "A troca foi cancelada. A sala continua aberta.",
+        "incompatible_move_title": "Move incompativel {current}/{total}",
+        "unsupported_move": "Sem suporte: {move}",
+        "choose_replacement": "Escolha um substituto ou deixe vazio.",
+        "empty_move": "(deixar vazio)",
+        "cancel_trade_title": "Cancelar troca?",
+        "cancel_trade_question": "Cancelar a troca deste Pokemon?",
+        "save_not_modified": "Seu save NAO sera modificado.",
+        "room_stays_open": "A sala continua aberta - voce escolhera outro Pokemon.",
+        "room_open_short": "Sala aberta",
+        "confirm_trade": "Confirmar troca",
+        "your_pokemon": "Seu Pokemon",
+        "opponent": "Oponente",
+        "trade_evolution": "Evolucao por troca",
+        "confirm_cancel": "Confirmar cancelamento",
+        "wants_evolve": "{source} quer evoluir para {target}.",
+        "cancel_evolution_question": "Deseja cancelar essa evolucao?",
+        "cancel_evolution_hint": "B deixa a animacao terminar na forma evoluida.",
+        "are_you_sure": "Tem certeza?",
+        "cancel_evolution_confirm": "Isso ira interromper a evolucao de {source} para {target}.",
+        "cancel_evolution_result": "A troca continua, mas o Pokemon recebido fica sem evoluir.",
+        "trading": "Trocando",
+        "processing": "Processando...",
+        "result": "Resultado",
+        "trade_complete": "Troca completa!",
+        "received": "Recebido: {pokemon}",
+        "backup": "Backup: {backup}",
+        "none": "nenhum",
+        "without_evolving": "{pokemon} sem evoluir",
+        "error_cancelled": "Erro ou cancelado",
+        "trade_not_complete": "Troca nao completada",
+        "room_name": "Nome da sala",
+        "empty": "(vazio)",
+        "keypad": "Teclado",
+        "shift_on": "SHIFT ON",
+        "shift_off": "SHIFT OFF",
+        "key_select": "SELECT",
+        "key_delete_back": "DEL/VOLTAR",
+        "btn_yes": "SIM",
+        "btn_no": "NAO",
+        "btn_cancel": "CANCELAR",
+        "btn_confirm": "CONFIRMAR",
+        "btn_choose": "ESCOLHER",
+        "btn_skip": "PULAR",
+        "btn_let_evolve": "DEIXAR EVOLUIR",
+        "btn_cancel_evo": "CANCELAR EVO",
+        "btn_no_let_evolve": "NAO, DEIXAR EVOLUIR",
+        "btn_yes_interrupt": "SIM, INTERROMPER",
+        "btn_move_pc": "MOVER P/ PC",
+        "btn_withdraw": "RETIRAR",
+        "btn_view_pc": "VER PC",
+        "btn_view_party": "VER PARTY",
         "btn_ok": "OK",
         "btn_back": "VOLTAR",
         "btn_change": "ALTERAR",
@@ -133,8 +415,119 @@ STRINGS = {
         "lang_pt": "Portuguese",
         "lang_en": "English",
         "lang_es": "Spanish",
-        "theme_dark": "Dark Pokedex",
-        "theme_white": "White Pokedex",
+        "theme_dark": "Tech Blue",
+        "theme_white": "White + Blue",
+        "action_title": "Action",
+        "action_create_room": "Create Room",
+        "action_join_room": "Join Room",
+        "choose": "Choose",
+        "select_save": "Select Save",
+        "self_save_1": "Trade With Myself: Save 1",
+        "self_save_2": "Trade With Myself: Save 2",
+        "no_saves": "No saves found.",
+        "selected_save": "Selected save",
+        "save_file": "File",
+        "save_folder": "Folder",
+        "save_pick_hint": "Choose the save that will enter the trade.",
+        "choose_source": "Choose Source",
+        "source_helper": "Choose where the Pokemon for the trade comes from.",
+        "room": "Room",
+        "password": "Password",
+        "no_name": "(no name)",
+        "no_password": "(no password)",
+        "share_room": "Share these details with your partner to enter the same room.",
+        "choose_pokemon": "Choose Pokemon",
+        "waiting_partner": "Waiting for second player",
+        "no_pokemon": "No Pokemon found.",
+        "loading_sprite": "Loading sprite...",
+        "loading_sprites": "Loading sprites...",
+        "no_sprite": "No sprite",
+        "item_none": "No item",
+        "item_label": "Item: {name}",
+        "item_label_none": "Item: none",
+        "level": "Level: {level}",
+        "level_short": "Level {level}",
+        "level_tag": "Lv. {level}",
+        "level_unknown": "Level ?",
+        "moves": "Moves",
+        "no_moves": "No moves",
+        "party": "Party",
+        "pc": "PC",
+        "your_party": "Your Party",
+        "your_pc": "Your PC",
+        "party_save": "Party Save {slot}",
+        "party_save_named": "Party Save {slot}: {name}",
+        "pc_save": "PC Save {slot}",
+        "pc_save_named": "PC Save {slot}: {name}",
+        "connecting": "Connecting",
+        "connecting_server": "Connecting to server{dots}",
+        "please_wait": "Please wait...",
+        "leave_room_title": "Leave room?",
+        "leave_room_question": "Do you want to close this room?",
+        "leave_room_help": "You and your partner will return to the menu.",
+        "leave_room_more": "For more trades, choose A=NO.",
+        "deposit_title": "Move to PC?",
+        "deposit_question": "Send {name} to the PC?",
+        "deposit_help": "It will go to the first free slot.",
+        "backup_help": "A save backup will be created first.",
+        "withdraw_title": "Withdraw from PC?",
+        "withdraw_question": "Bring {name} to the Party?",
+        "withdraw_from": "From: {box}",
+        "withdraw_help": "It will be added to the next free Party slot.",
+        "notice": "Notice",
+        "no_details": "No details.",
+        "trade_cancelled_room_open": "The trade was cancelled. The room remains open.",
+        "incompatible_move_title": "Incompatible move {current}/{total}",
+        "unsupported_move": "Unsupported: {move}",
+        "choose_replacement": "Choose a replacement or leave it empty.",
+        "empty_move": "(leave empty)",
+        "cancel_trade_title": "Cancel trade?",
+        "cancel_trade_question": "Cancel this Pokemon trade?",
+        "save_not_modified": "Your save will NOT be modified.",
+        "room_stays_open": "The room remains open - you will choose another Pokemon.",
+        "room_open_short": "Room open",
+        "confirm_trade": "Confirm trade",
+        "your_pokemon": "Your Pokemon",
+        "opponent": "Opponent",
+        "trade_evolution": "Trade evolution",
+        "confirm_cancel": "Confirm cancel",
+        "wants_evolve": "{source} wants to evolve into {target}.",
+        "cancel_evolution_question": "Do you want to cancel this evolution?",
+        "cancel_evolution_hint": "B lets the animation end in the evolved form.",
+        "are_you_sure": "Are you sure?",
+        "cancel_evolution_confirm": "This will stop {source} from evolving into {target}.",
+        "cancel_evolution_result": "The trade continues, but the received Pokemon stays unevolved.",
+        "trading": "Trading",
+        "processing": "Processing...",
+        "result": "Result",
+        "trade_complete": "Trade complete!",
+        "received": "Received: {pokemon}",
+        "backup": "Backup: {backup}",
+        "none": "none",
+        "without_evolving": "{pokemon} without evolving",
+        "error_cancelled": "Error or cancelled",
+        "trade_not_complete": "Trade not completed",
+        "room_name": "Room name",
+        "empty": "(empty)",
+        "keypad": "Keyboard",
+        "shift_on": "SHIFT ON",
+        "shift_off": "SHIFT OFF",
+        "key_select": "SELECT",
+        "key_delete_back": "DEL/BACK",
+        "btn_yes": "YES",
+        "btn_no": "NO",
+        "btn_cancel": "CANCEL",
+        "btn_confirm": "CONFIRM",
+        "btn_choose": "CHOOSE",
+        "btn_skip": "SKIP",
+        "btn_let_evolve": "LET EVOLVE",
+        "btn_cancel_evo": "CANCEL EVO",
+        "btn_no_let_evolve": "NO, LET EVOLVE",
+        "btn_yes_interrupt": "YES, STOP",
+        "btn_move_pc": "MOVE TO PC",
+        "btn_withdraw": "WITHDRAW",
+        "btn_view_pc": "VIEW PC",
+        "btn_view_party": "VIEW PARTY",
         "btn_ok": "OK",
         "btn_back": "BACK",
         "btn_change": "CHANGE",
@@ -151,8 +544,119 @@ STRINGS = {
         "lang_pt": "Portugues",
         "lang_en": "Ingles",
         "lang_es": "Espanol",
-        "theme_dark": "Dark Pokedex",
-        "theme_white": "White Pokedex",
+        "theme_dark": "Azul tecnico",
+        "theme_white": "Blanco + azul",
+        "action_title": "Accion",
+        "action_create_room": "Crear sala",
+        "action_join_room": "Entrar en sala",
+        "choose": "Elegir",
+        "select_save": "Seleccionar save",
+        "self_save_1": "Intercambiar conmigo: Save 1",
+        "self_save_2": "Intercambiar conmigo: Save 2",
+        "no_saves": "No se encontraron saves.",
+        "selected_save": "Save seleccionado",
+        "save_file": "Archivo",
+        "save_folder": "Carpeta",
+        "save_pick_hint": "Elige el save que entrara en el intercambio.",
+        "choose_source": "Elegir origen",
+        "source_helper": "Elige de donde sale el Pokemon para el intercambio.",
+        "room": "Sala",
+        "password": "Contrasena",
+        "no_name": "(sin nombre)",
+        "no_password": "(sin contrasena)",
+        "share_room": "Comparte estos datos con tu companero para entrar en la misma sala.",
+        "choose_pokemon": "Elegir Pokemon",
+        "waiting_partner": "Esperando segundo jugador",
+        "no_pokemon": "No se encontraron Pokemon.",
+        "loading_sprite": "Cargando sprite...",
+        "loading_sprites": "Cargando sprites...",
+        "no_sprite": "Sin sprite",
+        "item_none": "Sin item",
+        "item_label": "Item: {name}",
+        "item_label_none": "Item: ninguno",
+        "level": "Nivel: {level}",
+        "level_short": "Nivel {level}",
+        "level_tag": "Nv. {level}",
+        "level_unknown": "Nivel ?",
+        "moves": "Movimientos",
+        "no_moves": "Sin movimientos",
+        "party": "Party",
+        "pc": "PC",
+        "your_party": "Tu Party",
+        "your_pc": "Tu PC",
+        "party_save": "Party Save {slot}",
+        "party_save_named": "Party Save {slot}: {name}",
+        "pc_save": "PC Save {slot}",
+        "pc_save_named": "PC Save {slot}: {name}",
+        "connecting": "Conectando",
+        "connecting_server": "Conectando al servidor{dots}",
+        "please_wait": "Espera...",
+        "leave_room_title": "Salir de la sala?",
+        "leave_room_question": "Quieres cerrar esta sala?",
+        "leave_room_help": "Tu y tu companero volveran al menu.",
+        "leave_room_more": "Para mas intercambios, elige A=NO.",
+        "deposit_title": "Mover al PC?",
+        "deposit_question": "Enviar {name} al PC?",
+        "deposit_help": "Ira al primer espacio libre.",
+        "backup_help": "Primero se creara un backup del save.",
+        "withdraw_title": "Retirar del PC?",
+        "withdraw_question": "Traer {name} a la Party?",
+        "withdraw_from": "De: {box}",
+        "withdraw_help": "Se agregara al proximo espacio libre de la Party.",
+        "notice": "Aviso",
+        "no_details": "Sin detalles.",
+        "trade_cancelled_room_open": "El intercambio fue cancelado. La sala sigue abierta.",
+        "incompatible_move_title": "Movimiento incompatible {current}/{total}",
+        "unsupported_move": "Sin soporte: {move}",
+        "choose_replacement": "Elige un reemplazo o dejalo vacio.",
+        "empty_move": "(dejar vacio)",
+        "cancel_trade_title": "Cancelar intercambio?",
+        "cancel_trade_question": "Cancelar el intercambio de este Pokemon?",
+        "save_not_modified": "Tu save NO sera modificado.",
+        "room_stays_open": "La sala sigue abierta - elegiras otro Pokemon.",
+        "room_open_short": "Sala abierta",
+        "confirm_trade": "Confirmar intercambio",
+        "your_pokemon": "Tu Pokemon",
+        "opponent": "Oponente",
+        "trade_evolution": "Evolucion por intercambio",
+        "confirm_cancel": "Confirmar cancelacion",
+        "wants_evolve": "{source} quiere evolucionar a {target}.",
+        "cancel_evolution_question": "Quieres cancelar esta evolucion?",
+        "cancel_evolution_hint": "B deja que la animacion termine en la forma evolucionada.",
+        "are_you_sure": "Estas seguro?",
+        "cancel_evolution_confirm": "Esto interrumpira la evolucion de {source} a {target}.",
+        "cancel_evolution_result": "El intercambio continua, pero el Pokemon recibido no evoluciona.",
+        "trading": "Intercambiando",
+        "processing": "Procesando...",
+        "result": "Resultado",
+        "trade_complete": "Intercambio completo!",
+        "received": "Recibido: {pokemon}",
+        "backup": "Backup: {backup}",
+        "none": "ninguno",
+        "without_evolving": "{pokemon} sin evolucionar",
+        "error_cancelled": "Error o cancelado",
+        "trade_not_complete": "Intercambio no completado",
+        "room_name": "Nombre de sala",
+        "empty": "(vacio)",
+        "keypad": "Teclado",
+        "shift_on": "SHIFT ON",
+        "shift_off": "SHIFT OFF",
+        "key_select": "SELECT",
+        "key_delete_back": "DEL/VOLVER",
+        "btn_yes": "SI",
+        "btn_no": "NO",
+        "btn_cancel": "CANCELAR",
+        "btn_confirm": "CONFIRMAR",
+        "btn_choose": "ELEGIR",
+        "btn_skip": "SALTAR",
+        "btn_let_evolve": "DEJAR EVOLUCIONAR",
+        "btn_cancel_evo": "CANCELAR EVO",
+        "btn_no_let_evolve": "NO, DEJAR EVOLUCIONAR",
+        "btn_yes_interrupt": "SI, INTERRUMPIR",
+        "btn_move_pc": "MOVER AL PC",
+        "btn_withdraw": "RETIRAR",
+        "btn_view_pc": "VER PC",
+        "btn_view_party": "VER PARTY",
         "btn_ok": "OK",
         "btn_back": "VOLVER",
         "btn_change": "CAMBIAR",
@@ -160,8 +664,14 @@ STRINGS = {
 }
 
 BG = (0, 0, 0)
+SHELL = (0, 0, 0)
+SHELL_2 = (0, 0, 0)
 PANEL = (0, 0, 0)
 PANEL_2 = (0, 0, 0)
+SCREEN = (0, 0, 0)
+SCREEN_TEXT = (255, 255, 255)
+BORDER = (0, 0, 0)
+SHADOW = (0, 0, 0)
 TEXT = (255, 255, 255)
 MUTED = (155, 155, 155)
 ACCENT = (255, 0, 0)
@@ -171,11 +681,17 @@ WARN = (255, 200, 0)
 
 
 def apply_theme(theme_name):
-    global BG, PANEL, PANEL_2, TEXT, MUTED, ACCENT, OK, RED, WARN
-    palette = THEMES.get(str(theme_name or "").strip().lower(), THEMES["pokedex_dark"])
+    global BG, SHELL, SHELL_2, PANEL, PANEL_2, SCREEN, SCREEN_TEXT, BORDER, SHADOW, TEXT, MUTED, ACCENT, OK, RED, WARN
+    palette = THEMES.get(str(theme_name or "").strip().lower(), THEMES["pokedex_white"])
     BG = palette["bg"]
+    SHELL = palette["shell"]
+    SHELL_2 = palette["shell_2"]
     PANEL = palette["panel"]
     PANEL_2 = palette["panel_2"]
+    SCREEN = palette["screen"]
+    SCREEN_TEXT = palette["screen_text"]
+    BORDER = palette["border"]
+    SHADOW = palette["shadow"]
     TEXT = palette["text"]
     MUTED = palette["muted"]
     ACCENT = palette["accent"]
@@ -184,10 +700,116 @@ def apply_theme(theme_name):
     WARN = palette["warn"]
 
 
-def t(lang, key):
+def t(lang, key, **kwargs):
     language = str(lang or "pt").strip().lower()
     table = STRINGS.get(language, STRINGS["pt"])
-    return table.get(key, STRINGS["pt"].get(key, key))
+    value = table.get(key, STRINGS["pt"].get(key, key))
+    if kwargs:
+        try:
+            return value.format(**kwargs)
+        except (KeyError, IndexError, ValueError):
+            return value
+    return value
+
+
+LITERAL_TRANSLATIONS = {
+    "en": {
+        "Save repetido": "Repeated save",
+        "Escolha dois arquivos de save diferentes para trocar comigo.": "Choose two different save files to trade with myself.",
+        "Falha ao carregar Party": "Failed to load Party",
+        "Falha na validacao": "Validation failed",
+        "Pokemon incompativel": "Incompatible Pokemon",
+        "Pokemon incompativel com o save de destino.": "Pokemon is incompatible with the target save.",
+        "Troca incompativel": "Incompatible trade",
+        "Falha ao carregar Pokemon": "Failed to load Pokemon",
+        "Pokemon esta no PC": "Pokemon is in the PC",
+        "Pressione X para retirar este Pokemon para a Party antes de troca-lo.": "Press X to withdraw this Pokemon to the Party before trading it.",
+        "Aguarde a troca terminar antes de mover.": "Wait for the trade to finish before moving Pokemon.",
+        "Erro": "Error",
+        "Slot do PC nao encontrado.": "PC slot not found.",
+        "Save nao carregado.": "Save not loaded.",
+        "Nao foi possivel retirar": "Could not withdraw",
+        "Nao foi possivel mover": "Could not move",
+        "Validando troca local...": "Validating local trade...",
+        "Validacoes concluidas. Confirme a troca local.": "Validations complete. Confirm the local trade.",
+        "Aplicando troca local...": "Applying local trade...",
+        "Troca local concluida!": "Local trade complete!",
+        "Troca local cancelada.": "Local trade cancelled.",
+        "Conectando...": "Connecting...",
+        "Cancelando...": "Cancelling...",
+        "Nao foi possivel cancelar agora.": "Could not cancel right now.",
+        "Saindo da sala...": "Leaving room...",
+    },
+    "es": {
+        "Save repetido": "Save repetido",
+        "Escolha dois arquivos de save diferentes para trocar comigo.": "Elige dos archivos de save diferentes para intercambiar conmigo.",
+        "Falha ao carregar Party": "No se pudo cargar la Party",
+        "Falha na validacao": "Fallo de validacion",
+        "Pokemon incompativel": "Pokemon incompatible",
+        "Pokemon incompativel com o save de destino.": "Pokemon incompatible con el save de destino.",
+        "Troca incompativel": "Intercambio incompatible",
+        "Falha ao carregar Pokemon": "No se pudo cargar Pokemon",
+        "Pokemon esta no PC": "Pokemon esta en el PC",
+        "Pressione X para retirar este Pokemon para a Party antes de troca-lo.": "Presiona X para retirar este Pokemon a la Party antes de intercambiarlo.",
+        "Aguarde a troca terminar antes de mover.": "Espera a que termine el intercambio antes de mover Pokemon.",
+        "Erro": "Error",
+        "Slot do PC nao encontrado.": "Slot del PC no encontrado.",
+        "Save nao carregado.": "Save no cargado.",
+        "Nao foi possivel retirar": "No se pudo retirar",
+        "Nao foi possivel mover": "No se pudo mover",
+        "Validando troca local...": "Validando intercambio local...",
+        "Validacoes concluidas. Confirme a troca local.": "Validaciones concluidas. Confirma el intercambio local.",
+        "Aplicando troca local...": "Aplicando intercambio local...",
+        "Troca local concluida!": "Intercambio local concluido!",
+        "Troca local cancelada.": "Intercambio local cancelado.",
+        "Conectando...": "Conectando...",
+        "Cancelando...": "Cancelando...",
+        "Nao foi possivel cancelar agora.": "No se pudo cancelar ahora.",
+        "Saindo da sala...": "Saliendo de la sala...",
+    },
+}
+
+
+def translate_literal(lang, value):
+    text_value = str(value or "")
+    language = str(lang or "pt").strip().lower()
+    return LITERAL_TRANSLATIONS.get(language, {}).get(text_value, text_value)
+
+
+def screen_title(lang, key, **kwargs):
+    compact = {
+        "select_save": {"pt": "Selecionar save", "en": "Select save", "es": "Elegir save"},
+        "self_save_1": {"pt": "Save 1", "en": "Save 1", "es": "Save 1"},
+        "self_save_2": {"pt": "Save 2", "en": "Save 2", "es": "Save 2"},
+        "choose_source": {"pt": "Origem", "en": "Source", "es": "Origen"},
+        "choose_pokemon": {"pt": "Pokemon", "en": "Pokemon", "es": "Pokemon"},
+        "waiting_partner": {"pt": "Aguardando", "en": "Waiting", "es": "Esperando"},
+        "incompatible_move_title": {
+            "pt": "Move invalido {current}/{total}",
+            "en": "Bad move {current}/{total}",
+            "es": "Move invalido {current}/{total}",
+        },
+        "confirm_cancel": {"pt": "Cancelar evo?", "en": "Cancel evo?", "es": "Cancelar evo?"},
+        "trade_evolution": {"pt": "Evolucao", "en": "Evolution", "es": "Evolucion"},
+        "confirm_trade": {"pt": "Confirmar troca", "en": "Confirm trade", "es": "Confirmar trade"},
+        "cancel_trade_title": {"pt": "Cancelar troca?", "en": "Cancel trade?", "es": "Cancelar trade?"},
+        "leave_room_title": {"pt": "Sair da sala?", "en": "Leave room?", "es": "Salir sala?"},
+        "deposit_title": {"pt": "Enviar ao PC?", "en": "Send to PC?", "es": "Enviar al PC?"},
+        "withdraw_title": {"pt": "Retirar do PC?", "en": "Withdraw?", "es": "Retirar?"},
+        "notice": {"pt": "Aviso", "en": "Notice", "es": "Aviso"},
+        "connecting": {"pt": "Conectando", "en": "Connecting", "es": "Conectando"},
+        "trading": {"pt": "Trocando", "en": "Trading", "es": "Intercambio"},
+        "result": {"pt": "Resultado", "en": "Result", "es": "Resultado"},
+    }
+    language = str(lang or "pt").strip().lower()
+    value = compact.get(key, {}).get(language) or compact.get(key, {}).get("pt")
+    if value:
+        try:
+            return value.format(**kwargs)
+        except (KeyError, IndexError, ValueError):
+            return value
+    return t(language, key, **kwargs)
+
 
 POKEMON_SPRITE_ASSET_DIR = Path(__file__).resolve().parent / "assets" / "pokemon_sprites"
 SPRITE_CACHE_VERSION = "pixel-v1"
@@ -221,6 +843,49 @@ TYPE_LABELS = {
     "dark": "Sombrio",
     "steel": "Aco",
     "fairy": "Fada",
+}
+TYPE_LABELS_BY_LANG = {
+    "pt": TYPE_LABELS,
+    "en": {
+        "normal": "Normal",
+        "fire": "Fire",
+        "water": "Water",
+        "electric": "Electric",
+        "grass": "Grass",
+        "ice": "Ice",
+        "fighting": "Fighting",
+        "poison": "Poison",
+        "ground": "Ground",
+        "flying": "Flying",
+        "psychic": "Psychic",
+        "bug": "Bug",
+        "rock": "Rock",
+        "ghost": "Ghost",
+        "dragon": "Dragon",
+        "dark": "Dark",
+        "steel": "Steel",
+        "fairy": "Fairy",
+    },
+    "es": {
+        "normal": "Normal",
+        "fire": "Fuego",
+        "water": "Agua",
+        "electric": "Electrico",
+        "grass": "Planta",
+        "ice": "Hielo",
+        "fighting": "Lucha",
+        "poison": "Veneno",
+        "ground": "Tierra",
+        "flying": "Volador",
+        "psychic": "Psiquico",
+        "bug": "Bicho",
+        "rock": "Roca",
+        "ghost": "Fantasma",
+        "dragon": "Dragon",
+        "dark": "Siniestro",
+        "steel": "Acero",
+        "fairy": "Hada",
+    },
 }
 TYPE_COLORS = {
     "normal": (168, 167, 122),
@@ -263,6 +928,26 @@ def held_item_info(pokemon):
         "name": (pokemon or {}).get("held_item_name") or raw.get("held_item_name") or f"#{item_id}",
         "category": (pokemon or {}).get("held_item_category") or raw.get("held_item_category") or "item",
     }
+
+
+def pokemon_display_name(pokemon, fallback="Pokemon"):
+    pokemon = pokemon or {}
+    return (
+        pokemon.get("nickname")
+        or pokemon.get("species_name")
+        or pokemon.get("name")
+        or pokemon.get("display_summary")
+        or pokemon.get("display")
+        or fallback
+    )
+
+
+def pokemon_compact_label(pokemon, fallback, language="pt"):
+    name = pokemon_display_name(pokemon, fallback)
+    level = (pokemon or {}).get("level")
+    if level:
+        return f"{name} {t(language, 'level_tag', level=level)}"
+    return name
 
 
 def move_labels(pokemon):
@@ -311,11 +996,16 @@ def pokemon_types(pokemon):
     return [str(type_name).lower() for type_name in types if type_name]
 
 
-def draw_type_badges(surface, font_obj, type_names, x, y, max_width):
+def type_label(type_name, language="pt"):
+    labels = TYPE_LABELS_BY_LANG.get(str(language or "pt").lower(), TYPE_LABELS_BY_LANG["pt"])
+    return labels.get(type_name, TYPE_LABELS.get(type_name, type_name.title()))
+
+
+def draw_type_badges(surface, font_obj, type_names, x, y, max_width, language="pt"):
     cursor_x = x
     for type_name in type_names[:2]:
-        label = TYPE_LABELS.get(type_name, type_name.title())
-        badge_w = min(62, max(42, font_obj.size(label)[0] + 14))
+        label = type_label(type_name, language)
+        badge_w = min(82, max(42, font_obj.size(label)[0] + 14))
         if cursor_x + badge_w > x + max_width:
             break
         badge = pygame.Rect(cursor_x, y, badge_w, 18)
@@ -361,21 +1051,243 @@ def font(size, bold=False):
 def text(surface, fnt, value, x, y, color=None, max_w=None):
     if color is None:
         color = TEXT
-    value = str(value)
+    value = str(value or "")
     if max_w is not None:
-        while value and fnt.size(value)[0] > max_w:
-            value = value[:-2] + "."
+        value = fit_text(fnt, value, max_w)
     surface.blit(fnt.render(value, True, color), (x, y))
+
+
+def fit_text(fnt, value, max_w):
+    value = str(value or "")
+    if max_w is None or fnt.size(value)[0] <= max_w:
+        return value
+    ellipsis = "..."
+    if fnt.size(ellipsis)[0] > max_w:
+        return ""
+    while value and fnt.size(value + ellipsis)[0] > max_w:
+        value = value[:-1]
+    return value.rstrip() + ellipsis
+
+
+def text_center(surface, fnt, value, area, color=None):
+    if color is None:
+        color = TEXT
+    label = fit_text(fnt, value, max(1, area.w - 4))
+    rendered = fnt.render(label, True, color)
+    surface.blit(rendered, rendered.get_rect(center=area.center))
+
+
+def text_right(surface, fnt, value, area, color=None):
+    if color is None:
+        color = TEXT
+    label = fit_text(fnt, value, area.w)
+    rendered = fnt.render(label, True, color)
+    screen_area = rendered.get_rect()
+    screen_area.midright = area.midright
+    surface.blit(rendered, screen_area)
+
+
+def wrap_text(surface, fnt, value, area, color=None, line_gap=4, max_lines=None):
+    if color is None:
+        color = TEXT
+    words = str(value or "").replace("\n", " \n ").split(" ")
+    lines = []
+    current = ""
+    for word in words:
+        if word == "\n":
+            if current:
+                lines.append(current)
+                current = ""
+            continue
+        candidate = word if not current else f"{current} {word}"
+        if fnt.size(candidate)[0] <= area.w:
+            current = candidate
+            continue
+        if current:
+            lines.append(current)
+        current = word
+    if current:
+        lines.append(current)
+    line_h = fnt.get_linesize()
+    max_by_height = max(1, area.h // max(1, line_h + line_gap))
+    limit = min(max_lines or max_by_height, max_by_height)
+    for idx, line in enumerate(lines[:limit]):
+        if idx == limit - 1 and len(lines) > limit:
+            line = fit_text(fnt, line + " ...", area.w)
+        text(surface, fnt, line, area.x, area.y + idx * (line_h + line_gap), color, area.w)
+    return area.y + min(len(lines), limit) * (line_h + line_gap)
 
 
 def rect(surface, color, area, radius=0):
     pygame.draw.rect(surface, color, area, border_radius=radius)
 
 
-def button(surface, fnt, label, desc, x, y):
-    rect(surface, PANEL_2, pygame.Rect(x, y, 24, 24), 4)
-    text(surface, fnt, label, x + 7, y + 4, ACCENT)
-    text(surface, fnt, desc, x + 31, y + 4, MUTED)
+def compact_action_label(value):
+    normalized = str(value or "").strip().upper()
+    replacements = {
+        "VOLTAR": "Voltar",
+        "BACK": "Back",
+        "VOLVER": "Volver",
+        "ALTERAR": "Alterar",
+        "CHANGE": "Change",
+        "CAMBIAR": "Cambiar",
+        "CANCELAR": "Cancelar",
+        "CANCEL": "Cancel",
+        "CONFIRMAR": "Confirmar",
+        "CONFIRM": "Confirm",
+        "ESCOLHER": "Escolher",
+        "CHOOSE": "Choose",
+        "ELEGIR": "Elegir",
+        "PULAR": "Pular",
+        "SKIP": "Skip",
+        "SALTAR": "Saltar",
+        "MOVER P/ PC": "PC",
+        "MOVE TO PC": "PC",
+        "MOVER AL PC": "PC",
+        "RETIRAR": "Retirar",
+        "WITHDRAW": "Retirar",
+        "VER PC": "Ver PC",
+        "VIEW PC": "View PC",
+        "VER PARTY": "Party",
+        "VIEW PARTY": "Party",
+        "SELECT": "Select",
+        "DEL/VOLTAR": "Del",
+        "DEL/BACK": "Del",
+        "DEL/VOLVER": "Del",
+        "DEIXAR EVOLUIR": "Evoluir",
+        "LET EVOLVE": "Evolve",
+        "DEJAR EVOLUCIONAR": "Evoluir",
+        "CANCELAR EVO": "Cancelar",
+        "CANCEL EVO": "Cancel",
+        "NAO, DEIXAR EVOLUIR": "Evoluir",
+        "NO, LET EVOLVE": "Evolve",
+        "NO, DEJAR EVOLUCIONAR": "Evoluir",
+        "SIM, INTERROMPER": "Interromper",
+        "YES, STOP": "Stop",
+        "SI, INTERRUMPIR": "Interrumpir",
+    }
+    return replacements.get(normalized, str(value or ""))
+
+
+def button(surface, fnt, label, desc, x, y, width=None):
+    desc = compact_action_label(desc)
+    button_f = font(12)
+    cap_f = font(11, True)
+    width = int(width or max(54, min(118, button_f.size(str(desc or ""))[0] + 30)))
+    area = pygame.Rect(x, y, width, 20)
+    rect(surface, (209, 230, 248), area.move(1, 1), 4)
+    rect(surface, (247, 252, 255), area, 4)
+    pygame.draw.rect(surface, BORDER, area, 1, border_radius=4)
+    cap = pygame.Rect(x + 3, y + 3, 16, 14)
+    rect(surface, ACCENT, cap, 4)
+    text_center(surface, cap_f, label, cap, SCREEN_TEXT)
+    text(surface, button_f, desc, x + 24, y + 4, TEXT, width - 28)
+
+
+def draw_footer_actions(screen, fnt, actions):
+    draw_footer_bar(screen)
+    del fnt
+    footer = pygame.Rect(22, SCREEN_H - 42, SCREEN_W - 44, 22)
+    gap = 6
+    measure_f = font(12)
+    compact_actions = [(label, compact_action_label(desc)) for label, desc in actions]
+    widths = [max(54, min(118, measure_f.size(str(desc or ""))[0] + 32)) for _, desc in compact_actions]
+    total = sum(widths) + gap * max(0, len(widths) - 1)
+    if total > footer.w:
+        width = max(50, (footer.w - gap * max(0, len(widths) - 1)) // max(1, len(widths)))
+        widths = [width] * len(widths)
+    x = footer.x
+    for (label, desc), width in zip(compact_actions, widths):
+        button(screen, None, label, desc, x, footer.y, width)
+        x += width + gap
+
+
+class PokedexFrame:
+    def __init__(self):
+        self.content = pygame.Rect(24, 84, SCREEN_W - 48, SCREEN_H - HEADER_H - FOOTER_H - 56)
+        self.left_panel = pygame.Rect(28, 94, 284, 286)
+        self.right_panel = pygame.Rect(328, 94, 284, 286)
+        self.main_screen = pygame.Rect(38, 104, 264, 244)
+        self.side_screen = pygame.Rect(342, 104, 256, 96)
+        self.keypad = pygame.Rect(342, 214, 256, 144)
+        self.footer = pygame.Rect(22, SCREEN_H - 42, SCREEN_W - 44, 22)
+        self.modal = pygame.Rect(58, 118, SCREEN_W - 116, 220)
+
+    def __getattr__(self, name):
+        return getattr(self.content, name)
+
+    def __getitem__(self, name):
+        return getattr(self, name)
+
+
+def draw_pokedex_shell(screen, title="", subtitle=""):
+    screen.fill(BG)
+    frame = PokedexFrame()
+
+    left_body = pygame.Rect(10, 16, 302, 418)
+    right_points = [
+        (330, 32), (548, 32), (620, 72), (630, 72),
+        (630, 434), (330, 434),
+    ]
+    hinge = pygame.Rect(310, 20, 22, 418)
+
+    rect(screen, SHADOW, left_body.move(0, 10), 14)
+    pygame.draw.polygon(screen, SHADOW, [(x, y + 10) for x, y in right_points])
+    rect(screen, SHELL, left_body, 14)
+    pygame.draw.polygon(screen, SHELL_2, right_points)
+    pygame.draw.lines(screen, BORDER, True, right_points, 3)
+    pygame.draw.rect(screen, BORDER, left_body, 3, border_radius=14)
+
+    rect(screen, BORDER, hinge.move(0, 7), 8)
+    rect(screen, SHELL, hinge, 8)
+    rect(screen, ACCENT, pygame.Rect(317, 18, 7, 422), 3)
+
+    # Top optical cluster.
+    pygame.draw.circle(screen, SCREEN, (58, 52), 33)
+    pygame.draw.circle(screen, (237, 249, 255), (58, 52), 28)
+    pygame.draw.circle(screen, ACCENT, (58, 52), 23)
+    pygame.draw.circle(screen, (144, 229, 252), (50, 43), 6)
+    pygame.draw.circle(screen, (255, 255, 255), (45, 36), 3)
+    for x, color in ((116, RED), (144, WARN), (172, OK)):
+        pygame.draw.circle(screen, BORDER, (x, 32), 9)
+        pygame.draw.circle(screen, color, (x, 32), 6)
+
+    title_panel = pygame.Rect(94, 48, 204, 28)
+    rect(screen, SCREEN, title_panel, 6)
+    if title:
+        title_f = font(12, True)
+        for candidate_size in (18, 16, 14, 12):
+            candidate = font(candidate_size, True)
+            if candidate.size(str(title))[0] <= title_panel.w - 18:
+                title_f = candidate
+                break
+        text(screen, title_f, title, title_panel.x + 9, title_panel.y + 6, SCREEN_TEXT, title_panel.w - 18)
+    if subtitle:
+        text(screen, font(13), subtitle, title_panel.x + 10, title_panel.bottom + 3, MUTED, title_panel.w - 20)
+
+    # Pokedex screen and right-side controls remain visible around each view.
+    rect(screen, BORDER, frame.main_screen.inflate(10, 10), 8)
+    rect(screen, PANEL, frame.main_screen, 6)
+    rect(screen, BORDER, frame.side_screen.inflate(8, 8), 6)
+    rect(screen, SCREEN, frame.side_screen, 4)
+    for idx in range(10):
+        col = idx % 5
+        row = idx // 5
+        key = pygame.Rect(frame.keypad.x + col * 48, frame.keypad.y + row * 34, 42, 26)
+        rect(screen, ACCENT, key, 4)
+        pygame.draw.rect(screen, BORDER, key, 2, border_radius=4)
+        text_center(screen, font(15, True), str(idx), key, SCREEN)
+    rect(screen, SCREEN, pygame.Rect(frame.keypad.x + 16, frame.keypad.bottom - 38, 102, 28), 5)
+    rect(screen, SCREEN, pygame.Rect(frame.keypad.x + 136, frame.keypad.bottom - 38, 102, 28), 5)
+    return frame
+
+
+def draw_footer_bar(screen):
+    footer = pygame.Rect(12, SCREEN_H - 48, SCREEN_W - 24, 36)
+    rect(screen, SHADOW, footer.move(0, 3), 8)
+    rect(screen, (224, 240, 253), footer, 8)
+    pygame.draw.rect(screen, BORDER, footer, 1, border_radius=8)
+    pygame.draw.line(screen, (119, 167, 211), (footer.x + 10, footer.y + 5), (footer.right - 10, footer.y + 5), 1)
 
 
 def list_scroll_offset(key, selected, total, visible=ROW_VISIBLE):
@@ -697,10 +1609,8 @@ def debounce_action(action, action_state):
 
 
 def draw_menu(screen, fonts, selected, language):
-    title_f, _, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "PokeCable", 14, 10)
+    _, _, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, "PokeCable", "Room")
 
     items = [
         t(language, "menu_access_room"),
@@ -708,74 +1618,89 @@ def draw_menu(screen, fonts, selected, language):
         t(language, "menu_config"),
         t(language, "menu_exit"),
     ]
-    list_panel = pygame.Rect(10, HEADER_H + 10, LIST_W - 18, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    list_panel = layout.left_panel
     rect(screen, PANEL, list_panel, 6)
-    text(screen, small_f, t(language, "menu_title"), 22, HEADER_H + 22, MUTED)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
+    text(screen, small_f, t(language, "menu_title"), list_panel.x + 14, list_panel.y + 14, MUTED, list_panel.w - 28)
 
     for idx, item in enumerate(items):
-        y = HEADER_H + 54 + idx * 50
-        row = pygame.Rect(18, y, LIST_W - 34, 40)
-        color = (5, 11, 18) if idx == selected else TEXT
+        y = list_panel.y + 46 + idx * 48
+        row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
+        color = SCREEN if idx == selected else TEXT
         if idx == selected:
             rect(screen, ACCENT, row, 4)
         text(screen, small_f, item, row.x + 9, row.y + 9, color, row.w - 18)
 
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", t(language, "btn_ok"), 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", t(language, "btn_back"), 112, SCREEN_H - 48)
+    info_panel = layout.right_panel
+    rect(screen, PANEL_2, info_panel, 6)
+    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=6)
+    rect(screen, SCREEN, pygame.Rect(info_panel.x + 18, info_panel.y + 22, info_panel.w - 36, 72), 6)
+    text_center(screen, font(26, True), "PokeCable", pygame.Rect(info_panel.x + 18, info_panel.y + 22, info_panel.w - 36, 72), SCREEN_TEXT)
+    for idx, color in enumerate((RED, WARN, ACCENT)):
+        pygame.draw.circle(screen, BORDER, (info_panel.x + 58 + idx * 44, info_panel.y + 132), 13)
+        pygame.draw.circle(screen, color, (info_panel.x + 58 + idx * 44, info_panel.y + 132), 9)
+    rect(screen, SCREEN, pygame.Rect(info_panel.x + 36, info_panel.bottom - 72, info_panel.w - 72, 38), 5)
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
 
 
 def draw_config_menu(screen, fonts, selected, language, theme):
-    title_f, body_f, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, t(language, "config_title"), 14, 10)
+    _, body_f, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, t(language, "config_title"))
 
     items = [
         (t(language, "config_language"), t(language, f"lang_{language}")),
-        (t(language, "config_theme"), t(language, "theme_dark" if theme == "pokedex_dark" else "theme_white")),
+        (t(language, "config_theme"), theme_display_name(theme)),
     ]
-    list_panel = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    list_panel = layout.left_panel
     rect(screen, PANEL, list_panel, 6)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
     for idx, (label, value) in enumerate(items):
-        y = HEADER_H + 44 + idx * 64
-        row = pygame.Rect(18, y, SCREEN_W - 36, 50)
-        color = (5, 11, 18) if idx == selected else TEXT
+        y = list_panel.y + 34 + idx * 76
+        row = pygame.Rect(list_panel.x + 12, y, list_panel.w - 24, 56)
+        color = SCREEN if idx == selected else TEXT
         if idx == selected:
             rect(screen, ACCENT, row, 4)
         text(screen, small_f, label, row.x + 9, row.y + 8, color, row.w - 18)
-        text(screen, body_f, value, row.x + 9, row.y + 25, color, row.w - 18)
+        value_font = tiny_f if idx == 1 else body_f
+        text(screen, value_font, value, row.x + 9, row.y + 29, color, row.w - 18)
 
-    helper = "< >"
-    text(screen, tiny_f, helper, SCREEN_W - 62, HEADER_H + 14, MUTED)
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", t(language, "btn_ok"), 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", t(language, "btn_back"), 112, SCREEN_H - 48)
-    button(screen, tiny_f, "<>", t(language, "btn_change"), 238, SCREEN_H - 48)
+    text(screen, tiny_f, "< >", list_panel.right - 54, list_panel.y + 12, MUTED)
+
+    preview_panel = layout.right_panel
+    rect(screen, PANEL_2, preview_panel, 6)
+    pygame.draw.rect(screen, BORDER, preview_panel, 2, border_radius=6)
+    rect(screen, SCREEN, pygame.Rect(preview_panel.x + 18, preview_panel.y + 26, preview_panel.w - 36, 64), 6)
+    text_center(screen, body_f, t(language, "config_title"), pygame.Rect(preview_panel.x + 18, preview_panel.y + 26, preview_panel.w - 36, 64), SCREEN_TEXT)
+    for idx, color in enumerate((RED, WARN, ACCENT)):
+        pygame.draw.circle(screen, BORDER, (preview_panel.x + 62 + idx * 48, preview_panel.y + 126), 12)
+        pygame.draw.circle(screen, color, (preview_panel.x + 62 + idx * 48, preview_panel.y + 126), 8)
+    rect(screen, SCREEN, pygame.Rect(preview_panel.x + 32, preview_panel.bottom - 78, preview_panel.w - 64, 34), 5)
+    draw_footer_actions(screen, tiny_f, [
+        ("A", t(language, "btn_ok")),
+        ("B", t(language, "btn_back")),
+        ("<>", t(language, "btn_change")),
+    ])
 
 
-def draw_action_menu(screen, fonts, selected):
-    title_f, _, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Acao", 14, 10)
+def draw_action_menu(screen, fonts, selected, language="pt"):
+    _, _, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, t(language, "action_title"))
 
-    items = ["Criar Sala", "Entrar em Sala"]
-    list_panel = pygame.Rect(10, HEADER_H + 10, LIST_W - 18, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    items = [t(language, "action_create_room"), t(language, "action_join_room")]
+    list_panel = layout.left_panel
     rect(screen, PANEL, list_panel, 6)
-    text(screen, small_f, "Escolha", 22, HEADER_H + 22, MUTED)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
+    text(screen, small_f, t(language, "choose"), list_panel.x + 14, list_panel.y + 14, MUTED)
 
     for idx, item in enumerate(items):
-        y = HEADER_H + 54 + idx * 50
-        row = pygame.Rect(18, y, LIST_W - 34, 40)
-        color = (5, 11, 18) if idx == selected else TEXT
+        y = list_panel.y + 46 + idx * 50
+        row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 40)
+        color = SCREEN if idx == selected else TEXT
         if idx == selected:
             rect(screen, ACCENT, row, 4)
         text(screen, small_f, item, row.x + 9, row.y + 9, color, row.w - 18)
 
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "OK", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
 
 
 def keyboard_chars(shift=False):
@@ -793,25 +1718,42 @@ def random_room_name():
     return f"{random.choice(POKEMON_ROOM_NAMES).lower()}{random.randint(10, 99)}"
 
 
-def draw_keyboard(screen, fonts, title, value, grid_index, is_password=False, shift=False):
-    title_f, body_f, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    shift_label = "SHIFT ON" if shift else "SHIFT OFF"
-    text(screen, title_f, f"{title} [{shift_label}]", 14, 10)
+def draw_keyboard(screen, fonts, title, value, grid_index, is_password=False, shift=False, language="pt"):
+    _, body_f, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, title)
+    display_panel = layout.left_panel
+    key_panel = layout.right_panel
+    shift_label = t(language, "shift_on" if shift else "shift_off")
 
     display_value = "*" * len(value) if is_password else value
-    input_panel = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, 50)
-    rect(screen, PANEL, input_panel, 6)
-    text(screen, body_f, display_value if display_value else "(vazio)", 20, HEADER_H + 20, ACCENT, SCREEN_W - 40)
+    rect(screen, PANEL, display_panel, 6)
+    pygame.draw.rect(screen, BORDER, display_panel, 2, border_radius=6)
+    screen_rect = pygame.Rect(display_panel.x + 18, display_panel.y + 30, display_panel.w - 36, 92)
+    rect(screen, SCREEN, screen_rect, 6)
+    pygame.draw.rect(screen, BORDER, screen_rect, 2, border_radius=6)
+    text(screen, tiny_f, title, screen_rect.x + 12, screen_rect.y + 10, (142, 189, 224), screen_rect.w - 24)
+    value_area = pygame.Rect(screen_rect.x + 12, screen_rect.y + 38, screen_rect.w - 24, 34)
+    text(screen, body_f, display_value if display_value else t(language, "empty"), value_area.x, value_area.y, SCREEN_TEXT, value_area.w)
+    text(screen, tiny_f, shift_label, display_panel.x + 18, screen_rect.bottom + 18, MUTED, display_panel.w - 36)
+    pygame.draw.circle(screen, ACCENT if shift else MUTED, (display_panel.x + 30, screen_rect.bottom + 56), 8)
+    pygame.draw.circle(screen, WARN, (display_panel.x + 58, screen_rect.bottom + 56), 8)
+    rect(screen, SCREEN, pygame.Rect(display_panel.x + 86, screen_rect.bottom + 48, display_panel.w - 124, 16), 4)
 
     chars = keyboard_chars(shift)
-    margin_x = 16
-    grid_pitch = (SCREEN_W - margin_x * 2) // KEYBOARD_GRID_W
-    key_w = grid_pitch - 4
-    key_h = 40
-    start_x = margin_x + (SCREEN_W - margin_x * 2 - grid_pitch * KEYBOARD_GRID_W) // 2
-    start_y = HEADER_H + 74
+    rect(screen, PANEL, key_panel, 6)
+    pygame.draw.rect(screen, BORDER, key_panel, 2, border_radius=6)
+    top_display = pygame.Rect(key_panel.x + 18, key_panel.y + 18, key_panel.w - 36, 34)
+    rect(screen, SCREEN, top_display, 5)
+    text(screen, tiny_f, t(language, "keypad"), top_display.x + 10, top_display.y + 9, SCREEN_TEXT, top_display.w - 20)
+
+    margin_x = key_panel.x + 12
+    grid_pitch = (key_panel.w - 24) // KEYBOARD_GRID_W
+    key_w = max(16, grid_pitch - 3)
+    key_h = 25
+    key_font = font(11, True)
+    special_font = font(10, True)
+    start_x = margin_x + (key_panel.w - 24 - grid_pitch * KEYBOARD_GRID_W) // 2
+    start_y = key_panel.y + 66
     rows_used = math.ceil(len(chars) / KEYBOARD_GRID_W)
 
     for idx, char in enumerate(chars):
@@ -823,95 +1765,111 @@ def draw_keyboard(screen, fonts, title, value, grid_index, is_password=False, sh
         selected = idx == grid_index
         key_rect = pygame.Rect(x, y, key_w, key_h)
         rect(screen, ACCENT if selected else PANEL_2, key_rect, 5)
-        char_surface = tiny_f.render(char, True, (5, 11, 18) if selected else TEXT)
+        pygame.draw.rect(screen, BORDER, key_rect, 1, border_radius=5)
+        char_surface = key_font.render(char, True, SCREEN if selected else TEXT)
         screen.blit(char_surface, char_surface.get_rect(center=key_rect.center))
 
     special_start = len(chars)
     specials = [("DEL", special_start), ("SHIFT", special_start + 1), ("SPACE", special_start + 2), ("OK", special_start + 3)]
-    specials_y = start_y + rows_used * (key_h + 4) + 6
-    special_total_w = SCREEN_W - margin_x * 2
+    specials_y = start_y + rows_used * (key_h + 4) + 10
+    special_total_w = key_panel.w - 24
     special_w = (special_total_w - 3 * 10) // 4
     for offset, (label, idx) in enumerate(specials):
         x = margin_x + offset * (special_w + 10)
         selected = idx == grid_index
         key_rect = pygame.Rect(x, specials_y, special_w, key_h + 4)
         rect(screen, ACCENT if selected else PANEL_2, key_rect, 5)
-        label_surface = tiny_f.render(label, True, (5, 11, 18) if selected else TEXT)
+        pygame.draw.rect(screen, BORDER, key_rect, 1, border_radius=5)
+        label_surface = special_font.render(label, True, SCREEN if selected else TEXT)
         screen.blit(label_surface, label_surface.get_rect(center=key_rect.center))
 
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "SELECT", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "DEL/VOLTAR", 112, SCREEN_H - 48)
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "key_select")), ("B", t(language, "key_delete_back"))])
 
 
-def draw_select_save(screen, fonts, selected, saves, title="Select Save"):
-    title_f, body_f, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, title, 14, 10)
+def draw_select_save(screen, fonts, selected, saves, title=None, language="pt"):
+    _, body_f, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, title or screen_title(language, "select_save"))
+    list_panel = layout.left_panel
+    detail_panel = layout.right_panel
+
+    rect(screen, PANEL, list_panel, 6)
+    rect(screen, PANEL_2, detail_panel, 6)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
+    pygame.draw.rect(screen, BORDER, detail_panel, 2, border_radius=6)
 
     if not saves:
-        text(screen, body_f, "No saves found!", 50, HEADER_H + 100, RED)
-        rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-        button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
+        message_screen = pygame.Rect(list_panel.x + 18, list_panel.y + 34, list_panel.w - 36, 120)
+        rect(screen, SCREEN, message_screen, 6)
+        pygame.draw.rect(screen, BORDER, message_screen, 2, border_radius=6)
+        wrap_text(screen, small_f, t(language, "no_saves"), pygame.Rect(message_screen.x + 16, message_screen.y + 44, message_screen.w - 32, 40), SCREEN_TEXT, max_lines=2)
+        wrap_text(screen, small_f, t(language, "save_pick_hint"), pygame.Rect(detail_panel.x + 18, detail_panel.y + 38, detail_panel.w - 36, 80), MUTED, max_lines=3)
+        draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_back"))])
         return
 
-    list_panel = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
-    rect(screen, PANEL, list_panel, 6)
-
-    scroll = list_scroll_offset("saves", selected, len(saves))
+    visible = 6
+    row_h = 42
+    scroll = list_scroll_offset("saves", selected, len(saves), visible)
     first = max(0, int(scroll) - 1)
-    last = min(len(saves), int(scroll) + ROW_VISIBLE + 2)
+    last = min(len(saves), int(scroll) + visible + 2)
     previous_clip = screen.get_clip()
     screen.set_clip(list_panel.inflate(-8, -8))
     for idx in range(first, last):
         save_path = saves[idx]
-        y = HEADER_H + 30 + int((idx - scroll) * ROW_H)
-        row = pygame.Rect(18, y, SCREEN_W - 36, 40)
-        color = (5, 11, 18) if idx == selected else TEXT
+        y = list_panel.y + 14 + int((idx - scroll) * row_h)
+        row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 36)
+        color = SCREEN if idx == selected else TEXT
         if idx == selected:
             rect(screen, ACCENT, row, 4)
-        text(screen, small_f, save_path.name[:50], row.x + 9, row.y + 9, color, row.w - 18)
+        wrap_text(screen, tiny_f, save_path.name, pygame.Rect(row.x + 9, row.y + 4, row.w - 18, row.h - 6), color, line_gap=0, max_lines=2)
     screen.set_clip(previous_clip)
-    draw_scrollbar(screen, list_panel, scroll, len(saves))
+    draw_scrollbar(screen, list_panel, scroll, len(saves), visible)
 
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "OK", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
+    selected_save = saves[selected] if 0 <= selected < len(saves) else saves[0]
+    screen_rect = pygame.Rect(detail_panel.x + 18, detail_panel.y + 24, detail_panel.w - 36, 76)
+    rect(screen, SCREEN, screen_rect, 6)
+    pygame.draw.rect(screen, BORDER, screen_rect, 2, border_radius=6)
+    text(screen, tiny_f, t(language, "selected_save"), screen_rect.x + 12, screen_rect.y + 10, (142, 189, 224), screen_rect.w - 24)
+    wrap_text(screen, tiny_f, selected_save.name, pygame.Rect(screen_rect.x + 12, screen_rect.y + 34, screen_rect.w - 24, 34), SCREEN_TEXT, line_gap=1, max_lines=2)
+
+    text(screen, small_f, t(language, "save_file"), detail_panel.x + 18, detail_panel.y + 124, TEXT, detail_panel.w - 36)
+    wrap_text(screen, tiny_f, selected_save.name, pygame.Rect(detail_panel.x + 18, detail_panel.y + 150, detail_panel.w - 36, 48), MUTED, line_gap=1, max_lines=3)
+    parent_name = selected_save.parent.name or str(selected_save.parent)
+    text(screen, small_f, t(language, "save_folder"), detail_panel.x + 18, detail_panel.y + 206, TEXT, detail_panel.w - 36)
+    text(screen, tiny_f, "-" if parent_name == "." else parent_name, detail_panel.x + 18, detail_panel.y + 232, MUTED, detail_panel.w - 36)
+
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
 
 
-def draw_select_pokemon_source(screen, fonts, selected, status="", room_name="", room_password=""):
-    title_f, _, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Escolher Origem", 14, 10)
-    helper = status or "Escolha de onde sair o Pokemon para a troca."
-    text(screen, tiny_f, helper, max(230, SCREEN_W - tiny_f.size(helper)[0] - 14), 14, MUTED, SCREEN_W - 244)
+def draw_select_pokemon_source(screen, fonts, selected, status="", room_name="", room_password="", language="pt"):
+    _, _, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, screen_title(language, "choose_source"))
 
-    items = ["Party", "PC"]
-    list_panel = pygame.Rect(10, HEADER_H + 10, LIST_W - 18, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    items = [t(language, "party"), t(language, "pc")]
+    list_panel = layout.left_panel
     rect(screen, PANEL, list_panel, 6)
-    text(screen, small_f, "Escolha", 22, HEADER_H + 22, MUTED)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
+    text(screen, small_f, t(language, "choose"), list_panel.x + 14, list_panel.y + 14, MUTED)
 
     for idx, item in enumerate(items):
-        y = HEADER_H + 54 + idx * 50
-        row = pygame.Rect(18, y, LIST_W - 34, 40)
-        color = (5, 11, 18) if idx == selected else TEXT
+        y = list_panel.y + 48 + idx * 54
+        row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 42)
+        color = SCREEN if idx == selected else TEXT
         if idx == selected:
             rect(screen, ACCENT, row, 4)
         text(screen, small_f, item, row.x + 9, row.y + 9, color, row.w - 18)
 
-    info_panel = pygame.Rect(LIST_W + 2, HEADER_H + 10, SCREEN_W - LIST_W - 12, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    info_panel = layout.right_panel
     rect(screen, PANEL, info_panel, 6)
-    text(screen, small_f, "Sala", info_panel.x + 14, info_panel.y + 12, MUTED)
-    text(screen, small_f, room_name or "(sem nome)", info_panel.x + 14, info_panel.y + 38, ACCENT, info_panel.w - 28)
-    text(screen, small_f, "Senha", info_panel.x + 14, info_panel.y + 78, MUTED)
-    text(screen, small_f, room_password or "(sem senha)", info_panel.x + 14, info_panel.y + 104, ACCENT, info_panel.w - 28)
-    text(screen, tiny_f, "Compartilhe estes dados com seu parceiro para entrar na mesma sala.", info_panel.x + 14, info_panel.y + 150, MUTED, info_panel.w - 28)
+    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=6)
+    text(screen, small_f, t(language, "room"), info_panel.x + 14, info_panel.y + 12, MUTED)
+    text(screen, small_f, room_name or t(language, "no_name"), info_panel.x + 14, info_panel.y + 38, ACCENT, info_panel.w - 28)
+    text(screen, small_f, t(language, "password"), info_panel.x + 14, info_panel.y + 78, MUTED)
+    text(screen, small_f, room_password or t(language, "no_password"), info_panel.x + 14, info_panel.y + 104, ACCENT, info_panel.w - 28)
+    wrap_text(screen, tiny_f, t(language, "share_room"), pygame.Rect(info_panel.x + 14, info_panel.y + 146, info_panel.w - 28, 48), MUTED)
 
     ball_cx = info_panel.centerx
-    ball_cy = info_panel.bottom - 70
-    ball_r = 44
+    ball_cy = info_panel.bottom - 58
+    ball_r = 36
     pygame.draw.circle(screen, (220, 40, 40), (ball_cx, ball_cy), ball_r)
     pygame.draw.circle(screen, (240, 240, 240), (ball_cx, ball_cy), ball_r, draw_top_right=False, draw_top_left=False)
     pygame.draw.rect(screen, (20, 20, 20), pygame.Rect(ball_cx - ball_r, ball_cy - 4, ball_r * 2, 8))
@@ -920,39 +1878,42 @@ def draw_select_pokemon_source(screen, fonts, selected, status="", room_name="",
     pygame.draw.circle(screen, (240, 240, 240), (ball_cx, ball_cy), 7)
     pygame.draw.circle(screen, (20, 20, 20), (ball_cx, ball_cy), 7, 2)
 
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "OK", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
 
 
-def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, sprite_loader, status="", allow_pc_actions=True):
-    title_f, body_f, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    title = "Escolher Pokemon"
-    waiting = status or "Aguardando segundo jogador"
-    text(screen, title_f, title, 14, 10)
-    text(screen, small_f, waiting, max(250, SCREEN_W - small_f.size(waiting)[0] - 14), 14, MUTED, 376)
+def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, sprite_loader, status="", allow_pc_actions=True, language="pt"):
+    _, body_f, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, screen_title(language, "choose_pokemon"))
 
     if not pokemon_list:
-        text(screen, body_f, "No Pokemon found!", 50, HEADER_H + 100, RED)
-        rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-        button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
+        list_panel = layout.left_panel
+        detail_panel = layout.right_panel
+        rect(screen, PANEL, list_panel, 6)
+        rect(screen, PANEL_2, detail_panel, 6)
+        pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
+        pygame.draw.rect(screen, BORDER, detail_panel, 2, border_radius=6)
+        message_screen = pygame.Rect(list_panel.x + 18, list_panel.y + 34, list_panel.w - 36, 120)
+        rect(screen, SCREEN, message_screen, 6)
+        pygame.draw.rect(screen, BORDER, message_screen, 2, border_radius=6)
+        wrap_text(screen, small_f, t(language, "no_pokemon"), pygame.Rect(message_screen.x + 16, message_screen.y + 42, message_screen.w - 32, 44), SCREEN_TEXT, max_lines=2)
+        text(screen, small_f, source_label, detail_panel.x + 18, detail_panel.y + 38, MUTED, detail_panel.w - 36)
+        draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_back"))])
         return
 
-    list_panel = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
+    list_panel = layout.left_panel
     rect(screen, PANEL, list_panel, 6)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
 
     scroll = list_scroll_offset("pokemon", selected, len(pokemon_list))
     first = max(0, int(scroll) - 1)
     last = min(len(pokemon_list), int(scroll) + ROW_VISIBLE + 2)
     previous_clip = screen.get_clip()
-    screen.set_clip(pygame.Rect(list_panel.x + 4, list_panel.y + 4, 304, list_panel.h - 8))
+    screen.set_clip(list_panel.inflate(-8, -8))
     for idx in range(first, last):
         pokemon = pokemon_list[idx]
-        y = HEADER_H + 30 + int((idx - scroll) * ROW_H)
-        row = pygame.Rect(18, y, 292, 40)
-        color = (5, 11, 18) if idx == selected else TEXT
+        y = list_panel.y + 12 + int((idx - scroll) * ROW_H)
+        row = pygame.Rect(list_panel.x + 8, y, list_panel.w - 20, 40)
+        color = SCREEN if idx == selected else TEXT
         if idx == selected:
             rect(screen, ACCENT, row, 4)
         sprite_loader.request_for(pokemon)
@@ -967,237 +1928,285 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
         item_info = held_item_info(pokemon)
         item_slot = pygame.Rect(row.right - 29, row.y + 8, 22, 22)
         draw_item_icon(screen, item_slot, item_info, idx == selected)
-        text(screen, small_f, pokemon.get("display", f"Pokemon {idx+1}")[:42], row.x + 44, row.y + 4, color, row.w - 52)
-        item_name = item_info["name"] if item_info else "nenhum"
-        text(screen, tiny_f, f"Item: {item_name}", row.x + 44, row.y + 23, color if idx == selected else MUTED, 118)
-        draw_type_badges(screen, tiny_f, pokemon_types(pokemon), row.right - 124, row.y + 22, 88)
+        text(screen, small_f, pokemon_compact_label(pokemon, f"Pokemon {idx + 1}", language), row.x + 44, row.y + 4, color, row.w - 78)
+        item_name = item_info["name"] if item_info else t(language, "item_none")
+        text(screen, tiny_f, t(language, "item_label", name=item_name), row.x + 44, row.y + 23, color if idx == selected else MUTED, row.w - 84)
     screen.set_clip(previous_clip)
-    draw_scrollbar(screen, pygame.Rect(10, list_panel.y, 308, list_panel.h), scroll, len(pokemon_list))
+    draw_scrollbar(screen, list_panel, scroll, len(pokemon_list))
 
     selected_pokemon = pokemon_list[selected] if 0 <= selected < len(pokemon_list) else None
     sprite_loader.request(selected_pokemon)
-    detail_panel = pygame.Rect(326, HEADER_H + 20, 292, SCREEN_H - HEADER_H - FOOTER_H - 40)
+    detail_panel = layout.right_panel
     rect(screen, PANEL_2, detail_panel, 6)
+    pygame.draw.rect(screen, BORDER, detail_panel, 2, border_radius=6)
     text(screen, small_f, source_label, detail_panel.x + 14, detail_panel.y + 12, MUTED)
 
     if selected_pokemon:
         sprite, loading, error = sprite_loader.snapshot()
-        sprite_box = pygame.Rect(detail_panel.x + 20, detail_panel.y + 40, 128, 128)
+        sprite_box = pygame.Rect(detail_panel.x + 18, detail_panel.y + 38, 116, 116)
         rect(screen, BG, sprite_box, 8)
+        pygame.draw.rect(screen, BORDER, sprite_box, 2, border_radius=8)
         if sprite:
-            scaled = pygame.transform.smoothscale(sprite, (96, 96))
-            screen.blit(scaled, (sprite_box.x + 16, sprite_box.y + 16))
+            scaled = pygame.transform.smoothscale(sprite, (90, 90))
+            screen.blit(scaled, (sprite_box.x + 13, sprite_box.y + 13))
         elif loading:
-            text(screen, tiny_f, "Carregando sprite...", sprite_box.x + 8, sprite_box.y + 56, MUTED)
+            wrap_text(screen, tiny_f, t(language, "loading_sprite"), pygame.Rect(sprite_box.x + 8, sprite_box.y + 42, sprite_box.w - 16, 40), MUTED, max_lines=2)
         else:
-            text(screen, tiny_f, "Sem sprite", sprite_box.x + 28, sprite_box.y + 56, MUTED)
+            text_center(screen, tiny_f, t(language, "no_sprite"), sprite_box, MUTED)
 
-        text(screen, body_f, selected_pokemon.get("name", "Pokemon"), detail_panel.x + 164, detail_panel.y + 54, TEXT, 110)
-        text(screen, small_f, f"Nivel: {selected_pokemon.get('level', 0)}", detail_panel.x + 164, detail_panel.y + 86, ACCENT)
-        draw_type_badges(screen, tiny_f, pokemon_types(selected_pokemon), detail_panel.x + 164, detail_panel.y + 108, 112)
+        data_x = detail_panel.x + 148
+        text(screen, body_f, selected_pokemon.get("name", "Pokemon"), data_x, detail_panel.y + 50, TEXT, detail_panel.right - data_x - 14)
+        text(screen, small_f, t(language, "level", level=selected_pokemon.get("level", 0)), data_x, detail_panel.y + 80, ACCENT)
+        draw_type_badges(screen, tiny_f, pokemon_types(selected_pokemon), data_x, detail_panel.y + 104, detail_panel.right - data_x - 14, language)
         item_info = held_item_info(selected_pokemon)
-        item_icon = pygame.Rect(detail_panel.x + 164, detail_panel.y + 132, 20, 20)
+        item_icon = pygame.Rect(data_x, detail_panel.y + 130, 20, 20)
         draw_item_icon(screen, item_icon, item_info)
-        text(screen, tiny_f, item_info["name"] if item_info else "Sem item", detail_panel.x + 190, detail_panel.y + 134, MUTED, 86)
+        text(screen, tiny_f, item_info["name"] if item_info else t(language, "item_none"), data_x + 26, detail_panel.y + 134, MUTED, detail_panel.right - data_x - 40)
         location = selected_pokemon.get("location", "")
         if location.startswith("box:"):
             parts = location.split(":")
             box_name = selected_pokemon.get("raw", {}).get("box_name") or f"Box {int(parts[1]) + 1}"
-            text(screen, tiny_f, box_name, detail_panel.x + 164, detail_panel.y + 158, MUTED, 110)
+            text(screen, tiny_f, box_name, data_x, detail_panel.y + 160, MUTED, detail_panel.right - data_x - 14)
         else:
-            text(screen, tiny_f, "Party", detail_panel.x + 164, detail_panel.y + 158, MUTED, 110)
+            text(screen, tiny_f, t(language, "party"), data_x, detail_panel.y + 160, MUTED, detail_panel.right - data_x - 14)
 
-        detail_y = detail_panel.y + 190
-        text(screen, small_f, "Ataques", detail_panel.x + 14, detail_y, TEXT)
+        detail_y = detail_panel.y + 178
+        text(screen, small_f, t(language, "moves"), detail_panel.x + 14, detail_y, TEXT)
         moves = move_labels(selected_pokemon)
         if moves:
             for move_idx, move_name in enumerate(moves[:4]):
                 move_x = detail_panel.x + 14 + (move_idx % 2) * 136
                 move_y = detail_y + 28 + (move_idx // 2) * 28
-                move_rect = pygame.Rect(move_x, move_y, 126, 22)
+                move_rect = pygame.Rect(move_x, move_y, 122, 22)
                 rect(screen, BG, move_rect, 4)
+                pygame.draw.rect(screen, BORDER, move_rect, 1, border_radius=4)
                 text(screen, tiny_f, move_name, move_rect.x + 6, move_rect.y + 5, TEXT, move_rect.w - 12)
         else:
-            text(screen, tiny_f, "Sem ataques", detail_panel.x + 14, detail_y + 28, MUTED)
+            text(screen, tiny_f, t(language, "no_moves"), detail_panel.x + 14, detail_y + 28, MUTED)
         if error and DEBUG:
             text(screen, tiny_f, error[:40], detail_panel.x + 14, detail_panel.bottom - 30, WARN, detail_panel.w - 28)
+        elif status:
+            text(screen, tiny_f, translate_literal(language, status), detail_panel.x + 14, detail_panel.bottom - 22, MUTED, detail_panel.w - 28)
 
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "OK", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "BACK", 112, SCREEN_H - 48)
+    actions = [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))]
     if allow_pc_actions:
         is_party = "party" in (source_label or "").lower()
-        x_label = "MOVER P/ PC" if is_party else "RETIRAR"
-        button(screen, tiny_f, "X", x_label, 212, SCREEN_H - 48)
-        y_label = "VER PC" if is_party else "VER PARTY"
-        button(screen, tiny_f, "Y", y_label, 360, SCREEN_H - 48)
+        x_label = t(language, "btn_move_pc") if is_party else t(language, "btn_withdraw")
+        y_label = t(language, "btn_view_pc") if is_party else t(language, "btn_view_party")
+        actions.extend([("X", x_label), ("Y", y_label)])
+    draw_footer_actions(screen, tiny_f, actions)
 
 
-def draw_connecting(screen, fonts, frame):
-    title_f, body_f, _, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Conectando", 14, 10)
-    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
-    rect(screen, PANEL, content, 6)
+def draw_connecting(screen, fonts, frame, language="pt"):
+    _, body_f, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, screen_title(language, "connecting"))
+    left_panel = layout.left_panel
+    right_panel = layout.right_panel
+    rect(screen, PANEL, left_panel, 6)
+    rect(screen, PANEL_2, right_panel, 6)
+    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
+    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=6)
     dots = "." * ((frame // 15) % 4)
-    text(screen, body_f, f"Conectando ao servidor{dots}", 50, HEADER_H + 150, MUTED)
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    text(screen, tiny_f, "Aguarde...", 250, SCREEN_H - 45, MUTED)
+    status_screen = pygame.Rect(left_panel.x + 18, left_panel.y + 34, left_panel.w - 36, 120)
+    rect(screen, SCREEN, status_screen, 6)
+    pygame.draw.rect(screen, BORDER, status_screen, 2, border_radius=6)
+    text_center(screen, body_f, t(language, "connecting_server", dots=dots), status_screen, SCREEN_TEXT)
+    for idx in range(4):
+        light = ACCENT if idx <= ((frame // 12) % 4) else MUTED
+        pygame.draw.circle(screen, BORDER, (left_panel.x + 72 + idx * 44, status_screen.bottom + 48), 11)
+        pygame.draw.circle(screen, light, (left_panel.x + 72 + idx * 44, status_screen.bottom + 48), 7)
+    rect(screen, SCREEN, pygame.Rect(right_panel.x + 24, right_panel.y + 36, right_panel.w - 48, 52), 5)
+    text_center(screen, small_f, t(language, "please_wait"), pygame.Rect(right_panel.x + 24, right_panel.y + 36, right_panel.w - 48, 52), SCREEN_TEXT)
+    for idx in range(5):
+        bar = pygame.Rect(right_panel.x + 34, right_panel.y + 120 + idx * 24, right_panel.w - 68 - idx * 12, 10)
+        rect(screen, ACCENT if idx % 2 == 0 else OK, bar, 3)
+    draw_footer_bar(screen)
+    text_center(screen, tiny_f, t(language, "please_wait"), pygame.Rect(0, SCREEN_H - 46, SCREEN_W, 24), MUTED)
 
 
-def draw_waiting_partner(screen, fonts, status):
-    title_f, body_f, _, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Aguardando segundo jogador", 14, 10)
-    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
-    rect(screen, PANEL, content, 6)
-    text(screen, body_f, status or "Aguardando segundo jogador...", 40, HEADER_H + 150, MUTED, SCREEN_W - 80)
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "B", "CANCELAR", 12, SCREEN_H - 48)
+def draw_waiting_partner(screen, fonts, status, language="pt"):
+    _, body_f, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, screen_title(language, "waiting_partner"))
+    left_panel = layout.left_panel
+    right_panel = layout.right_panel
+    rect(screen, PANEL, left_panel, 6)
+    rect(screen, PANEL_2, right_panel, 6)
+    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
+    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=6)
+    message = translate_literal(language, status) if status else t(language, "waiting_partner") + "..."
+    status_screen = pygame.Rect(left_panel.x + 18, left_panel.y + 34, left_panel.w - 36, 122)
+    rect(screen, SCREEN, status_screen, 6)
+    pygame.draw.rect(screen, BORDER, status_screen, 2, border_radius=6)
+    wrap_text(screen, body_f, message, pygame.Rect(status_screen.x + 16, status_screen.y + 30, status_screen.w - 32, 64), SCREEN_TEXT, max_lines=3)
+    text_center(screen, small_f, t(language, "room_open_short"), pygame.Rect(right_panel.x + 18, right_panel.y + 42, right_panel.w - 36, 42), TEXT)
+    for idx, label in enumerate(("A", "B", "C")):
+        chip = pygame.Rect(right_panel.x + 34 + idx * 72, right_panel.y + 142, 48, 32)
+        rect(screen, PANEL if idx else ACCENT, chip, 5)
+        pygame.draw.rect(screen, BORDER, chip, 1, border_radius=5)
+        text_center(screen, small_f, label, chip, SCREEN if idx == 0 else TEXT)
+    draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_cancel"))])
 
 
-def draw_leave_room_confirm(screen, fonts):
-    title_f, body_f, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Sair da sala?", 14, 10)
-    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
-    rect(screen, PANEL, content, 6)
-    text(screen, body_f, "Deseja encerrar esta sala?", 30, HEADER_H + 60, TEXT, SCREEN_W - 60)
-    text(screen, small_f, "Voce e o parceiro voltarao ao menu.", 30, HEADER_H + 110, MUTED, SCREEN_W - 60)
-    text(screen, small_f, "Para mais trocas, escolha A=NAO.", 30, HEADER_H + 140, MUTED, SCREEN_W - 60)
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "SIM", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "NAO", 112, SCREEN_H - 48)
+def draw_pokedex_prompt(screen, fonts, title, question, detail_lines, actions, language="pt", tone=WARN):
+    _, body_f, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, title)
+    left_panel = layout.left_panel
+    right_panel = layout.right_panel
+    rect(screen, PANEL, left_panel, 6)
+    rect(screen, PANEL_2, right_panel, 6)
+    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
+    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=6)
+
+    status_screen = pygame.Rect(left_panel.x + 18, left_panel.y + 32, left_panel.w - 36, 132)
+    rect(screen, SCREEN, status_screen, 6)
+    pygame.draw.rect(screen, BORDER, status_screen, 2, border_radius=6)
+    wrap_text(screen, body_f, question, pygame.Rect(status_screen.x + 16, status_screen.y + 28, status_screen.w - 32, status_screen.h - 56), SCREEN_TEXT, max_lines=3)
+    for idx, color in enumerate((tone, WARN, OK)):
+        pygame.draw.circle(screen, BORDER, (left_panel.x + 74 + idx * 52, status_screen.bottom + 46), 12)
+        pygame.draw.circle(screen, color, (left_panel.x + 74 + idx * 52, status_screen.bottom + 46), 8)
+
+    y = right_panel.y + 26
+    for line in detail_lines:
+        area = pygame.Rect(right_panel.x + 18, y, right_panel.w - 36, 54)
+        wrap_text(screen, small_f, line, area, TEXT if y == right_panel.y + 26 else MUTED, max_lines=2)
+        y += 62
+    draw_footer_actions(screen, tiny_f, actions)
 
 
-def draw_deposit_confirm(screen, fonts, pokemon):
-    title_f, body_f, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Mover para PC?", 14, 10)
-    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
-    rect(screen, PANEL, content, 6)
-    name = (pokemon or {}).get("display") or (pokemon or {}).get("nickname") or (pokemon or {}).get("species_name") or "Pokemon"
+def draw_leave_room_confirm(screen, fonts, language="pt"):
+    draw_pokedex_prompt(
+        screen,
+        fonts,
+        screen_title(language, "leave_room_title"),
+        t(language, "leave_room_question"),
+        [t(language, "leave_room_help"), t(language, "leave_room_more")],
+        [("A", t(language, "btn_yes")), ("B", t(language, "btn_no"))],
+        language,
+        RED,
+    )
+
+
+def draw_deposit_confirm(screen, fonts, pokemon, language="pt"):
+    name = pokemon_display_name(pokemon)
     level = (pokemon or {}).get("level")
-    text(screen, body_f, f"Enviar {name} para o PC?", 30, HEADER_H + 60, TEXT, SCREEN_W - 60)
-    if level:
-        text(screen, small_f, f"Nivel {level}", 30, HEADER_H + 100, MUTED)
-    text(screen, small_f, "Ele ira para o primeiro slot livre.", 30, HEADER_H + 140, MUTED, SCREEN_W - 60)
-    text(screen, small_f, "Um backup do save sera criado antes.", 30, HEADER_H + 170, MUTED, SCREEN_W - 60)
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "SIM", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "NAO", 112, SCREEN_H - 48)
+    details = [t(language, "level_short", level=level)] if level else []
+    details.extend([t(language, "deposit_help"), t(language, "backup_help")])
+    draw_pokedex_prompt(
+        screen,
+        fonts,
+        screen_title(language, "deposit_title"),
+        t(language, "deposit_question", name=name),
+        details,
+        [("A", t(language, "btn_yes")), ("B", t(language, "btn_no"))],
+        language,
+        ACCENT,
+    )
 
 
-def draw_withdraw_confirm(screen, fonts, pokemon):
-    title_f, body_f, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Retirar do PC?", 14, 10)
-    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
-    rect(screen, PANEL, content, 6)
-    name = (pokemon or {}).get("display") or (pokemon or {}).get("nickname") or (pokemon or {}).get("species_name") or "Pokemon"
+def draw_withdraw_confirm(screen, fonts, pokemon, language="pt"):
+    name = pokemon_display_name(pokemon)
     box_name = (pokemon or {}).get("box_name") or ""
-    text(screen, body_f, f"Trazer {name} para a Party?", 30, HEADER_H + 60, TEXT, SCREEN_W - 60)
-    if box_name:
-        text(screen, small_f, f"De: {box_name}", 30, HEADER_H + 100, MUTED)
-    text(screen, small_f, "Sera adicionado no proximo slot livre da Party.", 30, HEADER_H + 140, MUTED, SCREEN_W - 60)
-    text(screen, small_f, "Um backup do save sera criado antes.", 30, HEADER_H + 170, MUTED, SCREEN_W - 60)
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "SIM", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "NAO", 112, SCREEN_H - 48)
+    details = [t(language, "withdraw_from", box=box_name)] if box_name else []
+    details.extend([t(language, "withdraw_help"), t(language, "backup_help")])
+    draw_pokedex_prompt(
+        screen,
+        fonts,
+        screen_title(language, "withdraw_title"),
+        t(language, "withdraw_question", name=name),
+        details,
+        [("A", t(language, "btn_yes")), ("B", t(language, "btn_no"))],
+        language,
+        ACCENT,
+    )
 
 
-def draw_info_modal(screen, fonts, title, message):
-    title_f, body_f, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, title or "Aviso", 14, 10)
-    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
-    rect(screen, PANEL, content, 6)
-    body_msg = (message or "").strip() or "Sem detalhes."
-    text(screen, body_f, body_msg[:240], content.x + 16, content.y + 30, TEXT, content.w - 32)
-    text(screen, small_f, "A troca foi cancelada. A sala continua aberta.", content.x + 16, content.bottom - 60, MUTED, content.w - 32)
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "OK", 12, SCREEN_H - 48)
+def draw_info_modal(screen, fonts, title, message, language="pt"):
+    _, body_f, small_f, tiny_f = fonts
+    display_title = translate_literal(language, title) if title else t(language, "notice")
+    layout = draw_pokedex_shell(screen, display_title or screen_title(language, "notice"))
+    left_panel = layout.left_panel
+    right_panel = layout.right_panel
+    rect(screen, PANEL, left_panel, 6)
+    rect(screen, PANEL_2, right_panel, 6)
+    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
+    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=6)
+    rect(screen, SCREEN, pygame.Rect(left_panel.x + 20, left_panel.y + 36, left_panel.w - 40, 118), 6)
+    text_center(screen, body_f, screen_title(language, "notice"), pygame.Rect(left_panel.x + 20, left_panel.y + 36, left_panel.w - 40, 118), SCREEN_TEXT)
+    body_msg = translate_literal(language, (message or "").strip()) or t(language, "no_details")
+    wrap_text(screen, small_f, body_msg, pygame.Rect(right_panel.x + 18, right_panel.y + 28, right_panel.w - 36, right_panel.h - 56), TEXT, max_lines=8)
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok"))])
 
 
-def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_idx, total, chosen_ids=None):
-    title_f, body_f, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, f"Move incompativel {current_idx + 1}/{total}", 14, 10)
+def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_idx, total, chosen_ids=None, language="pt"):
+    _, body_f, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, screen_title(language, "incompatible_move_title", current=current_idx + 1, total=total))
 
-    info_panel = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, 70)
+    info_panel = layout.left_panel
     rect(screen, PANEL, info_panel, 6)
+    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=6)
     move_name_text = removed_move.get("name") or local_move_name(removed_move.get("move_id", 0))
     if is_move_number_label(move_name_text):
         move_name_text = local_move_name(removed_move.get("move_id", 0))
-    text(screen, body_f, f"Sem suporte: {move_name_text}", info_panel.x + 14, info_panel.y + 14, ACCENT)
-    text(screen, small_f, "Escolha um substituto ou deixe vazio.", info_panel.x + 14, info_panel.y + 42, MUTED)
+    status_screen = pygame.Rect(info_panel.x + 18, info_panel.y + 30, info_panel.w - 36, 122)
+    rect(screen, SCREEN, status_screen, 6)
+    pygame.draw.rect(screen, BORDER, status_screen, 2, border_radius=6)
+    wrap_text(screen, body_f, t(language, "unsupported_move", move=move_name_text), pygame.Rect(status_screen.x + 14, status_screen.y + 26, status_screen.w - 28, 66), SCREEN_TEXT, max_lines=3)
+    wrap_text(screen, small_f, t(language, "choose_replacement"), pygame.Rect(info_panel.x + 18, status_screen.bottom + 28, info_panel.w - 36, 62), MUTED, max_lines=3)
 
     chosen_set = set(int(x) for x in (chosen_ids or []) if x)
     replacements = [
         r for r in (removed_move.get("valid_replacements") or [])
         if int(r.get("move_id") or 0) not in chosen_set
     ]
-    options = replacements + [{"move_id": 0, "name": "(deixar vazio)"}]
-    list_panel = pygame.Rect(10, HEADER_H + 90, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 100)
+    options = replacements + [{"move_id": 0, "name": t(language, "empty_move")}]
+    list_panel = layout.right_panel
     rect(screen, PANEL, list_panel, 6)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
 
-    scroll = list_scroll_offset(f"resolve_moves_{current_idx}", replacement_index, len(options))
+    visible = 6
+    row_h = 38
+    scroll = list_scroll_offset(f"resolve_moves_{current_idx}", replacement_index, len(options), visible)
     first = max(0, int(scroll) - 1)
-    last = min(len(options), int(scroll) + ROW_VISIBLE + 2)
+    last = min(len(options), int(scroll) + visible + 2)
     previous_clip = screen.get_clip()
     screen.set_clip(list_panel.inflate(-8, -8))
     for idx in range(first, last):
         option = options[idx]
-        y = list_panel.y + 14 + int((idx - scroll) * ROW_H)
-        row = pygame.Rect(list_panel.x + 8, y, list_panel.w - 24, 40)
-        color = (5, 11, 18) if idx == replacement_index else TEXT
+        y = list_panel.y + 14 + int((idx - scroll) * row_h)
+        row = pygame.Rect(list_panel.x + 8, y, list_panel.w - 24, 32)
+        color = SCREEN if idx == replacement_index else TEXT
         if idx == replacement_index:
             rect(screen, ACCENT, row, 4)
         label = option.get("name") or local_move_name(option.get("move_id", 0))
         if is_move_number_label(label):
             label = local_move_name(option.get("move_id", 0))
-        text(screen, small_f, label[:48], row.x + 10, row.y + 10, color, row.w - 20)
+        text(screen, small_f, label, row.x + 10, row.y + 7, color, row.w - 20)
     screen.set_clip(previous_clip)
-    draw_scrollbar(screen, list_panel, scroll, len(options))
+    draw_scrollbar(screen, list_panel, scroll, len(options), visible)
 
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "ESCOLHER", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "PULAR", 132, SCREEN_H - 48)
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_choose")), ("B", t(language, "btn_skip"))])
 
 
-def draw_cancel_waiting_confirm(screen, fonts):
+def draw_cancel_waiting_confirm(screen, fonts, language="pt"):
+    draw_pokedex_prompt(
+        screen,
+        fonts,
+        screen_title(language, "cancel_trade_title"),
+        t(language, "cancel_trade_question"),
+        [t(language, "save_not_modified"), t(language, "room_stays_open")],
+        [("A", t(language, "btn_yes")), ("B", t(language, "btn_no"))],
+        language,
+        WARN,
+    )
+
+
+def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon, sprite_loader, language="pt"):
     title_f, body_f, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Cancelar troca?", 14, 10)
-    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
-    rect(screen, PANEL, content, 6)
-    text(screen, body_f, "Cancelar a troca deste Pokemon?", 30, HEADER_H + 60, TEXT, SCREEN_W - 60)
-    text(screen, small_f, "Seu save NAO sera modificado.", 30, HEADER_H + 110, MUTED, SCREEN_W - 60)
-    text(screen, small_f, "A sala continua aberta - voce escolhera outro Pokemon.", 30, HEADER_H + 140, MUTED, SCREEN_W - 60)
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "SIM", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "NAO", 112, SCREEN_H - 48)
+    del title_f
+    layout = draw_pokedex_shell(screen, screen_title(language, "confirm_trade"))
 
-
-def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon, sprite_loader):
-    title_f, body_f, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Confirmar Troca", 14, 10)
-
-    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
-    rect(screen, PANEL, content, 6)
-
-    mine = my_pokemon.get("display") or my_pokemon.get("display_summary") or "???"
-    peer = opponent_pokemon.get("display_summary") or opponent_pokemon.get("nickname") or opponent_pokemon.get("species_name") or "???"
+    mine = my_pokemon.get("name") or my_pokemon.get("nickname") or my_pokemon.get("species_name") or my_pokemon.get("display") or my_pokemon.get("display_summary") or "???"
+    peer = opponent_pokemon.get("nickname") or opponent_pokemon.get("species_name") or opponent_pokemon.get("name") or opponent_pokemon.get("display_summary") or "???"
 
     my_entry = dict(my_pokemon or {})
     my_entry.setdefault("generation", int(my_pokemon.get("generation") or 0))
@@ -1222,42 +2231,61 @@ def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon, sprite_loade
     my_sprite, my_loading, _ = sprite_loader.snapshot_for(my_entry)
     peer_sprite, peer_loading, _ = sprite_loader.snapshot_for(peer_entry)
 
-    left_card = pygame.Rect(26, HEADER_H + 44, 286, 222)
-    right_card = pygame.Rect(328, HEADER_H + 44, 286, 222)
-    rect(screen, PANEL_2, left_card, 8)
-    rect(screen, PANEL_2, right_card, 8)
-    text(screen, small_f, "Seu Pokemon", left_card.x + 12, left_card.y + 10, OK)
-    text(screen, small_f, "Oponente", right_card.x + 12, right_card.y + 10, ACCENT)
+    left_card = layout.left_panel
+    right_card = layout.right_panel
+    rect(screen, PANEL, left_card, 6)
+    rect(screen, PANEL, right_card, 6)
+    pygame.draw.rect(screen, BORDER, left_card, 2, border_radius=6)
+    pygame.draw.rect(screen, BORDER, right_card, 2, border_radius=6)
 
-    my_sprite_box = pygame.Rect(left_card.x + 78, left_card.y + 36, 128, 128)
-    peer_sprite_box = pygame.Rect(right_card.x + 78, right_card.y + 36, 128, 128)
+    header_h = 34
+    rect(screen, PANEL_2, pygame.Rect(left_card.x + 8, left_card.y + 8, left_card.w - 16, header_h), 5)
+    rect(screen, SCREEN, pygame.Rect(right_card.x + 8, right_card.y + 8, right_card.w - 16, header_h), 5)
+    text(screen, small_f, t(language, "your_pokemon"), left_card.x + 18, left_card.y + 17, OK, left_card.w - 36)
+    text(screen, small_f, t(language, "opponent"), right_card.x + 18, right_card.y + 17, SCREEN_TEXT, right_card.w - 36)
+
+    my_sprite_box = pygame.Rect(left_card.centerx - 58, left_card.y + 58, 116, 116)
+    peer_sprite_box = pygame.Rect(right_card.centerx - 58, right_card.y + 58, 116, 116)
     rect(screen, BG, my_sprite_box, 8)
     rect(screen, BG, peer_sprite_box, 8)
+    pygame.draw.rect(screen, BORDER, my_sprite_box, 2, border_radius=8)
+    pygame.draw.rect(screen, BORDER, peer_sprite_box, 2, border_radius=8)
     if my_sprite:
-        scaled = pygame.transform.smoothscale(my_sprite, (108, 108))
+        scaled = pygame.transform.smoothscale(my_sprite, (96, 96))
         screen.blit(scaled, (my_sprite_box.x + 10, my_sprite_box.y + 10))
     elif my_loading:
-        text(screen, tiny_f, "Carregando...", my_sprite_box.x + 18, my_sprite_box.y + 56, MUTED)
+        wrap_text(screen, tiny_f, t(language, "loading_sprite"), pygame.Rect(my_sprite_box.x + 8, my_sprite_box.y + 42, my_sprite_box.w - 16, 40), MUTED, max_lines=2)
     else:
-        text(screen, tiny_f, "Sem sprite", my_sprite_box.x + 28, my_sprite_box.y + 56, MUTED)
+        text_center(screen, tiny_f, t(language, "no_sprite"), my_sprite_box, MUTED)
     if peer_sprite:
-        scaled = pygame.transform.smoothscale(peer_sprite, (108, 108))
+        scaled = pygame.transform.smoothscale(peer_sprite, (96, 96))
         screen.blit(scaled, (peer_sprite_box.x + 10, peer_sprite_box.y + 10))
     elif peer_loading:
-        text(screen, tiny_f, "Carregando...", peer_sprite_box.x + 18, peer_sprite_box.y + 56, MUTED)
+        wrap_text(screen, tiny_f, t(language, "loading_sprite"), pygame.Rect(peer_sprite_box.x + 8, peer_sprite_box.y + 42, peer_sprite_box.w - 16, 40), MUTED, max_lines=2)
     else:
-        text(screen, tiny_f, "Sem sprite", peer_sprite_box.x + 28, peer_sprite_box.y + 56, MUTED)
+        text_center(screen, tiny_f, t(language, "no_sprite"), peer_sprite_box, MUTED)
 
-    text(screen, tiny_f, mine, left_card.x + 12, left_card.y + 176, TEXT, left_card.w - 24)
-    text(screen, tiny_f, peer, right_card.x + 12, right_card.y + 176, TEXT, right_card.w - 24)
+    text_center(screen, small_f, mine, pygame.Rect(left_card.x + 12, left_card.y + 186, left_card.w - 24, 24), TEXT)
+    text_center(screen, small_f, peer, pygame.Rect(right_card.x + 12, right_card.y + 186, right_card.w - 24, 24), TEXT)
     my_level = int(my_pokemon.get("level") or 0)
     peer_level = int(opponent_pokemon.get("level") or 0)
-    text(screen, tiny_f, f"Nivel {my_level}" if my_level else "Nivel ?", left_card.x + 12, left_card.y + 198, MUTED)
-    text(screen, tiny_f, f"Nivel {peer_level}" if peer_level else "Nivel ?", right_card.x + 12, right_card.y + 198, MUTED)
+    text_center(screen, tiny_f, t(language, "level_short", level=my_level) if my_level else t(language, "level_unknown"), pygame.Rect(left_card.x + 12, left_card.y + 214, left_card.w - 24, 20), MUTED)
+    text_center(screen, tiny_f, t(language, "level_short", level=peer_level) if peer_level else t(language, "level_unknown"), pygame.Rect(right_card.x + 12, right_card.y + 214, right_card.w - 24, 20), MUTED)
 
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "CONFIRMAR", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "CANCELAR", 112, SCREEN_H - 48)
+    arrow_y = left_card.y + 146
+    pygame.draw.circle(screen, BORDER, (SCREEN_W // 2, arrow_y), 18)
+    pygame.draw.circle(screen, ACCENT, (SCREEN_W // 2, arrow_y), 14)
+    pygame.draw.polygon(screen, SCREEN, [
+        (SCREEN_W // 2 - 7, arrow_y - 6),
+        (SCREEN_W // 2 + 4, arrow_y - 6),
+        (SCREEN_W // 2 + 4, arrow_y - 12),
+        (SCREEN_W // 2 + 13, arrow_y),
+        (SCREEN_W // 2 + 4, arrow_y + 12),
+        (SCREEN_W // 2 + 4, arrow_y + 6),
+        (SCREEN_W // 2 - 7, arrow_y + 6),
+    ])
+
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_confirm")), ("B", t(language, "btn_cancel"))])
 
 
 def evolution_sprite_entry(evolution, side):
@@ -1315,8 +2343,9 @@ def _draw_scaled_full(screen, sprite, center, width, height, alpha=255):
     screen.blit(scaled, (center[0] - int(width) // 2, center[1] - int(height) // 2))
 
 
-def draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, final_form="loop"):
+def draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, final_form="loop", language="pt", stage=None):
     _, _, small_f, tiny_f = fonts
+    tr = globals()["t"]
     source = evolution_sprite_entry(evolution, "source")
     target = evolution_sprite_entry(evolution, "target")
     sprite_loader.request_for(source)
@@ -1325,8 +2354,11 @@ def draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, fin
     target_sprite, target_loading, _ = sprite_loader.snapshot_for(target)
 
     # Frame estilo Game Boy: bezel -> tela escura -> textbox
-    stage_w, stage_h = 360, 210
-    stage = pygame.Rect((SCREEN_W - stage_w) // 2, HEADER_H + 16, stage_w, stage_h)
+    if stage is None:
+        stage_w, stage_h = 360, 196
+        stage = pygame.Rect((SCREEN_W - stage_w) // 2, 104, stage_w, stage_h)
+    else:
+        stage = pygame.Rect(stage)
     # sombra
     shadow = pygame.Surface((stage.w + 8, stage.h + 8), pygame.SRCALPHA)
     pygame.draw.rect(shadow, (0, 0, 0, 100), shadow.get_rect(), border_radius=16)
@@ -1352,11 +2384,11 @@ def draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, fin
         cycle = min(1.0, max(0.0, frame / 180.0))
 
     cx, cy = sprite_area.center
-    base_size = 132
+    base_size = min(132, max(82, min(sprite_area.w, sprite_area.h) - 8))
 
     if not (source_sprite or target_sprite):
-        label = "Carregando sprites..." if source_loading or target_loading else "Sem sprite"
-        text(screen, small_f, label, sprite_area.x + 80, sprite_area.centery - 8, MUTED)
+        label = tr(language, "loading_sprites") if source_loading or target_loading else tr(language, "no_sprite")
+        text_center(screen, small_f, label, sprite_area, MUTED)
     else:
         if cycle <= 0.10:
             # idle: source com leve bob
@@ -1403,101 +2435,126 @@ def draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, fin
     source_name = source["species_name"]
     target_name = target["species_name"]
     if cycle < 0.25:
-        msg = f"{source_name} esta evoluindo!"
+        msg = f"{source_name} esta evoluindo!" if language == "pt" else f"{source_name} is evolving!" if language == "en" else f"{source_name} esta evolucionando!"
     elif cycle < 0.85:
         # texto pisca durante a fase de silhouette
-        msg = "???" if int(frame / 6) % 2 == 0 else f"{source_name} esta evoluindo!"
+        evolving_msg = f"{source_name} esta evoluindo!" if language == "pt" else f"{source_name} is evolving!" if language == "en" else f"{source_name} esta evolucionando!"
+        msg = "???" if int(frame / 6) % 2 == 0 else evolving_msg
     else:
-        msg = f"{source_name} evoluiu em {target_name}!"
+        msg = f"{source_name} evoluiu em {target_name}!" if language == "pt" else f"{source_name} evolved into {target_name}!" if language == "en" else f"{source_name} evoluciono a {target_name}!"
     text(screen, tiny_f, msg, textbox.x + 8, textbox.y + 8, (12, 18, 32), textbox.w - 16)
 
 
-def draw_evolution_cancel_prompt(screen, fonts, evolution, sprite_loader, frame):
-    title_f, body_f, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Evolucao por Troca", 14, 10)
+def draw_evolution_cancel_prompt(screen, fonts, evolution, sprite_loader, frame, language="pt"):
+    _, body_f, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, screen_title(language, "trade_evolution"))
 
-    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
-    rect(screen, PANEL, content, 6)
+    stage_panel = layout.left_panel
+    decision_panel = layout.right_panel
+    rect(screen, PANEL, stage_panel, 6)
+    rect(screen, PANEL_2, decision_panel, 6)
+    pygame.draw.rect(screen, BORDER, stage_panel, 2, border_radius=6)
+    pygame.draw.rect(screen, BORDER, decision_panel, 2, border_radius=6)
     source = evolution.get("source_name", "Pokemon")
     target = evolution.get("target_name", "evolucao")
-    draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame)
-    text(screen, body_f, f"{source} quer evoluir para {target}.", 30, HEADER_H + 240, TEXT, SCREEN_W - 60)
-    text(screen, small_f, "Deseja cancelar essa evolucao?", 30, HEADER_H + 274, WARN, SCREEN_W - 60)
-    text(screen, tiny_f, "B deixa a animacao terminar na forma evoluida.", 30, HEADER_H + 308, MUTED, SCREEN_W - 60)
 
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "DEIXAR EVOLUIR", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "CANCELAR EVO", 172, SCREEN_H - 48)
+    stage = pygame.Rect(stage_panel.x + 14, stage_panel.y + 20, stage_panel.w - 28, 180)
+    draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, language=language, stage=stage)
+    text_center(screen, tiny_f, screen_title(language, "trade_evolution"), pygame.Rect(stage_panel.x + 18, stage.bottom + 18, stage_panel.w - 36, 22), MUTED)
+
+    rect(screen, SCREEN, pygame.Rect(decision_panel.x + 18, decision_panel.y + 22, decision_panel.w - 36, 48), 5)
+    text_center(screen, small_f, source, pygame.Rect(decision_panel.x + 18, decision_panel.y + 22, decision_panel.w - 36, 48), SCREEN_TEXT)
+    wrap_text(screen, body_f, t(language, "wants_evolve", source=source, target=target), pygame.Rect(decision_panel.x + 18, decision_panel.y + 92, decision_panel.w - 36, 70), TEXT, max_lines=3)
+    wrap_text(screen, small_f, t(language, "cancel_evolution_question"), pygame.Rect(decision_panel.x + 18, decision_panel.y + 172, decision_panel.w - 36, 48), WARN, max_lines=2)
+    wrap_text(screen, tiny_f, t(language, "cancel_evolution_hint"), pygame.Rect(decision_panel.x + 18, decision_panel.y + 226, decision_panel.w - 36, 36), MUTED, max_lines=2)
+
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_let_evolve")), ("B", t(language, "btn_cancel_evo"))])
 
 
-def draw_evolution_cancel_confirm(screen, fonts, evolution, sprite_loader, frame):
-    title_f, body_f, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Confirmar Cancelamento", 14, 10)
+def draw_evolution_cancel_confirm(screen, fonts, evolution, sprite_loader, frame, language="pt"):
+    _, body_f, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, screen_title(language, "confirm_cancel"))
 
-    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
-    rect(screen, PANEL, content, 6)
+    stage_panel = layout.left_panel
+    decision_panel = layout.right_panel
+    rect(screen, PANEL, stage_panel, 6)
+    rect(screen, PANEL_2, decision_panel, 6)
+    pygame.draw.rect(screen, BORDER, stage_panel, 2, border_radius=6)
+    pygame.draw.rect(screen, BORDER, decision_panel, 2, border_radius=6)
     source = evolution.get("source_name", "Pokemon")
     target = evolution.get("target_name", "evolucao")
-    draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, final_form="source")
-    text(screen, body_f, "Tem certeza?", 30, HEADER_H + 240, WARN, SCREEN_W - 60)
-    text(screen, small_f, f"Isso ira interromper a evolucao de {source} para {target}.", 30, HEADER_H + 274, TEXT, SCREEN_W - 60)
-    text(screen, tiny_f, "A troca continua, mas o Pokemon recebido fica sem evoluir.", 30, HEADER_H + 308, MUTED, SCREEN_W - 60)
+    stage = pygame.Rect(stage_panel.x + 14, stage_panel.y + 20, stage_panel.w - 28, 180)
+    draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, final_form="source", language=language, stage=stage)
+    text_center(screen, tiny_f, screen_title(language, "confirm_cancel"), pygame.Rect(stage_panel.x + 18, stage.bottom + 18, stage_panel.w - 36, 22), MUTED)
 
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "NAO, DEIXAR EVOLUIR", 12, SCREEN_H - 48)
-    button(screen, tiny_f, "B", "SIM, INTERROMPER", 250, SCREEN_H - 48)
+    rect(screen, SCREEN, pygame.Rect(decision_panel.x + 18, decision_panel.y + 22, decision_panel.w - 36, 48), 5)
+    text_center(screen, body_f, t(language, "are_you_sure"), pygame.Rect(decision_panel.x + 18, decision_panel.y + 22, decision_panel.w - 36, 48), WARN)
+    wrap_text(screen, small_f, t(language, "cancel_evolution_confirm", source=source, target=target), pygame.Rect(decision_panel.x + 18, decision_panel.y + 92, decision_panel.w - 36, 82), TEXT, max_lines=4)
+    wrap_text(screen, tiny_f, t(language, "cancel_evolution_result"), pygame.Rect(decision_panel.x + 18, decision_panel.y + 196, decision_panel.w - 36, 50), MUTED, max_lines=3)
 
-
-def draw_trading(screen, fonts, status):
-    title_f, body_f, _, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Trading", 14, 10)
-    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
-    rect(screen, PANEL, content, 6)
-    text(screen, body_f, status or "Processando...", 30, HEADER_H + 150, MUTED, SCREEN_W - 60)
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    text(screen, tiny_f, "Processando...", 250, SCREEN_H - 45, MUTED)
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_no_let_evolve")), ("B", t(language, "btn_yes_interrupt"))])
 
 
-def draw_trade_result(screen, fonts, success, data):
-    title_f, body_f, small_f, tiny_f = fonts
-    screen.fill(BG)
-    rect(screen, PANEL, pygame.Rect(0, 0, SCREEN_W, HEADER_H))
-    text(screen, title_f, "Resultado", 14, 10)
-    content = pygame.Rect(10, HEADER_H + 10, SCREEN_W - 20, SCREEN_H - HEADER_H - FOOTER_H - 20)
-    rect(screen, PANEL, content, 6)
+def draw_trading(screen, fonts, status, language="pt"):
+    _, body_f, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, screen_title(language, "trading"))
+    left_panel = layout.left_panel
+    right_panel = layout.right_panel
+    rect(screen, PANEL, left_panel, 6)
+    rect(screen, PANEL_2, right_panel, 6)
+    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
+    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=6)
+    status_screen = pygame.Rect(left_panel.x + 18, left_panel.y + 34, left_panel.w - 36, 122)
+    rect(screen, SCREEN, status_screen, 6)
+    pygame.draw.rect(screen, BORDER, status_screen, 2, border_radius=6)
+    wrap_text(screen, body_f, translate_literal(language, status) or t(language, "processing"), pygame.Rect(status_screen.x + 16, status_screen.y + 30, status_screen.w - 32, 64), SCREEN_TEXT, max_lines=3)
+    text_center(screen, small_f, t(language, "processing"), pygame.Rect(right_panel.x + 18, right_panel.y + 34, right_panel.w - 36, 42), TEXT)
+    for idx in range(6):
+        y = right_panel.y + 98 + idx * 24
+        bar_w = int((right_panel.w - 54) * (0.45 + (idx % 3) * 0.2))
+        rect(screen, ACCENT if idx % 2 else OK, pygame.Rect(right_panel.x + 28, y, bar_w, 10), 3)
+    draw_footer_bar(screen)
+    text_center(screen, tiny_f, t(language, "processing"), pygame.Rect(0, SCREEN_H - 46, SCREEN_W, 24), MUTED)
+
+
+def draw_trade_result(screen, fonts, success, data, language="pt"):
+    _, body_f, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, screen_title(language, "result"))
+    left_panel = layout.left_panel
+    right_panel = layout.right_panel
+    rect(screen, PANEL, left_panel, 6)
+    rect(screen, PANEL_2, right_panel, 6)
+    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
+    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=6)
+    status_screen = pygame.Rect(left_panel.x + 18, left_panel.y + 34, left_panel.w - 36, 120)
+    rect(screen, SCREEN, status_screen, 6)
+    pygame.draw.rect(screen, BORDER, status_screen, 2, border_radius=6)
 
     if success:
-        text(screen, body_f, "Trade Completo!", 50, HEADER_H + 100, OK)
+        text_center(screen, body_f, t(language, "trade_complete"), status_screen, SCREEN_TEXT)
         peer = data.get("peer", {}) if isinstance(data, dict) else {}
         received = data.get("received", {}) if isinstance(data, dict) else {}
         evolution = received.get("trade_evolution", {}) if isinstance(received, dict) else {}
         pokemon_display = (
             f"{evolution.get('source_name')} -> {evolution.get('target_name')}"
             if evolution.get("evolved")
-            else f"{evolution.get('source_name')} sem evoluir"
+            else t(language, "without_evolving", pokemon=evolution.get("source_name"))
             if evolution.get("cancelled")
             else received.get("display_summary") or peer.get("display_summary") or peer.get("nickname") or peer.get("species_name") or "Pokemon"
         )
         if isinstance(data, dict) and (data.get("backup_a") or data.get("backup_b")):
-            backup_a = Path(data.get("backup_a", "")).name if data.get("backup_a") else "nenhum"
-            backup_b = Path(data.get("backup_b", "")).name if data.get("backup_b") else "nenhum"
+            backup_a = Path(data.get("backup_a", "")).name if data.get("backup_a") else t(language, "none")
+            backup_b = Path(data.get("backup_b", "")).name if data.get("backup_b") else t(language, "none")
             backup_name = f"{backup_a} / {backup_b}"
         else:
-            backup_name = Path(data.get("backup", "")).name if isinstance(data, dict) and data.get("backup") else "nenhum"
-        text(screen, small_f, f"Recebido: {pokemon_display}", 50, HEADER_H + 170, TEXT)
-        text(screen, tiny_f, f"Backup: {backup_name}", 50, HEADER_H + 210, MUTED, SCREEN_W - 100)
+            backup_name = Path(data.get("backup", "")).name if isinstance(data, dict) and data.get("backup") else t(language, "none")
+        wrap_text(screen, small_f, t(language, "received", pokemon=pokemon_display), pygame.Rect(right_panel.x + 18, right_panel.y + 36, right_panel.w - 36, 80), TEXT, max_lines=3)
+        wrap_text(screen, tiny_f, t(language, "backup", backup=backup_name), pygame.Rect(right_panel.x + 18, right_panel.y + 132, right_panel.w - 36, 86), MUTED, max_lines=4)
     else:
-        text(screen, body_f, "Erro ou Cancelado", 50, HEADER_H + 100, RED)
-        text(screen, small_f, str(data or "Trade nao completado")[:70], 50, HEADER_H + 180, RED, SCREEN_W - 100)
+        text_center(screen, body_f, t(language, "error_cancelled"), status_screen, SCREEN_TEXT)
+        wrap_text(screen, small_f, str(data or t(language, "trade_not_complete"))[:240], pygame.Rect(right_panel.x + 18, right_panel.y + 36, right_panel.w - 36, 152), RED, max_lines=6)
 
-    rect(screen, PANEL, pygame.Rect(0, SCREEN_H - FOOTER_H, SCREEN_W, FOOTER_H))
-    button(screen, tiny_f, "A", "OK", 12, SCREEN_H - 48)
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok"))])
 
 
 def reset_flow_state(state):
@@ -1547,7 +2604,7 @@ def main():
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("PokeCable Room")
     clock = pygame.time.Clock()
-    fonts = (font(22, True), font(18), font(16), font(14))
+    fonts = (font(20, True), font(16), font(14), font(12))
     logger.info("Boot timing: display + fonts %.3fs", time.perf_counter() - display_start)
 
     saves_start = time.perf_counter()
@@ -1577,6 +2634,10 @@ def main():
     combo_state = {"pressed": set(), "last_down": {}, "suppress_until": 0.0}
     action_state = {"last_action": None, "last_time": 0.0}
     nav_hold = {"direction": None, "started": 0.0, "last_fire": 0.0}
+    input_source_actions = {}
+    pressed_input_actions = {}
+    blocked_input_actions = set()
+    input_guard_until = 0.0
     pending_removed_moves = []
     resolve_current_idx = 0
     resolve_replacement_idx = 0
@@ -1584,6 +2645,7 @@ def main():
     info_modal_data = {"title": "", "message": ""}
     pending_deposit_idx = -1
     pending_withdraw_pokemon = None
+    pending_pc_return_screen = "select_pokemon"
     evolution_anim_start = None
     self_trade_save_a = None
     self_trade_save_b = None
@@ -1591,7 +2653,6 @@ def main():
     self_trade_pokemon_b = None
     self_trade_context = {}
     self_trade_pending_decision = ""
-    evolution_prompt_input_unlock_until = 0.0
     self_trade_decisions = {
         "cancel_evolution_to_a": False,
         "cancel_evolution_to_b": False,
@@ -1604,14 +2665,67 @@ def main():
     }
     sprite_loader = SpriteLoader(state.server_url)
 
+    def clear_input_source(source):
+        action = input_source_actions.pop(source, None)
+        if not action:
+            return
+        sources = pressed_input_actions.get(action)
+        if sources:
+            sources.discard(source)
+            if not sources:
+                pressed_input_actions.pop(action, None)
+                blocked_input_actions.discard(action)
+
+    def set_input_source(source, action):
+        if action not in GUARDED_INPUT_ACTIONS:
+            clear_input_source(source)
+            return
+        previous = input_source_actions.get(source)
+        if previous == action:
+            return
+        clear_input_source(source)
+        input_source_actions[source] = action
+        pressed_input_actions.setdefault(action, set()).add(source)
+
+    def track_input_event(event, mapped_action):
+        if event.type == pygame.KEYDOWN:
+            set_input_source(f"key:{event.key}", mapped_action)
+        elif event.type == pygame.KEYUP:
+            clear_input_source(f"key:{event.key}")
+        elif event.type == pygame.JOYBUTTONDOWN:
+            set_input_source(f"joy:{event.button}", mapped_action)
+        elif event.type == pygame.JOYBUTTONUP:
+            clear_input_source(f"joy:{event.button}")
+        elif event.type == pygame.JOYHATMOTION:
+            source = f"hat:{getattr(event, 'hat', 0)}"
+            if mapped_action in ("up", "down", "left", "right"):
+                set_input_source(source, mapped_action)
+            else:
+                clear_input_source(source)
+        elif event.type == pygame.JOYAXISMOTION and event.axis in (AXIS_X, AXIS_Y):
+            source = f"axis:{event.axis}"
+            if abs(event.value) < AXIS_THRESHOLD:
+                clear_input_source(source)
+            elif mapped_action in ("up", "down", "left", "right"):
+                set_input_source(source, mapped_action)
+
+    def input_action_blocked(action):
+        if action not in GUARDED_INPUT_ACTIONS:
+            return False
+        return action in blocked_input_actions or time.monotonic() < input_guard_until
+
     def switch_screen(new_screen, reason):
-        nonlocal current_screen, evolution_prompt_input_unlock_until
+        nonlocal current_screen, input_guard_until
         if current_screen != new_screen:
             logger.info("SCREEN %s -> %s (%s)", current_screen, new_screen, reason)
+            blocked_input_actions.update(pressed_input_actions.keys())
+            input_guard_until = max(input_guard_until, time.monotonic() + INPUT_TRANSITION_GUARD_SECONDS)
+            nav_hold["direction"] = None
+            nav_hold["started"] = 0.0
+            nav_hold["last_fire"] = 0.0
+            action_state["last_action"] = None
+            action_state["last_time"] = 0.0
         current_screen = new_screen
-        if new_screen in ("evolution_cancel_prompt", "evolution_cancel_confirm"):
-            # Prevent residual A/B input from the previous screen from auto-confirming.
-            evolution_prompt_input_unlock_until = time.monotonic() + 0.25
 
     def reset_self_trade_state():
         nonlocal self_trade_save_a, self_trade_save_b, self_trade_pokemon_a, self_trade_pokemon_b
@@ -1641,17 +2755,36 @@ def main():
         except OSError:
             return str(Path(path_a).absolute()) == str(Path(path_b).absolute())
 
-    def load_self_trade_party(save_path, *, target_save_path=None, require_compatible_to_target=False):
+    def load_self_trade_source(save_path, source="party", *, target_save_path=None, require_compatible_to_target=False):
         nonlocal trade_status
         state.selected_save = Path(save_path)
-        state.pokemon_source = "party"
+        state.pokemon_source = source
         state.selected_pokemon = None
-        state.get_pokemon_list("party", enrich=False)
-        base_status = f"Party: {Path(save_path).name}"
+        state.get_pokemon_list(source, enrich=False)
+        source_label = t(state.language, "party") if source == "party" else t(state.language, "pc")
+        base_status = f"{source_label}: {Path(save_path).name}"
         if not require_compatible_to_target or not target_save_path or not self_trade_pokemon_a:
             trade_status = base_status
             return
         trade_status = base_status
+
+    def load_self_trade_party(save_path, *, target_save_path=None, require_compatible_to_target=False):
+        load_self_trade_source(
+            save_path,
+            "party",
+            target_save_path=target_save_path,
+            require_compatible_to_target=require_compatible_to_target,
+        )
+
+    def self_trade_source_label(slot, save_path):
+        source = state.pokemon_source if state.pokemon_source in ("party", "boxes") else "party"
+        if source == "party":
+            key = "party_save_named" if save_path else "party_save"
+        else:
+            key = "pc_save_named" if save_path else "pc_save"
+        if save_path:
+            return t(state.language, key, slot=slot, name=Path(save_path).name)
+        return t(state.language, key, slot=slot)
 
     def advance_self_trade_prompts():
         nonlocal pending_removed_moves, resolve_current_idx, resolve_replacement_idx, resolved_moves_choices
@@ -1755,11 +2888,12 @@ def main():
                 running = False
                 continue
             mapped = event_to_action(event, axis_state, combo_state)
+            track_input_event(event, mapped)
             if event.type == pygame.JOYHATMOTION:
                 hat_x, hat_y = event.value
                 if hat_x == 0 and hat_y == 0:
                     nav_hold["direction"] = None
-                elif mapped in ("up", "down", "left", "right"):
+                elif mapped in ("up", "down", "left", "right") and not input_action_blocked(mapped):
                     now = time.monotonic()
                     nav_hold["direction"] = mapped
                     nav_hold["started"] = now
@@ -1769,11 +2903,14 @@ def main():
                     if (event.axis == AXIS_Y and nav_hold["direction"] in ("up", "down")) or \
                        (event.axis == AXIS_X and nav_hold["direction"] in ("left", "right")):
                         nav_hold["direction"] = None
-                elif mapped in ("up", "down", "left", "right"):
+                elif mapped in ("up", "down", "left", "right") and not input_action_blocked(mapped):
                     now = time.monotonic()
                     nav_hold["direction"] = mapped
                     nav_hold["started"] = now
                     nav_hold["last_fire"] = now
+            if input_action_blocked(mapped):
+                logger.debug("Input action blocked after screen transition: %s", mapped)
+                mapped = None
             mapped = debounce_action(mapped, action_state)
             if mapped and action is None:
                 action = mapped
@@ -1782,10 +2919,14 @@ def main():
             now = time.monotonic()
             if now - nav_hold["started"] >= NAV_REPEAT_DELAY and \
                now - nav_hold["last_fire"] >= NAV_REPEAT_INTERVAL:
-                action = nav_hold["direction"]
-                nav_hold["last_fire"] = now
-                action_state["last_action"] = action
-                action_state["last_time"] = now
+                repeated_action = nav_hold["direction"]
+                if input_action_blocked(repeated_action):
+                    nav_hold["direction"] = None
+                else:
+                    action = repeated_action
+                    nav_hold["last_fire"] = now
+                    action_state["last_action"] = action
+                    action_state["last_time"] = now
 
         try:
             while True:
@@ -1832,6 +2973,10 @@ def main():
                     switch_screen("trade_result", "error")
         except queue.Empty:
             pass
+
+        if action and input_action_blocked(action):
+            logger.debug("Input action blocked on active screen: %s", action)
+            action = None
 
         in_room_selection = bool(trade_thread and trade_thread.is_alive() and state.room_name)
         if action:
@@ -1884,7 +3029,7 @@ def main():
                     state.language = order[(index + direction) % len(order)]
                     config_dirty = True
                 else:
-                    state.theme = "pokedex_white" if state.theme == "pokedex_dark" else "pokedex_dark"
+                    state.theme = next_theme(state.theme, -1 if action == "left" else 1)
                     apply_theme(state.theme)
                     config_dirty = True
             elif action == "select":
@@ -1973,20 +3118,57 @@ def main():
             elif action == "down":
                 menu_index = min(max(0, len(state.pokemon_list) - 1), menu_index + 1)
             elif action == "select" and state.pokemon_list:
-                self_trade_pokemon_a = state.pokemon_list[menu_index]
-                logger.info("Self trade pokemon A selected: %s", self_trade_pokemon_a.get("location"))
-                try:
-                    load_self_trade_party(self_trade_save_b)
-                    switch_screen("self_select_pokemon_b", "self_pokemon_a_selected")
-                    menu_index = 0
-                except Exception as exc:
-                    logger.exception("Failed to load self trade party B: %s", exc)
+                if state.pokemon_source != "party":
                     info_modal_data = {
-                        "title": "Falha ao carregar Party",
-                        "message": str(exc),
-                        "return_screen": "self_select_save_b",
+                        "title": "Pokemon esta no PC",
+                        "message": "Pressione X para retirar este Pokemon para a Party antes de troca-lo.",
+                        "return_screen": "self_select_pokemon_a",
                     }
-                    switch_screen("info_modal", "self_party_b_failed")
+                    switch_screen("info_modal", "self_select_a_from_pc_blocked")
+                else:
+                    self_trade_pokemon_a = state.pokemon_list[menu_index]
+                    logger.info("Self trade pokemon A selected: %s", self_trade_pokemon_a.get("location"))
+                    try:
+                        load_self_trade_party(self_trade_save_b)
+                        switch_screen("self_select_pokemon_b", "self_pokemon_a_selected")
+                        menu_index = 0
+                    except Exception as exc:
+                        logger.exception("Failed to load self trade party B: %s", exc)
+                        info_modal_data = {
+                            "title": "Falha ao carregar Party",
+                            "message": str(exc),
+                            "return_screen": "self_select_save_b",
+                        }
+                        switch_screen("info_modal", "self_party_b_failed")
+            elif action == "x" and state.pokemon_list:
+                if state.trade_phase not in ("idle", "waiting"):
+                    trade_status = "Aguarde a troca terminar antes de mover."
+                elif state.pokemon_source == "party":
+                    state.selected_save = Path(self_trade_save_a)
+                    pending_deposit_idx = menu_index
+                    pending_pc_return_screen = "self_select_pokemon_a"
+                    logger.info("Self trade deposit requested for save A party slot %s", pending_deposit_idx)
+                    switch_screen("deposit_confirm", "self_deposit_a_request")
+                else:
+                    state.selected_save = Path(self_trade_save_a)
+                    pending_withdraw_pokemon = state.pokemon_list[menu_index]
+                    pending_pc_return_screen = "self_select_pokemon_a"
+                    logger.info("Self trade withdraw requested for save A %s", pending_withdraw_pokemon.get("location"))
+                    switch_screen("withdraw_confirm", "self_withdraw_a_request")
+            elif action == "y":
+                new_source = "boxes" if state.pokemon_source == "party" else "party"
+                try:
+                    load_self_trade_source(self_trade_save_a, new_source)
+                    menu_index = 0
+                    logger.info("Self trade save A toggled source -> %s (%s entries)", new_source, len(state.pokemon_list))
+                except SaveError as exc:
+                    logger.error("Self trade save A source toggle failed: %s", exc)
+                    info_modal_data = {
+                        "title": "Erro",
+                        "message": str(exc),
+                        "return_screen": "self_select_pokemon_a",
+                    }
+                    switch_screen("info_modal", "self_source_a_toggle_failed")
             elif action == "back":
                 self_trade_pokemon_a = None
                 switch_screen("self_select_save_b", "back_from_self_pokemon_a")
@@ -1998,52 +3180,89 @@ def main():
             elif action == "down":
                 menu_index = min(max(0, len(state.pokemon_list) - 1), menu_index + 1)
             elif action == "select" and state.pokemon_list:
-                self_trade_pokemon_b = state.pokemon_list[menu_index]
-                logger.info("Self trade pokemon B selected: %s", self_trade_pokemon_b.get("location"))
-                try:
-                    preview = validate_self_trade_candidate(
-                        state,
-                        source_save_path=Path(self_trade_save_b),
-                        source_pokemon_location=str(self_trade_pokemon_b.get("location") or "party:0"),
-                        target_save_path=Path(self_trade_save_a),
-                    )
-                except Exception as exc:
-                    logger.exception("Self trade candidate validation failed: %s", exc)
+                if state.pokemon_source != "party":
                     info_modal_data = {
-                        "title": "Falha na validacao",
+                        "title": "Pokemon esta no PC",
+                        "message": "Pressione X para retirar este Pokemon para a Party antes de troca-lo.",
+                        "return_screen": "self_select_pokemon_b",
+                    }
+                    switch_screen("info_modal", "self_select_b_from_pc_blocked")
+                else:
+                    self_trade_pokemon_b = state.pokemon_list[menu_index]
+                    logger.info("Self trade pokemon B selected: %s", self_trade_pokemon_b.get("location"))
+                    try:
+                        preview = validate_self_trade_candidate(
+                            state,
+                            source_save_path=Path(self_trade_save_b),
+                            source_pokemon_location=str(self_trade_pokemon_b.get("location") or "party:0"),
+                            target_save_path=Path(self_trade_save_a),
+                        )
+                    except Exception as exc:
+                        logger.exception("Self trade candidate validation failed: %s", exc)
+                        info_modal_data = {
+                            "title": "Falha na validacao",
+                            "message": str(exc),
+                            "return_screen": "self_select_pokemon_b",
+                        }
+                        switch_screen("info_modal", "self_candidate_validation_failed")
+                        continue
+                    if not preview.get("compatible"):
+                        message = str(preview.get("blocking_message") or "Pokemon incompativel com o save de destino.")
+                        info_modal_data = {
+                            "title": "Pokemon incompativel",
+                            "message": message,
+                            "return_screen": "self_select_pokemon_b",
+                        }
+                        switch_screen("info_modal", "self_candidate_incompatible")
+                        continue
+                    trade_status = "Validando troca local..."
+                    switch_screen("trading", "self_trade_preflight")
+                    try:
+                        self_trade_context = prepare_self_trade(
+                            state,
+                            self_trade_save_a,
+                            str(self_trade_pokemon_a.get("location") or "party:0"),
+                            self_trade_save_b,
+                            str(self_trade_pokemon_b.get("location") or "party:0"),
+                        )
+                        advance_self_trade_prompts()
+                    except Exception as exc:
+                        logger.exception("Self trade preflight failed: %s", exc)
+                        info_modal_data = {
+                            "title": "Troca incompativel",
+                            "message": str(exc),
+                            "return_screen": "self_select_pokemon_b",
+                        }
+                        switch_screen("info_modal", "self_preflight_failed")
+            elif action == "x" and state.pokemon_list:
+                if state.trade_phase not in ("idle", "waiting"):
+                    trade_status = "Aguarde a troca terminar antes de mover."
+                elif state.pokemon_source == "party":
+                    state.selected_save = Path(self_trade_save_b)
+                    pending_deposit_idx = menu_index
+                    pending_pc_return_screen = "self_select_pokemon_b"
+                    logger.info("Self trade deposit requested for save B party slot %s", pending_deposit_idx)
+                    switch_screen("deposit_confirm", "self_deposit_b_request")
+                else:
+                    state.selected_save = Path(self_trade_save_b)
+                    pending_withdraw_pokemon = state.pokemon_list[menu_index]
+                    pending_pc_return_screen = "self_select_pokemon_b"
+                    logger.info("Self trade withdraw requested for save B %s", pending_withdraw_pokemon.get("location"))
+                    switch_screen("withdraw_confirm", "self_withdraw_b_request")
+            elif action == "y":
+                new_source = "boxes" if state.pokemon_source == "party" else "party"
+                try:
+                    load_self_trade_source(self_trade_save_b, new_source)
+                    menu_index = 0
+                    logger.info("Self trade save B toggled source -> %s (%s entries)", new_source, len(state.pokemon_list))
+                except SaveError as exc:
+                    logger.error("Self trade save B source toggle failed: %s", exc)
+                    info_modal_data = {
+                        "title": "Erro",
                         "message": str(exc),
                         "return_screen": "self_select_pokemon_b",
                     }
-                    switch_screen("info_modal", "self_candidate_validation_failed")
-                    continue
-                if not preview.get("compatible"):
-                    message = str(preview.get("blocking_message") or "Pokemon incompativel com o save de destino.")
-                    info_modal_data = {
-                        "title": "Pokemon incompativel",
-                        "message": message,
-                        "return_screen": "self_select_pokemon_b",
-                    }
-                    switch_screen("info_modal", "self_candidate_incompatible")
-                    continue
-                trade_status = "Validando troca local..."
-                switch_screen("trading", "self_trade_preflight")
-                try:
-                    self_trade_context = prepare_self_trade(
-                        state,
-                        self_trade_save_a,
-                        str(self_trade_pokemon_a.get("location") or "party:0"),
-                        self_trade_save_b,
-                        str(self_trade_pokemon_b.get("location") or "party:0"),
-                    )
-                    advance_self_trade_prompts()
-                except Exception as exc:
-                    logger.exception("Self trade preflight failed: %s", exc)
-                    info_modal_data = {
-                        "title": "Troca incompativel",
-                        "message": str(exc),
-                        "return_screen": "self_select_pokemon_b",
-                    }
-                    switch_screen("info_modal", "self_preflight_failed")
+                    switch_screen("info_modal", "self_source_b_toggle_failed")
             elif action == "back":
                 self_trade_pokemon_b = None
                 try:
@@ -2102,10 +3321,12 @@ def main():
                     trade_status = "Aguarde a troca terminar antes de mover."
                 elif state.pokemon_source == "party":
                     pending_deposit_idx = menu_index
+                    pending_pc_return_screen = "select_pokemon"
                     logger.info("Deposit requested for party slot %s", pending_deposit_idx)
                     switch_screen("deposit_confirm", "deposit_request")
                 else:
                     pending_withdraw_pokemon = state.pokemon_list[menu_index]
+                    pending_pc_return_screen = "select_pokemon"
                     logger.info("Withdraw requested for %s", pending_withdraw_pokemon.get("location"))
                     switch_screen("withdraw_confirm", "withdraw_request")
             elif action == "y":
@@ -2274,8 +3495,6 @@ def main():
                         pending_removed_moves = []
 
         elif current_screen == "evolution_cancel_prompt" and action:
-            if time.monotonic() < evolution_prompt_input_unlock_until:
-                continue
             if action == "select":
                 logger.info("Evolution cancellation skipped (A = let evolve)")
                 if self_trade_pending_decision in ("cancel_evolution_to_a", "cancel_evolution_to_b"):
@@ -2291,8 +3510,6 @@ def main():
                 switch_screen("evolution_cancel_confirm", "evolution_cancel_requested")
 
         elif current_screen == "evolution_cancel_confirm" and action:
-            if time.monotonic() < evolution_prompt_input_unlock_until:
-                continue
             if action == "select":
                 logger.info("Evolution cancellation rejected (A = let evolve)")
                 if self_trade_pending_decision in ("cancel_evolution_to_a", "cancel_evolution_to_b"):
@@ -2321,7 +3538,7 @@ def main():
                     info_modal_data = {
                         "title": "Erro",
                         "message": "Slot do PC nao encontrado.",
-                        "return_screen": "select_pokemon",
+                        "return_screen": pending_pc_return_screen,
                     }
                     switch_screen("info_modal", "withdraw_no_target")
                 else:
@@ -2343,19 +3560,19 @@ def main():
                         state.get_pokemon_list(state.pokemon_source or "boxes")
                         trade_status = f"{result.get('species_name', 'Pokemon')} agora esta na Party."
                         menu_index = min(menu_index, max(0, len(state.pokemon_list) - 1))
-                        switch_screen("select_pokemon", "withdraw_done")
+                        switch_screen(pending_pc_return_screen, "withdraw_done")
                     except Exception as exc:
                         logger.exception("Withdraw failed: %s", exc)
                         info_modal_data = {
                             "title": "Nao foi possivel retirar",
                             "message": str(exc),
-                            "return_screen": "select_pokemon",
+                            "return_screen": pending_pc_return_screen,
                         }
                         switch_screen("info_modal", "withdraw_failed")
                 pending_withdraw_pokemon = None
             elif action == "back":
                 pending_withdraw_pokemon = None
-                switch_screen("select_pokemon", "withdraw_aborted")
+                switch_screen(pending_pc_return_screen, "withdraw_aborted")
 
         elif current_screen == "deposit_confirm" and action:
             if action == "select":
@@ -2364,7 +3581,7 @@ def main():
                     info_modal_data = {
                         "title": "Erro",
                         "message": "Save nao carregado.",
-                        "return_screen": "select_pokemon",
+                        "return_screen": pending_pc_return_screen,
                     }
                     switch_screen("info_modal", "deposit_no_save")
                 else:
@@ -2377,19 +3594,19 @@ def main():
                         state.get_pokemon_list("party")
                         trade_status = f"{result.get('species_name', 'Pokemon')} movido para o PC."
                         menu_index = min(menu_index, max(0, len(state.pokemon_list) - 1))
-                        switch_screen("select_pokemon", "deposit_done")
+                        switch_screen(pending_pc_return_screen, "deposit_done")
                     except Exception as exc:
                         logger.exception("Deposit failed: %s", exc)
                         info_modal_data = {
                             "title": "Nao foi possivel mover",
                             "message": str(exc),
-                            "return_screen": "select_pokemon",
+                            "return_screen": pending_pc_return_screen,
                         }
                         switch_screen("info_modal", "deposit_failed")
                 pending_deposit_idx = -1
             elif action == "back":
                 pending_deposit_idx = -1
-                switch_screen("select_pokemon", "deposit_aborted")
+                switch_screen(pending_pc_return_screen, "deposit_aborted")
 
         elif current_screen == "waiting_partner" and action == "back":
             logger.info("Cancel from waiting_partner requested")
@@ -2440,34 +3657,34 @@ def main():
         elif current_screen == "config":
             draw_config_menu(screen, fonts, menu_index, state.language, state.theme)
         elif current_screen == "load_save":
-            draw_select_save(screen, fonts, menu_index, state.saves)
+            draw_select_save(screen, fonts, menu_index, state.saves, language=state.language)
         elif current_screen == "self_select_save_a":
-            draw_select_save(screen, fonts, menu_index, state.saves, "Trocar comigo: Save 1")
+            draw_select_save(screen, fonts, menu_index, state.saves, screen_title(state.language, "self_save_1"), state.language)
         elif current_screen == "self_select_save_b":
-            draw_select_save(screen, fonts, menu_index, state.saves, "Trocar comigo: Save 2")
+            draw_select_save(screen, fonts, menu_index, state.saves, screen_title(state.language, "self_save_2"), state.language)
         elif current_screen == "self_select_pokemon_a":
-            label = f"Party Save 1: {Path(self_trade_save_a).name}" if self_trade_save_a else "Party Save 1"
-            draw_select_pokemon(screen, fonts, menu_index, state.pokemon_list, label, sprite_loader, trade_status, False)
+            label = self_trade_source_label(1, self_trade_save_a)
+            draw_select_pokemon(screen, fonts, menu_index, state.pokemon_list, label, sprite_loader, trade_status, True, state.language)
         elif current_screen == "self_select_pokemon_b":
-            label = f"Party Save 2: {Path(self_trade_save_b).name}" if self_trade_save_b else "Party Save 2"
-            draw_select_pokemon(screen, fonts, menu_index, state.pokemon_list, label, sprite_loader, trade_status, False)
+            label = self_trade_source_label(2, self_trade_save_b)
+            draw_select_pokemon(screen, fonts, menu_index, state.pokemon_list, label, sprite_loader, trade_status, True, state.language)
         elif current_screen == "select_pokemon_source":
-            draw_select_pokemon_source(screen, fonts, menu_index, trade_status, state.room_name or room_name, state.room_password or room_password)
+            draw_select_pokemon_source(screen, fonts, menu_index, trade_status, state.room_name or room_name, state.room_password or room_password, state.language)
         elif current_screen == "select_pokemon":
-            source_label = "Sua Party" if state.pokemon_source == "party" else "Seu PC"
-            draw_select_pokemon(screen, fonts, menu_index, state.pokemon_list, source_label, sprite_loader, trade_status)
+            source_label = t(state.language, "your_party") if state.pokemon_source == "party" else t(state.language, "your_pc")
+            draw_select_pokemon(screen, fonts, menu_index, state.pokemon_list, source_label, sprite_loader, trade_status, language=state.language)
         elif current_screen == "enter_room_name":
-            draw_keyboard(screen, fonts, "Nome da Sala", room_name, keyboard_index, False, keyboard_shift)
+            draw_keyboard(screen, fonts, t(state.language, "room_name"), room_name, keyboard_index, False, keyboard_shift, state.language)
         elif current_screen == "enter_password":
-            draw_keyboard(screen, fonts, "Senha", room_password, keyboard_index, True, keyboard_shift)
+            draw_keyboard(screen, fonts, t(state.language, "password"), room_password, keyboard_index, True, keyboard_shift, state.language)
         elif current_screen == "connecting":
-            draw_connecting(screen, fonts, frame)
+            draw_connecting(screen, fonts, frame, state.language)
         elif current_screen == "waiting_partner":
-            draw_waiting_partner(screen, fonts, trade_status)
+            draw_waiting_partner(screen, fonts, trade_status, state.language)
         elif current_screen == "cancel_waiting_confirm":
-            draw_cancel_waiting_confirm(screen, fonts)
+            draw_cancel_waiting_confirm(screen, fonts, state.language)
         elif current_screen == "leave_room_confirm":
-            draw_leave_room_confirm(screen, fonts)
+            draw_leave_room_confirm(screen, fonts, state.language)
         elif current_screen == "self_trade_confirm":
             draw_trade_confirm(
                 screen,
@@ -2475,6 +3692,7 @@ def main():
                 self_trade_pokemon_a or {},
                 self_trade_context.get("payload_b", {}) if isinstance(self_trade_context, dict) else {},
                 sprite_loader,
+                state.language,
             )
         elif current_screen == "trade_confirm":
             draw_trade_confirm(
@@ -2483,16 +3701,17 @@ def main():
                 state.selected_pokemon or {},
                 result_data if isinstance(result_data, dict) else {},
                 sprite_loader,
+                state.language,
             )
         elif current_screen == "info_modal":
-            draw_info_modal(screen, fonts, info_modal_data.get("title", ""), info_modal_data.get("message", ""))
+            draw_info_modal(screen, fonts, info_modal_data.get("title", ""), info_modal_data.get("message", ""), state.language)
         elif current_screen == "deposit_confirm":
             target_pokemon = None
             if 0 <= pending_deposit_idx < len(state.pokemon_list):
                 target_pokemon = state.pokemon_list[pending_deposit_idx]
-            draw_deposit_confirm(screen, fonts, target_pokemon or {})
+            draw_deposit_confirm(screen, fonts, target_pokemon or {}, state.language)
         elif current_screen == "withdraw_confirm":
-            draw_withdraw_confirm(screen, fonts, pending_withdraw_pokemon or {})
+            draw_withdraw_confirm(screen, fonts, pending_withdraw_pokemon or {}, state.language)
         elif current_screen == "resolve_moves" and pending_removed_moves:
             draw_resolve_moves(
                 screen,
@@ -2502,18 +3721,19 @@ def main():
                 resolve_current_idx,
                 len(pending_removed_moves),
                 set(resolved_moves_choices.values()),
+                state.language,
             )
         elif current_screen == "evolution_cancel_prompt":
             anim_frame = max(0, frame - (evolution_anim_start if evolution_anim_start is not None else frame))
-            draw_evolution_cancel_prompt(screen, fonts, result_data if isinstance(result_data, dict) else {}, sprite_loader, anim_frame)
+            draw_evolution_cancel_prompt(screen, fonts, result_data if isinstance(result_data, dict) else {}, sprite_loader, anim_frame, state.language)
         elif current_screen == "evolution_cancel_confirm":
-            draw_evolution_cancel_confirm(screen, fonts, result_data if isinstance(result_data, dict) else {}, sprite_loader, frame)
+            draw_evolution_cancel_confirm(screen, fonts, result_data if isinstance(result_data, dict) else {}, sprite_loader, frame, state.language)
         elif current_screen == "trading":
-            draw_trading(screen, fonts, trade_status)
+            draw_trading(screen, fonts, trade_status, state.language)
         elif current_screen == "trade_result":
             success = bool(isinstance(result_data, dict) and result_data.get("success"))
             data = result_data if success else result_data.get("error", trade_status) if isinstance(result_data, dict) else trade_status
-            draw_trade_result(screen, fonts, success, data)
+            draw_trade_result(screen, fonts, success, data, state.language)
 
         lowered_status = trade_status.lower()
         show_footer_status = (
@@ -2525,7 +3745,7 @@ def main():
             and "escolha o seu" not in lowered_status
         )
         if show_footer_status and current_screen in ("load_save", "select_pokemon_source", "select_pokemon"):
-            text(screen, fonts[3], trade_status, 20, SCREEN_H - 78, WARN, SCREEN_W - 40)
+            text(screen, fonts[3], translate_literal(state.language, trade_status), 20, SCREEN_H - 78, WARN, SCREEN_W - 40)
 
         pygame.display.flip()
         clock.tick(30)
