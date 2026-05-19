@@ -1238,10 +1238,9 @@ def draw_footer_actions(screen, fnt, actions):
 class PokedexFrame:
     def __init__(self):
         self.content = pygame.Rect(24, 84, SCREEN_W - 48, SCREEN_H - HEADER_H - FOOTER_H - 56)
-        self.left_panel = pygame.Rect(28, 94, 284, 286)
-        self.right_panel = pygame.Rect(328, 94, 284, 286)
-        self.main_screen = pygame.Rect(38, 104, 264, 244)
-        self.side_screen = pygame.Rect(342, 104, 256, 96)
+        self.left_panel = pygame.Rect(28, 92, 269, 323)
+        self.right_panel = pygame.Rect(337, 96, 286, 320)
+        self.side_screen = pygame.Rect(358, 104, 256, 96)
         self.keypad = pygame.Rect(342, 214, 256, 144)
         self.footer = pygame.Rect(22, SCREEN_H - 28, SCREEN_W - 44, 22)
         self.modal = pygame.Rect(58, 118, SCREEN_W - 116, 220)
@@ -1259,33 +1258,33 @@ def draw_pokedex_shell(screen, title="", subtitle=""):
 
     left_body = pygame.Rect(10, 16, 302, 418)
     right_points = [
-        (330, 32), (548, 32), (620, 72), (630, 72),
-        (630, 434), (330, 434),
+        (330, 19), (550, 19), (610, 72), (630, 72),
+        (630, 432), (330, 432),
     ]
-    hinge = pygame.Rect(310, 20, 22, 418)
+    hinge = pygame.Rect(307, 44, 25, 371)
 
-    rect(screen, SHADOW, left_body.move(0, 10), 14)
-    pygame.draw.polygon(screen, SHADOW, [(x, y + 10) for x, y in right_points])
-    rect(screen, SHELL, left_body, 14)
+    rect(screen, SHADOW, left_body.move(0, 8), 15)
+    pygame.draw.polygon(screen, SHADOW, [(x, y + 8) for x, y in right_points])
+    rect(screen, SHELL, left_body, 15)
     pygame.draw.polygon(screen, SHELL_2, right_points)
-    pygame.draw.lines(screen, BORDER, True, right_points, 3)
-    pygame.draw.rect(screen, BORDER, left_body, 3, border_radius=14)
+    pygame.draw.lines(screen, BORDER, True, right_points, 2)
+    pygame.draw.rect(screen, BORDER, left_body, 2, border_radius=15)
 
-    rect(screen, BORDER, hinge.move(0, 7), 8)
-    rect(screen, SHELL, hinge, 8)
-    rect(screen, ACCENT, pygame.Rect(317, 18, 7, 422), 3)
+    rect(screen, BORDER, hinge.move(0, 5), 40)
+    rect(screen, SHELL, hinge, 40)
+    rect(screen, ACCENT, pygame.Rect(315, 41, 9, 374), 3)
 
     # Top optical cluster.
-    pygame.draw.circle(screen, SCREEN, (58, 52), 33)
-    pygame.draw.circle(screen, (237, 249, 255), (58, 52), 28)
-    pygame.draw.circle(screen, ACCENT, (58, 52), 23)
-    pygame.draw.circle(screen, (144, 229, 252), (50, 43), 6)
-    pygame.draw.circle(screen, (255, 255, 255), (45, 36), 3)
+    pygame.draw.circle(screen, SCREEN, (55, 57), 33)
+    pygame.draw.circle(screen, (237, 249, 255), (55, 57), 28)
+    pygame.draw.circle(screen, ACCENT, (55, 57), 23)
+    pygame.draw.circle(screen, (144, 229, 252), (47, 48), 8)
+    pygame.draw.circle(screen, (255, 255, 255), (42, 41), 5)
     for x, color in ((116, RED), (144, WARN), (172, OK)):
-        pygame.draw.circle(screen, BORDER, (x, 32), 9)
-        pygame.draw.circle(screen, color, (x, 32), 6)
+        pygame.draw.circle(screen, BORDER, (x, 35), 10)
+        pygame.draw.circle(screen, color, (x, 35), 7)
 
-    title_panel = pygame.Rect(94, 48, 204, 28)
+    title_panel = pygame.Rect(93, 51, 196, 28)
     rect(screen, SCREEN, title_panel, 6)
     if title:
         title_f = font(12, True)
@@ -1299,8 +1298,6 @@ def draw_pokedex_shell(screen, title="", subtitle=""):
         text(screen, font(13), subtitle, title_panel.x + 10, title_panel.bottom + 3, MUTED, title_panel.w - 20)
 
     # Pokedex screen and right-side controls remain visible around each view.
-    rect(screen, BORDER, frame.main_screen.inflate(10, 10), 8)
-    rect(screen, PANEL, frame.main_screen, 6)
     rect(screen, BORDER, frame.side_screen.inflate(8, 8), 6)
     rect(screen, SCREEN, frame.side_screen, 4)
     for idx in range(10):
@@ -1639,7 +1636,7 @@ def debounce_action(action, action_state):
 
 def draw_menu(screen, fonts, selected, language):
     _, _, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, "PokeCable", "Room")
+    layout = draw_pokedex_shell(screen, "PokeCable")
 
     items = [
         t(language, "menu_access_room"),
