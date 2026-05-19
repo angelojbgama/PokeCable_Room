@@ -233,9 +233,21 @@ if ! deps_ready; then
 fi
 
 ttyclear
-ttyprint "Iniciando PokeCable..."
-ttyprint "Log de erros: $ERROR_LOG"
-ttyprint "Python: $PYTHON_BIN"
+ttyprint "                                .::.              "
+ttyprint "                  .;:**'                          "
+ttyprint "                              \`                  0"
+ttyprint "  .:XHHHHk.              db.   .;;.     dH  MX   0"
+ttyprint "oMMMMMMMMMMM       ~MM  dMMP :MMMMMR   MMM  MR      ~MRMN"
+ttyprint "QMMMMMb  \"MMX       MMMMMMP !MX' :M~   MMM MMM  .oo. XMMM 'MMM"
+ttyprint "  \`MMMM.  )M> :X!Hk. MMMM   XMM.o\"  .  MMMMMMM X?XMMM MMM>!MMP"
+ttyprint "   'MMMb.dM! XM M'?M MMMMMX.\`MMMMMMMM~ MM MMM XM \`\" MX MMXXMM"
+ttyprint "    ~MMMMM~ XMM. .XM XM\`\"MMMb.~*?**~ .MMX M t MMbooMM XMMMMMP"
+ttyprint "     ?MMM>  YMMMMMM! MM   \`?MMRb.    \`\"\"\"   !L\"MMMMM XM IMMM"
+ttyprint "      MMMX   \"MMMM\"  MM       ~%:           !Mh.\"\"\" dMI IMMP"
+ttyprint "      'MMM.                                             IMX"
+ttyprint "       ~M!M                                             IMP"
+ttyprint ""
+sleep 2
 
 if "$PYTHON_BIN" -B "$PYTHON_SCRIPT" >> "$ERROR_LOG" 2>&1; then
   exit 0
