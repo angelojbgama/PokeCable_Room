@@ -35,6 +35,11 @@ def _ensure_backend_import_path() -> None:
         sys.path.insert(0, runtime_path)
 
 
+_ensure_backend_import_path()
+
+from data.moves import default_move_pp  # noqa: E402
+
+
 def _resolve_national_dex_id(generation: int, species_id: int, pokemon: Dict[str, Any]) -> int:
     national = int(pokemon.get("national_dex_id") or 0)
     if national > 0:
@@ -680,6 +685,16 @@ class SaveModel:
             return list(self.boxes)
         return []
 
+    def _pokemon_move_entries(self, pokemon: Dict[str, Any]) -> List[Dict[str, Any]]:
+        details = pokemon.get("move_details")
+        if isinstance(details, list) and details:
+            return [dict(move) for move in details if isinstance(move, dict) and move.get("move_id")]
+        return [
+            {"move_id": int(move_id), "source_generation": self.generation}
+            for move_id in (pokemon.get("moves") or [])
+            if int(move_id or 0)
+        ]
+
     def export_payload(self, location: str) -> Dict[str, Any]:
         parsed = parse_location(location)
         pokemon = self.pokemon_by_location(location)
@@ -800,7 +815,7 @@ class SaveModel:
                 "experience": experience,
                 "ot_name": pokemon.get("ot_name", ""),
                 "trainer_id": pokemon.get("trainer_id", 0),
-                "moves": [{"move_id": move_id, "source_generation": self.generation} for move_id in pokemon.get("moves", [])],
+                "moves": self._pokemon_move_entries(pokemon),
                 "held_item": {
                     "item_id": pokemon.get("held_item_id"),
                     "name": pokemon.get("held_item_name"),
@@ -1458,6 +1473,20 @@ class SaveModel:
             species_id = int(mon[0])
             nickname = decode_gbc_text(nick)
             species_name = safe_species_name(species_id, nickname)
+            move_details = []
+            for offset, move_id in enumerate(mon[0x08:0x0C]):
+                if move_id:
+                    pp_byte = mon[0x1D + offset]
+                    pp_ups = (pp_byte >> 6) & 0x03
+                    move_details.append(
+                        {
+                            "move_id": int(move_id),
+                            "pp": int(pp_byte & 0x3F),
+                            "max_pp": int(default_move_pp(move_id, 1, pp_ups)),
+                            "pp_ups": int(pp_ups),
+                            "source_generation": 1,
+                        }
+                    )
             pokemon = {
                 "location": f"party:{index}",
                 "source": "party",
@@ -1475,6 +1504,7 @@ class SaveModel:
                 "ot_name": decode_gbc_text(ot),
                 "trainer_id": (mon[0x0C] << 8) | mon[0x0D],
                 "moves": [move for move in mon[0x08:0x0C] if move],
+                "move_details": move_details,
                 "is_egg": False,
                 "is_shiny": _legacy_shiny_from_mon(mon, 0x1B),
             }
@@ -1494,6 +1524,20 @@ class SaveModel:
                 nickname = decode_gbc_text(nick)
                 species_name = safe_species_name(species_id, nickname)
                 experience = (mon[0x0E] << 16) | (mon[0x0F] << 8) | mon[0x10]
+                move_details = []
+                for offset, move_id in enumerate(mon[0x08:0x0C]):
+                    if move_id:
+                        pp_byte = mon[0x1D + offset]
+                        pp_ups = (pp_byte >> 6) & 0x03
+                        move_details.append(
+                            {
+                                "move_id": int(move_id),
+                                "pp": int(pp_byte & 0x3F),
+                                "max_pp": int(default_move_pp(move_id, 1, pp_ups)),
+                                "pp_ups": int(pp_ups),
+                                "source_generation": 1,
+                            }
+                        )
                 pokemon = {
                     "location": f"box:{box_index}:{slot_index}",
                     "source": "boxes",
@@ -1510,6 +1554,7 @@ class SaveModel:
                     "ot_name": decode_gbc_text(ot),
                     "trainer_id": (mon[0x0C] << 8) | mon[0x0D] if len(mon) > 0x0D else 0,
                     "moves": [move for move in mon[0x08:0x0C] if move],
+                    "move_details": move_details,
                     "is_egg": False,
                     "is_shiny": _legacy_shiny_from_mon(mon, 0x1B),
                     "box_index": box_index,
@@ -1530,6 +1575,20 @@ class SaveModel:
             nickname = decode_gbc_text(nick)
             is_egg = species_entry == 0xFD
             species_name = "Egg" if is_egg else safe_species_name(species_id, nickname)
+            move_details = []
+            for offset, move_id in enumerate(mon[0x02:0x06]):
+                if move_id:
+                    pp_byte = mon[0x17 + offset]
+                    pp_ups = (pp_byte >> 6) & 0x03
+                    move_details.append(
+                        {
+                            "move_id": int(move_id),
+                            "pp": int(pp_byte & 0x3F),
+                            "max_pp": int(default_move_pp(move_id, 2, pp_ups)),
+                            "pp_ups": int(pp_ups),
+                            "source_generation": 2,
+                        }
+                    )
             pokemon = {
                 "location": f"party:{index}",
                 "source": "party",
@@ -1548,6 +1607,7 @@ class SaveModel:
                 "trainer_id": (mon[0x06] << 8) | mon[0x07],
                 "held_item_id": int(mon[0x01]) or None,
                 "moves": [move for move in mon[0x02:0x06] if move],
+                "move_details": move_details,
                 "is_egg": is_egg,
                 "is_shiny": False if is_egg else _legacy_shiny_from_mon(mon, 0x15),
             }
@@ -1572,6 +1632,20 @@ class SaveModel:
                 nickname = decode_gbc_text(nick)
                 species_name = safe_species_name(species_id, nickname)
                 experience = (mon[0x08] << 16) | (mon[0x09] << 8) | mon[0x0A]
+                move_details = []
+                for offset, move_id in enumerate(mon[0x02:0x06]):
+                    if move_id:
+                        pp_byte = mon[0x17 + offset]
+                        pp_ups = (pp_byte >> 6) & 0x03
+                        move_details.append(
+                            {
+                                "move_id": int(move_id),
+                                "pp": int(pp_byte & 0x3F),
+                                "max_pp": int(default_move_pp(move_id, 2, pp_ups)),
+                                "pp_ups": int(pp_ups),
+                                "source_generation": 2,
+                            }
+                        )
                 pokemon = {
                     "location": f"box:{box_index}:{slot_index}",
                     "source": "boxes",
@@ -1589,6 +1663,7 @@ class SaveModel:
                     "trainer_id": (mon[0x06] << 8) | mon[0x07] if len(mon) > 0x07 else 0,
                     "held_item_id": int(mon[0x01]) or None,
                     "moves": [move for move in mon[0x02:0x06] if move],
+                    "move_details": move_details,
                     "is_egg": False,
                     "is_shiny": _legacy_shiny_from_mon(mon, 0x15),
                     "box_index": box_index,
@@ -1611,6 +1686,24 @@ class SaveModel:
         for index in range(count):
             raw = self._read_gen3_party_data(index)
             details = parse_gen3_pokemon(raw)
+            secure = decrypt_gen3_secure(raw)
+            growth = GEN3["substruct_orders"][read_u32(raw, 0) % 24][0] * 12
+            attacks = GEN3["substruct_orders"][read_u32(raw, 0) % 24][1] * 12
+            pp_bonuses = secure[growth + 8]
+            move_details = []
+            for slot in range(4):
+                move_id = int.from_bytes(secure[attacks + slot * 2:attacks + slot * 2 + 2], "little")
+                if move_id:
+                    pp_ups = (pp_bonuses >> (slot * 2)) & 0x03
+                    move_details.append(
+                        {
+                            "move_id": move_id,
+                            "pp": int(secure[attacks + 8 + slot]),
+                            "max_pp": int(default_move_pp(move_id, 3, pp_ups)),
+                            "pp_ups": int(pp_ups),
+                            "source_generation": 3,
+                        }
+                    )
             pokemon = {
                 "location": f"party:{index}",
                 "source": "party",
@@ -1627,6 +1720,7 @@ class SaveModel:
                 "ot_name": details["ot_name"],
                 "trainer_id": details["trainer_id"],
                 "moves": details["moves"],
+                "move_details": move_details,
                 "held_item_id": details["held_item_id"],
                 "nature": details["nature"],
                 "ability_index": details["ability_index"],
@@ -1659,6 +1753,24 @@ class SaveModel:
                     continue
                 if details["species_id"] == 0:
                     continue
+                secure = decrypt_gen3_secure(raw)
+                growth = GEN3["substruct_orders"][read_u32(raw, 0) % 24][0] * 12
+                attacks = GEN3["substruct_orders"][read_u32(raw, 0) % 24][1] * 12
+                pp_bonuses = secure[growth + 8]
+                move_details = []
+                for slot in range(4):
+                    move_id = int.from_bytes(secure[attacks + slot * 2:attacks + slot * 2 + 2], "little")
+                    if move_id:
+                        pp_ups = (pp_bonuses >> (slot * 2)) & 0x03
+                        move_details.append(
+                            {
+                                "move_id": move_id,
+                                "pp": int(secure[attacks + 8 + slot]),
+                                "max_pp": int(default_move_pp(move_id, 3, pp_ups)),
+                                "pp_ups": int(pp_ups),
+                                "source_generation": 3,
+                            }
+                        )
                 pokemon = {
                     "location": f"box:{box_index}:{slot_index}",
                     "source": "boxes",
@@ -1674,6 +1786,7 @@ class SaveModel:
                     "ot_name": details["ot_name"],
                     "trainer_id": details["trainer_id"],
                     "moves": details["moves"],
+                    "move_details": move_details,
                     "held_item_id": details["held_item_id"],
                     "nature": details["nature"],
                     "ability_index": details["ability_index"],

@@ -318,7 +318,7 @@ STRINGS = {
         "item_label_none": "Item: nenhum",
         "level": "Nivel: {level}",
         "level_short": "Nivel {level}",
-        "level_tag": "Nv. {level}",
+        "level_tag": "Nivel {level}",
         "level_unknown": "Nivel ?",
         "moves": "Ataques",
         "no_moves": "Sem ataques",
@@ -576,7 +576,7 @@ STRINGS = {
         "item_label_none": "Item: ninguno",
         "level": "Nivel: {level}",
         "level_short": "Nivel {level}",
-        "level_tag": "Nv. {level}",
+        "level_tag": "Nivel {level}",
         "level_unknown": "Nivel ?",
         "moves": "Movimientos",
         "no_moves": "Sin movimientos",
@@ -812,12 +812,18 @@ def screen_title(lang, key, **kwargs):
 
 
 POKEMON_SPRITE_ASSET_DIR = Path(__file__).resolve().parent / "assets" / "pokemon_sprites"
-UI_FONT_PATH = Path(__file__).resolve().parent / "assets" / "fonts" / "Super Starfish.ttf"
+UI_FONT_PATH = Path(__file__).resolve().parent / "assets" / "fonts" / "Pokemon Classic.ttf"
+POKECABLE_TITLE_FONT_PATH = Path(__file__).resolve().parent / "assets" / "fonts" / "Ketchum.otf"
 SPRITE_CACHE_VERSION = "pixel-v1"
 SPRITE_LOADING_MAX_SECONDS = float(os.getenv("POKECABLE_SPRITE_LOADING_MAX_SECONDS", "3"))
 
 SCROLL_STATE = {}
 FONT_CACHE = {}
+TITLE_FONT_CACHE = {}
+TITLE_SWEEP_STATE = {"start_time": 0.0}
+LENS_PULSE_STATE = {"start_time": 0.0, "title": None}
+MENU_VISOR_STATE = {"title": None, "start_time": 0.0}
+SELECT_SAVE_VISOR_STATE = {"title": None, "start_time": 0.0}
 KEYBOARD_GRID_W = 12
 POKEMON_ROOM_NAMES = [
     "Pikachu", "Eevee", "Snorlax", "Charizard", "Bulbasaur", "Squirtle",
@@ -973,6 +979,92 @@ def move_labels(pokemon):
     return labels
 
 
+def move_display_entries(pokemon):
+    raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
+    canonical = (pokemon or {}).get("canonical", {}) if isinstance(pokemon, dict) else {}
+    moves = (pokemon or {}).get("moves") or raw.get("moves") or []
+    names = (pokemon or {}).get("move_names") or raw.get("move_names") or []
+    canonical_moves = (canonical.get("moves") if isinstance(canonical, dict) else []) or []
+    raw_move_details = raw.get("move_details") if isinstance(raw, dict) else []
+    top_move_details = (pokemon or {}).get("move_details") if isinstance(pokemon, dict) else []
+    entries = []
+    for idx, move_id in enumerate(moves[:4]):
+        if not move_id:
+            continue
+        move_id = int(move_id)
+        name = names[idx] if idx < len(names) and names[idx] else local_move_name(move_id)
+        if is_move_number_label(name):
+            name = local_move_name(move_id)
+        current_pp = None
+        max_pp = None
+        move_detail = None
+        if idx < len(canonical_moves) and isinstance(canonical_moves[idx], dict):
+            move_detail = canonical_moves[idx]
+        if not move_detail and idx < len(top_move_details) and isinstance(top_move_details[idx], dict):
+            move_detail = top_move_details[idx]
+        if not move_detail and idx < len(raw_move_details) and isinstance(raw_move_details[idx], dict):
+            move_detail = raw_move_details[idx]
+        if isinstance(move_detail, dict):
+            current_pp = move_detail.get("pp")
+            max_pp = move_detail.get("max_pp")
+        try:
+            _ensure_backend_import_path()
+            from data.moves import move_base_pp  # type: ignore
+
+            base_pp = move_base_pp(move_id) or 0
+        except Exception:
+            base_pp = 0
+        if max_pp is None or int(max_pp or 0) <= 0:
+            max_pp = base_pp
+        if current_pp is None or int(current_pp or -1) < 0:
+            current_pp = max_pp
+        entries.append({"move_id": move_id, "name": name, "pp": int(current_pp or 0), "max_pp": int(max_pp or 0)})
+    return entries
+
+
+def pokemon_xp_bar(pokemon):
+    raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
+    canonical = (pokemon or {}).get("canonical", {}) if isinstance(pokemon, dict) else {}
+    national_dex_id = int((pokemon or {}).get("national_dex_id") or raw.get("national_dex_id") or canonical.get("species_national_id") or 0)
+    experience = canonical.get("experience") if isinstance(canonical, dict) else None
+    if experience in (None, ""):
+        experience = (pokemon or {}).get("experience") or raw.get("experience")
+    level = int((pokemon or {}).get("level") or 0)
+    if experience is None:
+        return 0.0, 0, 0
+    try:
+        _ensure_backend_import_path()
+        from data.growth_rates import experience_for_level, growth_rate_id_for_national, level_from_species_experience  # type: ignore
+
+        if national_dex_id <= 0:
+            generation = int((pokemon or {}).get("generation") or raw.get("generation") or (canonical.get("source_generation") if isinstance(canonical, dict) else 0) or 0)
+            internal_species_id = int((pokemon or {}).get("species_id") or raw.get("species_id") or canonical.get("species_id") or 0)
+            if generation and internal_species_id:
+                try:
+                    from data.species import native_to_national  # type: ignore
+                    national_dex_id = int(native_to_national(generation, internal_species_id) or 0)
+                except Exception:
+                    national_dex_id = 0
+        if national_dex_id <= 0:
+            return 0.0, 0, 0
+        species_id = national_dex_id
+        growth_rate_id = growth_rate_id_for_national(species_id)
+        if growth_rate_id is None:
+            return 0.0, 0, 0
+        current_level = max(1, min(100, int(level_from_species_experience(species_id, int(experience)))))
+        next_level = min(100, current_level + 1)
+        current_xp = int(experience)
+        if next_level <= current_level:
+            return 1.0, current_xp, current_xp
+        min_xp = int(experience_for_level(growth_rate_id, current_level))
+        max_xp = int(experience_for_level(growth_rate_id, next_level))
+        span = max(1, max_xp - min_xp)
+        filled = max(0.0, min(1.0, (current_xp - min_xp) / span))
+        return filled, current_xp, max_xp
+    except Exception:
+        return 0.0, 0, 0
+
+
 def is_move_number_label(value):
     text_value = str(value or "").strip().lower()
     if not text_value.startswith("move #"):
@@ -994,7 +1086,27 @@ def local_move_name(move_id):
 
 def pokemon_types(pokemon):
     raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
+    canonical = (pokemon or {}).get("canonical", {}) if isinstance(pokemon, dict) else {}
     types = (pokemon or {}).get("types") or raw.get("types") or []
+    if not types:
+        candidate = []
+        for key in ("type1", "type2", "primary_type", "secondary_type"):
+            value = (pokemon or {}).get(key) or raw.get(key)
+            if value:
+                candidate.append(value)
+        types = candidate
+    if not types:
+        generation = (pokemon or {}).get("generation") or raw.get("generation") or (canonical.get("source_generation") if isinstance(canonical, dict) else 0)
+        species_id = (pokemon or {}).get("species_id") or raw.get("species_id") or (canonical.get("species_id") if isinstance(canonical, dict) else 0)
+        national_dex_id = resolve_sprite_national_dex_id(generation, species_id, pokemon)
+        if national_dex_id:
+            try:
+                _ensure_backend_import_path()
+                from data.base_stats import BASE_STATS  # type: ignore
+
+                types = (BASE_STATS.get(int(national_dex_id)) or {}).get("types") or []
+            except Exception:
+                types = []
     return [str(type_name).lower() for type_name in types if type_name]
 
 
@@ -1045,6 +1157,8 @@ def font(size, bold=False):
     if cached is not None:
         return cached
 
+    adjusted_size = max(8, int(size) - 2 if UI_FONT_PATH.name == "Pokemon Classic.ttf" else int(size))
+
     candidates = [
         UI_FONT_PATH,
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -1052,10 +1166,115 @@ def font(size, bold=False):
     ]
     for path in candidates:
         if Path(path).exists():
-            FONT_CACHE[key] = pygame.font.Font(path, size)
+            FONT_CACHE[key] = pygame.font.Font(path, adjusted_size)
             return FONT_CACHE[key]
-    FONT_CACHE[key] = pygame.font.SysFont(None, size, bold=bold)
+    FONT_CACHE[key] = pygame.font.SysFont(None, adjusted_size, bold=bold)
     return FONT_CACHE[key]
+
+
+def title_font(size):
+    key = int(size)
+    cached = TITLE_FONT_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    if POKECABLE_TITLE_FONT_PATH.exists():
+        TITLE_FONT_CACHE[key] = pygame.font.Font(POKECABLE_TITLE_FONT_PATH, size)
+        return TITLE_FONT_CACHE[key]
+    TITLE_FONT_CACHE[key] = font(size, False)
+    return TITLE_FONT_CACHE[key]
+
+
+def render_title_sweep(text_surface, progress):
+    width, height = text_surface.get_size()
+    sweep_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+    trail_w = max(34, width // 3)
+    sweep_x = int(progress * (width + trail_w * 2)) - trail_w
+    base = (255, 255, 255)
+    glow = (102, 184, 255)
+    hot = (200, 242, 255)
+    sweep_surface.fill((*base, 255))
+    for x in range(width):
+        distance = abs(x - (sweep_x + trail_w // 2))
+        if distance > trail_w:
+            continue
+        strength = 1.0 - (distance / trail_w)
+        if strength <= 0:
+            continue
+        if strength < 0.5:
+            blend = strength / 0.5
+            color = tuple(int(base[i] * (1.0 - blend) + glow[i] * blend) for i in range(3))
+        else:
+            blend = (strength - 0.5) / 0.5
+            color = tuple(int(glow[i] * (1.0 - blend) + hot[i] * blend) for i in range(3))
+        pygame.draw.line(sweep_surface, color + (255,), (x, 0), (x, height))
+    sweep_surface.blit(text_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+    return sweep_surface
+
+
+def draw_lens_pulse(screen, center, progress):
+    outer_radius = 52
+    inner_radius = 20
+    glow_surface = pygame.Surface((outer_radius * 2 + 2, outer_radius * 2 + 2), pygame.SRCALPHA)
+    pulse_radius = int(inner_radius + (outer_radius - inner_radius) * progress)
+    pulse_alpha = int(210 * (1.0 - progress))
+    if pulse_alpha <= 0:
+        return
+    pygame.draw.circle(
+        glow_surface,
+        (120, 220, 255, pulse_alpha),
+        (outer_radius + 1, outer_radius + 1),
+        pulse_radius,
+        width=max(1, 8 - int(progress * 7)),
+    )
+    pygame.draw.circle(
+        glow_surface,
+        (255, 255, 255, int(120 * (1.0 - progress))),
+        (outer_radius + 1, outer_radius + 1),
+        max(4, int(10 - progress * 7)),
+    )
+    screen.blit(glow_surface, (center[0] - outer_radius - 1, center[1] - outer_radius - 1))
+
+
+def draw_glass_panel(screen, area, progress, base_color=(170, 188, 214)):
+    glass = pygame.Surface(area.size, pygame.SRCALPHA)
+    glass.fill((235, 242, 250, 96))
+    pygame.draw.rect(glass, (255, 255, 255, 54), glass.get_rect(), 1, border_radius=6)
+    shimmer_w = max(24, area.w // 5)
+    shimmer_x = int(progress * (area.w + shimmer_w * 2)) - shimmer_w
+    for x in range(area.w):
+        distance = abs(x - (shimmer_x + shimmer_w // 2))
+        if distance > shimmer_w:
+            continue
+        strength = 1.0 - (distance / shimmer_w)
+        alpha = int(110 * strength)
+        color = (
+            min(255, base_color[0] + int(42 * strength)),
+            min(255, base_color[1] + int(54 * strength)),
+            min(255, base_color[2] + int(68 * strength)),
+            alpha,
+        )
+        pygame.draw.line(glass, color, (x, 0), (x, area.h))
+    screen.blit(glass, area.topleft)
+
+
+def draw_digital_visor(screen, area, progress):
+    visor = pygame.Surface(area.size, pygame.SRCALPHA)
+    visor.fill((196, 206, 214, 255))
+    glow_span = area.w + area.h
+    glow_pos = int(progress * (glow_span + 40)) - 20
+    for x in range(area.w):
+        for y in range(0, area.h, 2):
+            distance = abs((x + y) - glow_pos)
+            if distance > 18:
+                continue
+            strength = 1.0 - (distance / 18.0)
+            alpha = int(128 * strength)
+            pygame.draw.line(visor, (170, 232, 206, alpha), (x, y), (x, min(area.h, y + 1)))
+    for y in range(2, area.h - 2, 6):
+        pygame.draw.line(visor, (236, 242, 236, 36), (2, y), (area.w - 3, y), 1)
+    pygame.draw.rect(visor, (255, 255, 255, 70), visor.get_rect(), 1)
+    screen.blit(visor, area.topleft)
 
 
 def text(surface, fnt, value, x, y, color=None, max_w=None):
@@ -1240,7 +1459,7 @@ class PokedexFrame:
         self.content = pygame.Rect(24, 84, SCREEN_W - 48, SCREEN_H - HEADER_H - FOOTER_H - 56)
         self.left_panel = pygame.Rect(28, 92, 269, 323)
         self.right_panel = pygame.Rect(337, 96, 286, 320)
-        self.side_screen = pygame.Rect(358, 104, 256, 96)
+        self.side_screen = pygame.Rect(390, 124, 168, 54)
         self.keypad = pygame.Rect(342, 214, 256, 144)
         self.footer = pygame.Rect(22, SCREEN_H - 28, SCREEN_W - 44, 22)
         self.modal = pygame.Rect(58, 118, SCREEN_W - 116, 220)
@@ -1252,16 +1471,36 @@ class PokedexFrame:
         return getattr(self, name)
 
 
+def right_info_panel(layout, top_offset=30, inset_x=2, bottom_pad=30):
+    base = layout.right_panel
+    return pygame.Rect(base.x + inset_x, base.y + top_offset, base.w - inset_x * 2, base.h - bottom_pad)
+
+
+def right_visor_rect(panel):
+    top_pad = 16
+    side_pad = 16
+    height = 100
+    return pygame.Rect(panel.x + side_pad, panel.y + top_pad, panel.w - side_pad * 2, height)
+
+
+def draw_right_panel_frame(screen, panel, progress=None, glass=False):
+    if glass:
+        draw_glass_panel(screen, panel, progress if progress is not None else 0.0)
+    else:
+        rect(screen, PANEL_2, panel, 6)
+    pygame.draw.rect(screen, BORDER, panel, 2, border_radius=6)
+
+
 def draw_pokedex_shell(screen, title="", subtitle=""):
     screen.fill(BG)
     frame = PokedexFrame()
 
     left_body = pygame.Rect(10, 16, 302, 418)
     right_points = [
-        (330, 19), (550, 19), (610, 72), (630, 72),
-        (630, 432), (330, 432),
+        (330, 54), (418, 54), (436, 55), (454, 59), (472, 66), (490, 76), (510, 88), (530, 100), (554, 108), (630, 108),
+        (630, 426), (330, 426),
     ]
-    hinge = pygame.Rect(307, 44, 25, 371)
+    hinge = pygame.Rect(307, 54, 25, 370)
 
     rect(screen, SHADOW, left_body.move(0, 8), 15)
     pygame.draw.polygon(screen, SHADOW, [(x, y + 8) for x, y in right_points])
@@ -1270,45 +1509,50 @@ def draw_pokedex_shell(screen, title="", subtitle=""):
     pygame.draw.lines(screen, BORDER, True, right_points, 2)
     pygame.draw.rect(screen, BORDER, left_body, 2, border_radius=15)
 
-    rect(screen, BORDER, hinge.move(0, 5), 40)
-    rect(screen, SHELL, hinge, 40)
-    rect(screen, ACCENT, pygame.Rect(315, 41, 9, 374), 3)
+    hinge_body = pygame.Rect(hinge.x + 1, hinge.y + 1, hinge.w - 2, hinge.h - 2)
+    pygame.draw.rect(screen, SHELL_2, hinge_body, border_radius=6)
+    highlight = pygame.Rect(hinge.x + 4, hinge.y + 4, 4, hinge.h - 8)
+    pygame.draw.rect(screen, SHELL, highlight, border_radius=3)
+    for offset in (18, hinge.h - 22):
+        pygame.draw.line(screen, BORDER, (hinge.x + 2, hinge.y + offset), (hinge.right - 2, hinge.y + offset), 2)
+    pygame.draw.rect(screen, BORDER, hinge_body, 2, border_radius=6)
 
     # Top optical cluster.
+    if LENS_PULSE_STATE["title"] != title:
+        LENS_PULSE_STATE["title"] = title
+        LENS_PULSE_STATE["start_time"] = time.perf_counter()
     pygame.draw.circle(screen, SCREEN, (55, 57), 33)
     pygame.draw.circle(screen, (237, 249, 255), (55, 57), 28)
     pygame.draw.circle(screen, ACCENT, (55, 57), 23)
+    lens_elapsed = max(0.0, time.perf_counter() - LENS_PULSE_STATE["start_time"])
+    lens_duration = 0.9
+    if lens_elapsed <= lens_duration:
+        draw_lens_pulse(screen, (55, 57), lens_elapsed / lens_duration)
     pygame.draw.circle(screen, (144, 229, 252), (47, 48), 8)
     pygame.draw.circle(screen, (255, 255, 255), (42, 41), 5)
     for x, color in ((116, RED), (144, WARN), (172, OK)):
         pygame.draw.circle(screen, BORDER, (x, 35), 10)
         pygame.draw.circle(screen, color, (x, 35), 7)
 
-    title_panel = pygame.Rect(93, 51, 196, 28)
-    rect(screen, SCREEN, title_panel, 6)
+    title_panel = pygame.Rect(93, 48, 196, 34)
+    if not TITLE_SWEEP_STATE["start_time"]:
+        TITLE_SWEEP_STATE["start_time"] = time.perf_counter()
+    sweep_elapsed = max(0.0, time.perf_counter() - TITLE_SWEEP_STATE["start_time"])
+    sweep_duration = 1.1
     if title:
-        title_f = font(12, True)
-        for candidate_size in (18, 16, 14, 12):
-            candidate = font(candidate_size, True)
+        title_f = title_font(12)
+        for candidate_size in (32, 30, 28, 26, 24, 22, 20, 18, 16, 14, 12):
+            candidate = title_font(candidate_size)
             if candidate.size(str(title))[0] <= title_panel.w - 18:
                 title_f = candidate
                 break
-        text(screen, title_f, title, title_panel.x + 9, title_panel.y + 6, SCREEN_TEXT, title_panel.w - 18)
+        title_surface = title_f.render(str(title), True, (255, 255, 255))
+        sweep_surface = render_title_sweep(title_surface, (sweep_elapsed % sweep_duration) / sweep_duration)
+        title_y = title_panel.y + max(0, (title_panel.h - title_surface.get_height()) // 2)
+        screen.blit(sweep_surface, (title_panel.x + 9, title_y))
     if subtitle:
         text(screen, font(13), subtitle, title_panel.x + 10, title_panel.bottom + 3, MUTED, title_panel.w - 20)
 
-    # Pokedex screen and right-side controls remain visible around each view.
-    rect(screen, BORDER, frame.side_screen.inflate(8, 8), 6)
-    rect(screen, SCREEN, frame.side_screen, 4)
-    for idx in range(10):
-        col = idx % 5
-        row = idx // 5
-        key = pygame.Rect(frame.keypad.x + col * 48, frame.keypad.y + row * 34, 42, 26)
-        rect(screen, ACCENT, key, 4)
-        pygame.draw.rect(screen, BORDER, key, 2, border_radius=4)
-        text_center(screen, font(15, True), str(idx), key, SCREEN)
-    rect(screen, SCREEN, pygame.Rect(frame.keypad.x + 16, frame.keypad.bottom - 38, 102, 28), 5)
-    rect(screen, SCREEN, pygame.Rect(frame.keypad.x + 136, frame.keypad.bottom - 38, 102, 28), 5)
     return frame
 
 
@@ -1513,6 +1757,14 @@ class SpriteLoader:
             if not sprite_path or not sprite_path.exists():
                 raise RuntimeError(f"local sprite not found: {sprite_path}")
             surface = pygame.image.load(str(sprite_path)).convert_alpha()
+            bounds = surface.get_bounding_rect(min_alpha=1)
+            if bounds.width > 0 and bounds.height > 0:
+                cropped = surface.subsurface(bounds).copy()
+                padded = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+                pad_x = (surface.get_width() - cropped.get_width()) // 2
+                pad_y = (surface.get_height() - cropped.get_height()) // 2
+                padded.blit(cropped, (pad_x, pad_y))
+                surface = padded
             error = ""
         except Exception as exc:
             surface = None
@@ -1657,15 +1909,17 @@ def draw_menu(screen, fonts, selected, language):
             rect(screen, ACCENT, row, 4)
         text(screen, small_f, item, row.x + 9, row.y + 9, color, row.w - 18)
 
-    info_panel = layout.right_panel
+    info_panel = right_info_panel(layout)
     rect(screen, PANEL_2, info_panel, 6)
     pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=6)
-    rect(screen, SCREEN, pygame.Rect(info_panel.x + 18, info_panel.y + 22, info_panel.w - 36, 72), 6)
-    text_center(screen, font(26, True), "PokeCable", pygame.Rect(info_panel.x + 18, info_panel.y + 22, info_panel.w - 36, 72), SCREEN_TEXT)
-    for idx, color in enumerate((RED, WARN, ACCENT)):
-        pygame.draw.circle(screen, BORDER, (info_panel.x + 58 + idx * 44, info_panel.y + 132), 13)
-        pygame.draw.circle(screen, color, (info_panel.x + 58 + idx * 44, info_panel.y + 132), 9)
-    rect(screen, SCREEN, pygame.Rect(info_panel.x + 36, info_panel.bottom - 72, info_panel.w - 72, 38), 5)
+    title_rect = right_visor_rect(info_panel)
+    if MENU_VISOR_STATE["title"] != "menu":
+        MENU_VISOR_STATE["title"] = "menu"
+        MENU_VISOR_STATE["start_time"] = time.perf_counter()
+    visor_elapsed = max(0.0, time.perf_counter() - MENU_VISOR_STATE["start_time"])
+    visor_duration = 1.2
+    draw_digital_visor(screen, title_rect, min(visor_elapsed / visor_duration, 1.0))
+    pygame.draw.rect(screen, BORDER, title_rect, 2)
     draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
 
 
@@ -1692,15 +1946,17 @@ def draw_config_menu(screen, fonts, selected, language, theme):
 
     text(screen, tiny_f, "< >", list_panel.right - 54, list_panel.y + 12, MUTED)
 
-    preview_panel = layout.right_panel
-    rect(screen, PANEL_2, preview_panel, 6)
-    pygame.draw.rect(screen, BORDER, preview_panel, 2, border_radius=6)
-    rect(screen, SCREEN, pygame.Rect(preview_panel.x + 18, preview_panel.y + 26, preview_panel.w - 36, 64), 6)
-    text_center(screen, body_f, t(language, "config_title"), pygame.Rect(preview_panel.x + 18, preview_panel.y + 26, preview_panel.w - 36, 64), SCREEN_TEXT)
-    for idx, color in enumerate((RED, WARN, ACCENT)):
-        pygame.draw.circle(screen, BORDER, (preview_panel.x + 62 + idx * 48, preview_panel.y + 126), 12)
-        pygame.draw.circle(screen, color, (preview_panel.x + 62 + idx * 48, preview_panel.y + 126), 8)
-    rect(screen, SCREEN, pygame.Rect(preview_panel.x + 32, preview_panel.bottom - 78, preview_panel.w - 64, 34), 5)
+    preview_panel = right_info_panel(layout, top_offset=30)
+    draw_right_panel_frame(screen, preview_panel)
+    screen_rect = right_visor_rect(preview_panel)
+    config_title = "config"
+    if MENU_VISOR_STATE["title"] != config_title:
+        MENU_VISOR_STATE["title"] = config_title
+        MENU_VISOR_STATE["start_time"] = time.perf_counter()
+    visor_elapsed = max(0.0, time.perf_counter() - MENU_VISOR_STATE["start_time"])
+    draw_digital_visor(screen, screen_rect, min(visor_elapsed / 1.2, 1.0))
+    pygame.draw.rect(screen, BORDER, screen_rect, 2)
+    text_center(screen, body_f, t(language, "config_title"), screen_rect, SCREEN_TEXT)
     draw_footer_actions(screen, tiny_f, [
         ("A", t(language, "btn_ok")),
         ("B", t(language, "btn_back")),
@@ -1748,7 +2004,7 @@ def draw_keyboard(screen, fonts, title, value, grid_index, is_password=False, sh
     _, body_f, small_f, tiny_f = fonts
     layout = draw_pokedex_shell(screen, title)
     display_panel = layout.left_panel
-    key_panel = layout.right_panel
+    key_panel = right_info_panel(layout)
     shift_label = t(language, "shift_on" if shift else "shift_off")
 
     display_value = "*" * len(value) if is_password else value
@@ -1816,12 +2072,11 @@ def draw_select_save(screen, fonts, selected, saves, title=None, language="pt"):
     _, body_f, small_f, tiny_f = fonts
     layout = draw_pokedex_shell(screen, title or screen_title(language, "select_save"))
     list_panel = layout.left_panel
-    detail_panel = layout.right_panel
+    detail_panel = right_info_panel(layout)
 
     rect(screen, PANEL, list_panel, 6)
-    rect(screen, PANEL_2, detail_panel, 6)
     pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
-    pygame.draw.rect(screen, BORDER, detail_panel, 2, border_radius=6)
+    draw_right_panel_frame(screen, detail_panel)
 
     if not saves:
         message_screen = pygame.Rect(list_panel.x + 18, list_panel.y + 34, list_panel.w - 36, 120)
@@ -1851,11 +2106,16 @@ def draw_select_save(screen, fonts, selected, saves, title=None, language="pt"):
     draw_scrollbar(screen, list_panel, scroll, len(saves), visible)
 
     selected_save = saves[selected] if 0 <= selected < len(saves) else saves[0]
-    screen_rect = pygame.Rect(detail_panel.x + 18, detail_panel.y + 24, detail_panel.w - 36, 76)
-    rect(screen, SCREEN, screen_rect, 6)
-    pygame.draw.rect(screen, BORDER, screen_rect, 2, border_radius=6)
-    text(screen, tiny_f, t(language, "selected_save"), screen_rect.x + 12, screen_rect.y + 10, (142, 189, 224), screen_rect.w - 24)
-    wrap_text(screen, tiny_f, selected_save.name, pygame.Rect(screen_rect.x + 12, screen_rect.y + 34, screen_rect.w - 24, 34), SCREEN_TEXT, line_gap=1, max_lines=2)
+    screen_rect = right_visor_rect(detail_panel)
+    selected_title = f"select_save:{selected_save.name}"
+    if SELECT_SAVE_VISOR_STATE["title"] != selected_title:
+        SELECT_SAVE_VISOR_STATE["title"] = selected_title
+        SELECT_SAVE_VISOR_STATE["start_time"] = time.perf_counter()
+    visor_elapsed = max(0.0, time.perf_counter() - SELECT_SAVE_VISOR_STATE["start_time"])
+    draw_digital_visor(screen, screen_rect, min(visor_elapsed / 1.2, 1.0))
+    pygame.draw.rect(screen, BORDER, screen_rect, 2)
+    text(screen, tiny_f, t(language, "selected_save"), screen_rect.x + 12, screen_rect.y + 8, (142, 189, 224), screen_rect.w - 24)
+    wrap_text(screen, tiny_f, selected_save.name, pygame.Rect(screen_rect.x + 12, screen_rect.y + 28, screen_rect.w - 24, 26), SCREEN_TEXT, line_gap=1, max_lines=2)
 
     text(screen, small_f, t(language, "save_file"), detail_panel.x + 18, detail_panel.y + 124, TEXT, detail_panel.w - 36)
     wrap_text(screen, tiny_f, selected_save.name, pygame.Rect(detail_panel.x + 18, detail_panel.y + 150, detail_panel.w - 36, 48), MUTED, line_gap=1, max_lines=3)
@@ -1884,9 +2144,8 @@ def draw_select_pokemon_source(screen, fonts, selected, status="", room_name="",
             rect(screen, ACCENT, row, 4)
         text(screen, small_f, item, row.x + 9, row.y + 9, color, row.w - 18)
 
-    info_panel = layout.right_panel
-    rect(screen, PANEL, info_panel, 6)
-    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=6)
+    info_panel = right_info_panel(layout)
+    draw_right_panel_frame(screen, info_panel)
     text(screen, small_f, t(language, "room"), info_panel.x + 14, info_panel.y + 12, MUTED)
     text(screen, small_f, room_name or t(language, "no_name"), info_panel.x + 14, info_panel.y + 38, ACCENT, info_panel.w - 28)
     text(screen, small_f, t(language, "password"), info_panel.x + 14, info_panel.y + 78, MUTED)
@@ -1913,11 +2172,10 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
 
     if not pokemon_list:
         list_panel = layout.left_panel
-        detail_panel = layout.right_panel
+        detail_panel = right_info_panel(layout)
         rect(screen, PANEL, list_panel, 6)
-        rect(screen, PANEL_2, detail_panel, 6)
         pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
-        pygame.draw.rect(screen, BORDER, detail_panel, 2, border_radius=6)
+        draw_right_panel_frame(screen, detail_panel)
         message_screen = pygame.Rect(list_panel.x + 18, list_panel.y + 34, list_panel.w - 36, 120)
         rect(screen, SCREEN, message_screen, 6)
         pygame.draw.rect(screen, BORDER, message_screen, 2, border_radius=6)
@@ -1954,7 +2212,7 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
         item_info = held_item_info(pokemon)
         item_slot = pygame.Rect(row.right - 29, row.y + 8, 22, 22)
         draw_item_icon(screen, item_slot, item_info, idx == selected)
-        text(screen, small_f, pokemon_compact_label(pokemon, f"Pokemon {idx + 1}", language), row.x + 44, row.y + 4, color, row.w - 78)
+        text(screen, font(11), pokemon_compact_label(pokemon, f"Pokemon {idx + 1}", language), row.x + 44, row.y + 4, color, row.w - 78)
         item_name = item_info["name"] if item_info else t(language, "item_none")
         text(screen, tiny_f, t(language, "item_label", name=item_name), row.x + 44, row.y + 23, color if idx == selected else MUTED, row.w - 84)
     screen.set_clip(previous_clip)
@@ -1962,62 +2220,100 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
 
     selected_pokemon = pokemon_list[selected] if 0 <= selected < len(pokemon_list) else None
     sprite_loader.request(selected_pokemon)
-    detail_panel = layout.right_panel
-    rect(screen, PANEL_2, detail_panel, 6)
-    pygame.draw.rect(screen, BORDER, detail_panel, 2, border_radius=6)
-    text(screen, small_f, source_label, detail_panel.x + 14, detail_panel.y + 12, MUTED)
+    detail_panel = right_info_panel(layout)
+    draw_right_panel_frame(screen, detail_panel)
+    visor_rect = right_visor_rect(detail_panel)
+    draw_digital_visor(screen, visor_rect, 1.0)
+    pygame.draw.rect(screen, BORDER, visor_rect, 2)
+    text(screen, small_f, source_label, detail_panel.x + 16, detail_panel.y + 122, MUTED, detail_panel.w - 32)
 
     if selected_pokemon:
         sprite, loading, error = sprite_loader.snapshot()
-        name_area = pygame.Rect(detail_panel.x + 14, detail_panel.y + 34, detail_panel.w - 28, 42)
-        wrap_text(screen, body_f, selected_pokemon.get("name", "Pokemon"), name_area, TEXT, line_gap=2, max_lines=2)
-
-        sprite_box = pygame.Rect(detail_panel.x + 18, detail_panel.y + 82, 82, 82)
-        rect(screen, BG, sprite_box, 8)
-        pygame.draw.rect(screen, BORDER, sprite_box, 2, border_radius=8)
+        sprite_box = pygame.Rect(visor_rect.x + 2, visor_rect.y + 8, 80, 80)
         if sprite:
-            scaled = pygame.transform.smoothscale(sprite, (66, 66))
-            screen.blit(scaled, (sprite_box.x + 8, sprite_box.y + 8))
+            scaled = pygame.transform.smoothscale(sprite, (80, 80))
+            screen.blit(scaled, sprite_box.topleft)
         elif loading:
-            wrap_text(screen, tiny_f, t(language, "loading_sprite"), pygame.Rect(sprite_box.x + 8, sprite_box.y + 26, sprite_box.w - 16, 34), MUTED, max_lines=2)
+            wrap_text(screen, tiny_f, t(language, "loading_sprite"), pygame.Rect(sprite_box.x + 4, sprite_box.y + 30, sprite_box.w - 8, 18), MUTED, max_lines=2)
         else:
             text_center(screen, tiny_f, t(language, "no_sprite"), sprite_box, MUTED)
 
-        data_x = sprite_box.right + 14
-        data_w = detail_panel.right - data_x - 14
-        text(screen, small_f, t(language, "level", level=selected_pokemon.get("level", 0)), data_x, detail_panel.y + 88, ACCENT, data_w)
-        draw_type_badges(screen, tiny_f, pokemon_types(selected_pokemon), data_x, detail_panel.y + 114, data_w, language)
+        text_x = sprite_box.right + 8
+        text_w = visor_rect.right - text_x - 8
+        name_area = pygame.Rect(text_x, visor_rect.y + 8, text_w, 18)
+        name_f = font(11)
+        wrap_text(screen, name_f, selected_pokemon.get("name", "Pokemon"), name_area, (0, 0, 0), line_gap=1, max_lines=1)
+
+        level_y = visor_rect.y + 30
+        level_font = font(10)
+        level_text = f"Nivel {selected_pokemon.get('level', 0)}"
+        level_surface = level_font.render(level_text, True, (0, 0, 0))
+        level_x = text_x
+        screen.blit(level_surface, (level_x, level_y))
+        type_box = pygame.Rect(text_x, level_y + 14, text_w, 22)
+        draw_digital_visor(screen, type_box, 1.0)
+        type_names = pokemon_types(selected_pokemon)
+        if type_names:
+            tint = TYPE_COLORS.get(type_names[0], (170, 232, 206))
+            overlay = pygame.Surface(type_box.size, pygame.SRCALPHA)
+            overlay.fill((tint[0], tint[1], tint[2], 42))
+            pygame.draw.rect(overlay, (255, 255, 255, 60), overlay.get_rect(), 1)
+            screen.blit(overlay, type_box.topleft)
+        pygame.draw.rect(screen, BORDER, type_box, 1)
+        type_label_text = " / ".join(type_label(type_name, language) for type_name in type_names[:2]) or "-"
+        type_font = font(10)
+        type_surface = type_font.render(type_label_text, True, (0, 0, 0))
+        screen.blit(type_surface, type_surface.get_rect(center=type_box.center))
+        xp_fill, _, _ = pokemon_xp_bar(selected_pokemon)
+        xp_bar = pygame.Rect(text_x, type_box.bottom + 6, text_w, 10)
+        rect(screen, (214, 214, 214), xp_bar, 4)
+        pygame.draw.rect(screen, BORDER, xp_bar, 1, border_radius=4)
+        if xp_fill > 0:
+            fill_w = max(2, int((xp_bar.w - 2) * xp_fill))
+            rect(screen, ACCENT, pygame.Rect(xp_bar.x + 1, xp_bar.y + 1, fill_w, xp_bar.h - 2), 3)
+
+        summary_top = max(xp_bar.bottom, visor_rect.bottom) + 10
+        summary_panel = pygame.Rect(detail_panel.x + 14, summary_top, detail_panel.w - 28, detail_panel.bottom - summary_top - 10)
+        rect(screen, PANEL_2, summary_panel, 0)
+        pygame.draw.rect(screen, BORDER, summary_panel, 2)
         location = selected_pokemon.get("location", "")
         if location.startswith("box:"):
             parts = location.split(":")
-            box_name = selected_pokemon.get("raw", {}).get("box_name") or f"Box {int(parts[1]) + 1}"
-            text(screen, tiny_f, box_name, data_x, detail_panel.y + 144, MUTED, data_w)
+            place_text = selected_pokemon.get("raw", {}).get("box_name") or f"Box {int(parts[1]) + 1}"
         else:
-            text(screen, tiny_f, t(language, "party"), data_x, detail_panel.y + 144, MUTED, data_w)
-
+            place_text = t(language, "party")
+        save_label = selected_pokemon.get("save_name") or (selected_pokemon.get("raw", {}) or {}).get("save_name") or ""
         item_info = held_item_info(selected_pokemon)
-        item_icon = pygame.Rect(detail_panel.x + 14, detail_panel.y + 166, 18, 18)
+        item_text = item_info["name"] if item_info else t(language, "item_none")
+        text(screen, tiny_f, place_text, summary_panel.x + 8, summary_panel.y + 8, SCREEN_TEXT, summary_panel.w - 16)
+        if save_label:
+            text(screen, tiny_f, str(save_label), summary_panel.x + 8, summary_panel.y + 20, MUTED, summary_panel.w - 16)
+        item_icon = pygame.Rect(summary_panel.x + 6, summary_panel.y + 28, 14, 14)
         draw_item_icon(screen, item_icon, item_info)
-        item_area = pygame.Rect(item_icon.right + 8, detail_panel.y + 167, detail_panel.right - item_icon.right - 22, 20)
-        text(screen, tiny_f, item_info["name"] if item_info else t(language, "item_none"), item_area.x, item_area.y, MUTED, item_area.w)
+        text(screen, tiny_f, item_text, item_icon.right + 6, summary_panel.y + 28, MUTED, summary_panel.w - 26)
 
-        detail_y = detail_panel.y + 190
-        text(screen, small_f, t(language, "moves"), detail_panel.x + 14, detail_y, TEXT)
-        moves = move_labels(selected_pokemon)
-        if moves:
-            move_f = font(10)
-            for move_idx, move_name in enumerate(moves[:4]):
-                move_y = detail_y + 20 + move_idx * 15
-                move_rect = pygame.Rect(detail_panel.x + 14, move_y, detail_panel.w - 28, 14)
+        moves_panel = pygame.Rect(summary_panel.x + 8, summary_panel.y + 50, summary_panel.w - 16, summary_panel.h - 58)
+        text(screen, small_f, t(language, "moves"), moves_panel.x + 0, moves_panel.y, TEXT, moves_panel.w)
+        move_entries = move_display_entries(selected_pokemon)
+        if move_entries:
+            move_f = font(11)
+            for move_idx, move_entry in enumerate(move_entries[:4]):
+                move_y = moves_panel.y + 20 + move_idx * 20
+                move_rect = pygame.Rect(moves_panel.x, move_y, moves_panel.w, 16)
                 rect(screen, BG, move_rect, 4)
                 pygame.draw.rect(screen, BORDER, move_rect, 1, border_radius=4)
-                text(screen, move_f, move_name, move_rect.x + 6, move_rect.y + 2, TEXT, move_rect.w - 12)
+                name_area = pygame.Rect(move_rect.x + 6, move_rect.y + 1, move_rect.w - 60, 14)
+                text(screen, move_f, move_entry["name"], name_area.x, name_area.y, TEXT, name_area.w)
+                pp_text = f"{move_entry['pp']}/{move_entry['max_pp']}" if move_entry.get("max_pp") else str(move_entry["pp"])
+                pp_area = pygame.Rect(move_rect.right - 52, move_rect.y + 1, 48, 14)
+                pp_surface = tiny_f.render(pp_text, True, MUTED)
+                screen.blit(pp_surface, pp_surface.get_rect(midright=pp_area.midright))
         else:
-            text(screen, tiny_f, t(language, "no_moves"), detail_panel.x + 14, detail_y + 28, MUTED)
+            text(screen, tiny_f, t(language, "no_moves"), moves_panel.x, moves_panel.y + 20, MUTED, moves_panel.w)
         if error and DEBUG:
             text(screen, tiny_f, error[:40], detail_panel.x + 14, detail_panel.bottom - 30, WARN, detail_panel.w - 28)
         elif status:
-            text(screen, tiny_f, translate_literal(language, status), detail_panel.x + 14, detail_panel.bottom - 14, MUTED, detail_panel.w - 28)
+            pass
 
     actions = [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))]
     if allow_pc_actions:
@@ -2032,7 +2328,7 @@ def draw_connecting(screen, fonts, frame, language="pt"):
     _, body_f, small_f, tiny_f = fonts
     layout = draw_pokedex_shell(screen, screen_title(language, "connecting"))
     left_panel = layout.left_panel
-    right_panel = layout.right_panel
+    right_panel = right_info_panel(layout)
     rect(screen, PANEL, left_panel, 6)
     rect(screen, PANEL_2, right_panel, 6)
     pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
@@ -2059,7 +2355,7 @@ def draw_waiting_partner(screen, fonts, status, language="pt"):
     _, body_f, small_f, tiny_f = fonts
     layout = draw_pokedex_shell(screen, screen_title(language, "waiting_partner"))
     left_panel = layout.left_panel
-    right_panel = layout.right_panel
+    right_panel = right_info_panel(layout)
     rect(screen, PANEL, left_panel, 6)
     rect(screen, PANEL_2, right_panel, 6)
     pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
@@ -2082,7 +2378,7 @@ def draw_pokedex_prompt(screen, fonts, title, question, detail_lines, actions, l
     _, body_f, small_f, tiny_f = fonts
     layout = draw_pokedex_shell(screen, title)
     left_panel = layout.left_panel
-    right_panel = layout.right_panel
+    right_panel = right_info_panel(layout)
     rect(screen, PANEL, left_panel, 6)
     rect(screen, PANEL_2, right_panel, 6)
     pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
@@ -2156,7 +2452,7 @@ def draw_info_modal(screen, fonts, title, message, language="pt"):
     display_title = translate_literal(language, title) if title else t(language, "notice")
     layout = draw_pokedex_shell(screen, display_title or screen_title(language, "notice"))
     left_panel = layout.left_panel
-    right_panel = layout.right_panel
+    right_panel = right_info_panel(layout)
     rect(screen, PANEL, left_panel, 6)
     rect(screen, PANEL_2, right_panel, 6)
     pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
@@ -2190,7 +2486,7 @@ def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_i
         if int(r.get("move_id") or 0) not in chosen_set
     ]
     options = replacements + [{"move_id": 0, "name": t(language, "empty_move")}]
-    list_panel = layout.right_panel
+    list_panel = right_info_panel(layout)
     rect(screen, PANEL, list_panel, 6)
     pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
 
@@ -2231,6 +2527,55 @@ def draw_cancel_waiting_confirm(screen, fonts, language="pt"):
     )
 
 
+def draw_confirm_pokemon_visor(screen, fonts, area, label, pokemon, display_name, sprite, loading, language="pt"):
+    _, _, _, tiny_f = fonts
+    draw_digital_visor(screen, area, 1.0)
+    pygame.draw.rect(screen, BORDER, area, 2)
+
+    sprite_box = pygame.Rect(area.x + 2, area.y + 8, 80, 80)
+    if sprite:
+        scaled = pygame.transform.smoothscale(sprite, (80, 80))
+        screen.blit(scaled, sprite_box.topleft)
+    elif loading:
+        wrap_text(screen, tiny_f, t(language, "loading_sprite"), pygame.Rect(sprite_box.x + 4, sprite_box.y + 30, sprite_box.w - 8, 18), MUTED, max_lines=2)
+    else:
+        text_center(screen, tiny_f, t(language, "no_sprite"), sprite_box, MUTED)
+
+    text_x = sprite_box.right + 8
+    text_w = area.right - text_x - 8
+    name_area = pygame.Rect(text_x, area.y + 8, text_w, 18)
+    level = int((pokemon or {}).get("level") or 0)
+    name_f = font(11)
+    wrap_text(screen, name_f, display_name, name_area, (0, 0, 0), line_gap=1, max_lines=1)
+
+    level_y = area.y + 30
+    level_text = f"Nivel {level}" if level else t(language, "level_unknown")
+    level_surface = font(10).render(level_text, True, (0, 0, 0))
+    screen.blit(level_surface, (text_x, level_y))
+
+    type_box = pygame.Rect(text_x, level_y + 14, text_w, 22)
+    draw_digital_visor(screen, type_box, 1.0)
+    type_names = pokemon_types(pokemon)
+    if type_names:
+        tint = TYPE_COLORS.get(type_names[0], (170, 232, 206))
+        overlay = pygame.Surface(type_box.size, pygame.SRCALPHA)
+        overlay.fill((tint[0], tint[1], tint[2], 42))
+        pygame.draw.rect(overlay, (255, 255, 255, 60), overlay.get_rect(), 1)
+        screen.blit(overlay, type_box.topleft)
+    pygame.draw.rect(screen, BORDER, type_box, 1)
+    type_label_text = " / ".join(type_label(type_name, language) for type_name in type_names[:2]) or "-"
+    type_surface = font(10).render(type_label_text, True, (0, 0, 0))
+    screen.blit(type_surface, type_surface.get_rect(center=type_box.center))
+
+    xp_fill, _, _ = pokemon_xp_bar(pokemon)
+    xp_bar = pygame.Rect(text_x, type_box.bottom + 6, text_w, 10)
+    rect(screen, (214, 214, 214), xp_bar, 4)
+    pygame.draw.rect(screen, BORDER, xp_bar, 1, border_radius=4)
+    if xp_fill > 0:
+        fill_w = max(2, int((xp_bar.w - 2) * xp_fill))
+        rect(screen, ACCENT, pygame.Rect(xp_bar.x + 1, xp_bar.y + 1, fill_w, xp_bar.h - 2), 3)
+
+
 def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon, sprite_loader, language="pt"):
     title_f, body_f, small_f, tiny_f = fonts
     del title_f
@@ -2263,57 +2608,39 @@ def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon, sprite_loade
     peer_sprite, peer_loading, _ = sprite_loader.snapshot_for(peer_entry)
 
     left_card = layout.left_panel
-    right_card = layout.right_panel
+    right_card = right_info_panel(layout)
     rect(screen, PANEL, left_card, 6)
     rect(screen, PANEL, right_card, 6)
     pygame.draw.rect(screen, BORDER, left_card, 2, border_radius=6)
     pygame.draw.rect(screen, BORDER, right_card, 2, border_radius=6)
 
-    header_h = 34
-    rect(screen, PANEL_2, pygame.Rect(left_card.x + 8, left_card.y + 8, left_card.w - 16, header_h), 5)
-    rect(screen, SCREEN, pygame.Rect(right_card.x + 8, right_card.y + 8, right_card.w - 16, header_h), 5)
-    text(screen, small_f, t(language, "your_pokemon"), left_card.x + 18, left_card.y + 17, OK, left_card.w - 36)
-    text(screen, small_f, t(language, "opponent"), right_card.x + 18, right_card.y + 17, SCREEN_TEXT, right_card.w - 36)
-
-    my_sprite_box = pygame.Rect(left_card.centerx - 58, left_card.y + 58, 116, 116)
-    peer_sprite_box = pygame.Rect(right_card.centerx - 58, right_card.y + 58, 116, 116)
-    rect(screen, BG, my_sprite_box, 8)
-    rect(screen, BG, peer_sprite_box, 8)
-    pygame.draw.rect(screen, BORDER, my_sprite_box, 2, border_radius=8)
-    pygame.draw.rect(screen, BORDER, peer_sprite_box, 2, border_radius=8)
-    if my_sprite:
-        scaled = pygame.transform.smoothscale(my_sprite, (96, 96))
-        screen.blit(scaled, (my_sprite_box.x + 10, my_sprite_box.y + 10))
-    elif my_loading:
-        wrap_text(screen, tiny_f, t(language, "loading_sprite"), pygame.Rect(my_sprite_box.x + 8, my_sprite_box.y + 42, my_sprite_box.w - 16, 40), MUTED, max_lines=2)
-    else:
-        text_center(screen, tiny_f, t(language, "no_sprite"), my_sprite_box, MUTED)
-    if peer_sprite:
-        scaled = pygame.transform.smoothscale(peer_sprite, (96, 96))
-        screen.blit(scaled, (peer_sprite_box.x + 10, peer_sprite_box.y + 10))
-    elif peer_loading:
-        wrap_text(screen, tiny_f, t(language, "loading_sprite"), pygame.Rect(peer_sprite_box.x + 8, peer_sprite_box.y + 42, peer_sprite_box.w - 16, 40), MUTED, max_lines=2)
-    else:
-        text_center(screen, tiny_f, t(language, "no_sprite"), peer_sprite_box, MUTED)
-
-    text_center(screen, small_f, mine, pygame.Rect(left_card.x + 12, left_card.y + 186, left_card.w - 24, 24), TEXT)
-    text_center(screen, small_f, peer, pygame.Rect(right_card.x + 12, right_card.y + 186, right_card.w - 24, 24), TEXT)
-    my_level = int(my_pokemon.get("level") or 0)
-    peer_level = int(opponent_pokemon.get("level") or 0)
-    text_center(screen, tiny_f, t(language, "level_short", level=my_level) if my_level else t(language, "level_unknown"), pygame.Rect(left_card.x + 12, left_card.y + 214, left_card.w - 24, 20), MUTED)
-    text_center(screen, tiny_f, t(language, "level_short", level=peer_level) if peer_level else t(language, "level_unknown"), pygame.Rect(right_card.x + 12, right_card.y + 214, right_card.w - 24, 20), MUTED)
+    peer_visor = right_visor_rect(right_card)
+    my_visor = pygame.Rect(left_card.x + 16, peer_visor.y, left_card.w - 32, peer_visor.h)
+    draw_confirm_pokemon_visor(screen, fonts, my_visor, t(language, "your_pokemon"), my_pokemon, mine, my_sprite, my_loading, language)
+    draw_confirm_pokemon_visor(screen, fonts, peer_visor, t(language, "opponent"), opponent_pokemon, peer, peer_sprite, peer_loading, language)
 
     arrow_y = left_card.y + 146
-    pygame.draw.circle(screen, BORDER, (SCREEN_W // 2, arrow_y), 18)
-    pygame.draw.circle(screen, ACCENT, (SCREEN_W // 2, arrow_y), 14)
+    pygame.draw.circle(screen, BORDER, (SCREEN_W // 2, arrow_y - 13), 16)
+    pygame.draw.circle(screen, ACCENT, (SCREEN_W // 2, arrow_y - 13), 12)
     pygame.draw.polygon(screen, SCREEN, [
-        (SCREEN_W // 2 - 7, arrow_y - 6),
-        (SCREEN_W // 2 + 4, arrow_y - 6),
-        (SCREEN_W // 2 + 4, arrow_y - 12),
-        (SCREEN_W // 2 + 13, arrow_y),
-        (SCREEN_W // 2 + 4, arrow_y + 12),
-        (SCREEN_W // 2 + 4, arrow_y + 6),
-        (SCREEN_W // 2 - 7, arrow_y + 6),
+        (SCREEN_W // 2 - 7, arrow_y - 19),
+        (SCREEN_W // 2 + 3, arrow_y - 19),
+        (SCREEN_W // 2 + 3, arrow_y - 24),
+        (SCREEN_W // 2 + 11, arrow_y - 13),
+        (SCREEN_W // 2 + 3, arrow_y - 2),
+        (SCREEN_W // 2 + 3, arrow_y - 7),
+        (SCREEN_W // 2 - 7, arrow_y - 7),
+    ])
+    pygame.draw.circle(screen, BORDER, (SCREEN_W // 2, arrow_y + 23), 16)
+    pygame.draw.circle(screen, ACCENT, (SCREEN_W // 2, arrow_y + 23), 12)
+    pygame.draw.polygon(screen, SCREEN, [
+        (SCREEN_W // 2 + 7, arrow_y + 17),
+        (SCREEN_W // 2 - 3, arrow_y + 17),
+        (SCREEN_W // 2 - 3, arrow_y + 12),
+        (SCREEN_W // 2 - 11, arrow_y + 23),
+        (SCREEN_W // 2 - 3, arrow_y + 34),
+        (SCREEN_W // 2 - 3, arrow_y + 29),
+        (SCREEN_W // 2 + 7, arrow_y + 29),
     ])
 
     draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_confirm")), ("B", t(language, "btn_cancel"))])
@@ -2481,7 +2808,7 @@ def draw_evolution_cancel_prompt(screen, fonts, evolution, sprite_loader, frame,
     layout = draw_pokedex_shell(screen, screen_title(language, "trade_evolution"))
 
     stage_panel = layout.left_panel
-    decision_panel = layout.right_panel
+    decision_panel = right_info_panel(layout)
     rect(screen, PANEL, stage_panel, 6)
     rect(screen, PANEL_2, decision_panel, 6)
     pygame.draw.rect(screen, BORDER, stage_panel, 2, border_radius=6)
@@ -2507,7 +2834,7 @@ def draw_evolution_cancel_confirm(screen, fonts, evolution, sprite_loader, frame
     layout = draw_pokedex_shell(screen, screen_title(language, "confirm_cancel"))
 
     stage_panel = layout.left_panel
-    decision_panel = layout.right_panel
+    decision_panel = right_info_panel(layout)
     rect(screen, PANEL, stage_panel, 6)
     rect(screen, PANEL_2, decision_panel, 6)
     pygame.draw.rect(screen, BORDER, stage_panel, 2, border_radius=6)
@@ -2530,7 +2857,7 @@ def draw_trading(screen, fonts, status, language="pt"):
     _, body_f, small_f, tiny_f = fonts
     layout = draw_pokedex_shell(screen, screen_title(language, "trading"))
     left_panel = layout.left_panel
-    right_panel = layout.right_panel
+    right_panel = right_info_panel(layout)
     rect(screen, PANEL, left_panel, 6)
     rect(screen, PANEL_2, right_panel, 6)
     pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
@@ -2552,7 +2879,7 @@ def draw_trade_result(screen, fonts, success, data, language="pt"):
     _, body_f, small_f, tiny_f = fonts
     layout = draw_pokedex_shell(screen, screen_title(language, "result"))
     left_panel = layout.left_panel
-    right_panel = layout.right_panel
+    right_panel = right_info_panel(layout)
     rect(screen, PANEL, left_panel, 6)
     rect(screen, PANEL_2, right_panel, 6)
     pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
@@ -2633,7 +2960,7 @@ def main():
     pygame.mouse.set_visible(False)
     display_start = time.perf_counter()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
-    pygame.display.set_caption("PokeCable Room")
+    pygame.display.set_caption("PokeCable")
     clock = pygame.time.Clock()
     fonts = (font(20, True), font(16), font(14), font(12))
     logger.info("Boot timing: display + fonts %.3fs", time.perf_counter() - display_start)
