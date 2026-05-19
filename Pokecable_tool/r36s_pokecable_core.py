@@ -21,8 +21,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import websockets
-
 from pokecable_save import SaveError, SaveModel, _ensure_backend_import_path, load_save
 
 DEBUG = os.getenv("POKECABLE_DEBUG", "0").lower() in ("1", "true", "yes")
@@ -993,6 +991,13 @@ async def _websocket_trade(
     ui: PygameUI,
     confirm_queue: queue.Queue,
 ) -> None:
+    try:
+        import websockets
+    except ImportError as exc:
+        logger.error("websockets unavailable for room trade: %s", exc)
+        ui.error("Modulo websockets ausente. Troca por sala indisponivel.")
+        return
+
     if not state.selected_save:
         ui.error("Nenhum save selecionado")
         return
