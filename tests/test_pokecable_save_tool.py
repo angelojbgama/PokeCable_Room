@@ -115,6 +115,59 @@ def test_box_level_from_experience_supports_all_tool_generations():
     assert _level_from_experience(3, 9999, 125000) == 1
 
 
+def test_experience_progress_for_species_reports_next_level_payload():
+    from data.growth_rates import ERRATIC, MEDIUM_SLOW, experience_for_level, experience_progress_for_species
+
+    assert experience_for_level(ERRATIC, 1) == 0
+    assert experience_for_level(MEDIUM_SLOW, 1) == 0
+
+    pikachu = experience_progress_for_species(25, 125000)
+    assert pikachu["level"] == 50
+    assert pikachu["experience"] == 125000
+    assert pikachu["next_level"] == 51
+    assert pikachu["needed_this_level"] > 0
+    assert pikachu["fill_ratio"] == 0.0
+
+    bulbasaur = experience_progress_for_species(1, 135)
+    assert bulbasaur["level"] == 5
+    assert bulbasaur["next_level"] == 6
+    assert bulbasaur["remaining_to_next_level"] > 0
+
+    charizard = experience_progress_for_species(6, 1059860)
+    assert charizard["level"] == 100
+    assert charizard["fill_ratio"] == 1.0
+    assert charizard["is_max_level"] is True
+
+    with pytest.raises(ValueError):
+        experience_progress_for_species(9999, 125000)
+
+
+def test_export_payload_preserves_box_experience_for_gen1_and_gen2_real_saves():
+    from pokecable_save import load_save
+
+    root = Path(__file__).resolve().parents[1]
+    cases = [
+        root / "roms" / "test-saves" / "gen 1" / "Pokémon - Blue Version.sav",
+        root / "roms" / "test-saves" / "gen 2" / "Pokémon - Crystal Version.sav",
+    ]
+    missing = [path for path in cases if not path.exists()]
+    if missing:
+        pytest.skip(f"Missing real save fixtures: {missing}")
+
+    for save_path in cases:
+        save = load_save(save_path)
+        box_pokemon = save.boxes[0]
+        payload = save.export_payload(str(box_pokemon["location"]))
+
+        assert int(box_pokemon["experience"]) > 0
+        assert payload["experience"] == box_pokemon["experience"]
+        assert payload["summary"]["experience"] == box_pokemon["experience"]
+        assert payload["canonical"]["experience"] == box_pokemon["experience"]
+        assert payload["experience_progress"]["experience"] == box_pokemon["experience"]
+        assert payload["experience_progress"]["level"] == box_pokemon["level"]
+        assert payload["canonical"]["metadata"]["experience_progress"]["experience"] == box_pokemon["experience"]
+
+
 def test_gen1_withdraw_preserves_total(gen1_save_path):
     from pokecable_save import load_save
 

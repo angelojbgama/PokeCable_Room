@@ -28,6 +28,7 @@ except ImportError:
 
 from pokecable_logging import configure_logging
 from pokecable_save import SaveError, _ensure_backend_import_path
+from ui_elements import LIST_SCROLLBAR
 from r36s_pokecable_core import (
     PokecableState,
     execute_self_trade,
@@ -63,8 +64,8 @@ NAV_REPEAT_INTERVAL = 0.06
 QUIT_COMBO_WINDOW = 0.35
 JOY_BUTTON_START = 13
 JOY_BUTTON_SELECT = 12
-ROW_H = 45
-ROW_VISIBLE = 7
+ROW_H = 52
+ROW_VISIBLE = 6
 GUARDED_INPUT_ACTIONS = {"select", "back", "x", "y", "up", "down", "left", "right"}
 
 # GO-Super Gamepad mapping from /opt/inttools/gamecontrollerdb.txt
@@ -1024,21 +1025,56 @@ def move_display_entries(pokemon):
 
 def pokemon_xp_bar(pokemon):
     raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
+    raw = raw if isinstance(raw, dict) else {}
+    summary = (pokemon or {}).get("summary", {}) if isinstance(pokemon, dict) else {}
+    summary = summary if isinstance(summary, dict) else {}
     canonical = (pokemon or {}).get("canonical", {}) if isinstance(pokemon, dict) else {}
-    national_dex_id = int((pokemon or {}).get("national_dex_id") or raw.get("national_dex_id") or canonical.get("species_national_id") or 0)
-    experience = canonical.get("experience") if isinstance(canonical, dict) else None
-    if experience in (None, ""):
-        experience = (pokemon or {}).get("experience") or raw.get("experience")
-    level = int((pokemon or {}).get("level") or 0)
+    canonical = canonical if isinstance(canonical, dict) else {}
+    canonical_species = canonical.get("species", {}) if isinstance(canonical.get("species"), dict) else {}
+    canonical_metadata = canonical.get("metadata", {}) if isinstance(canonical.get("metadata"), dict) else {}
+    for progress in (
+        (pokemon or {}).get("experience_progress") if isinstance(pokemon, dict) else None,
+        raw.get("experience_progress") if isinstance(raw, dict) else None,
+        summary.get("experience_progress") if isinstance(summary, dict) else None,
+        canonical_metadata.get("experience_progress") if isinstance(canonical_metadata, dict) else None,
+    ):
+        if not isinstance(progress, dict):
+            continue
+        try:
+            filled = max(0.0, min(1.0, float(progress.get("fill_ratio") or 0.0)))
+            current_xp = int(progress.get("experience") or 0)
+            next_xp = int(progress.get("next_level_experience") or current_xp)
+            return filled, current_xp, next_xp
+        except Exception:
+            continue
+
+    national_dex_id = int(
+        (pokemon or {}).get("national_dex_id")
+        or raw.get("national_dex_id")
+        or canonical.get("species_national_id")
+        or canonical_species.get("national_dex_id")
+        or 0
+    )
+    experience = None
+    for source in (canonical, pokemon or {}, raw, summary):
+        if isinstance(source, dict) and source.get("experience") not in (None, ""):
+            experience = source.get("experience")
+            break
     if experience is None:
         return 0.0, 0, 0
     try:
         _ensure_backend_import_path()
-        from data.growth_rates import experience_for_level, growth_rate_id_for_national, level_from_species_experience  # type: ignore
+        from data.growth_rates import experience_progress_for_species  # type: ignore
 
         if national_dex_id <= 0:
             generation = int((pokemon or {}).get("generation") or raw.get("generation") or (canonical.get("source_generation") if isinstance(canonical, dict) else 0) or 0)
-            internal_species_id = int((pokemon or {}).get("species_id") or raw.get("species_id") or canonical.get("species_id") or 0)
+            internal_species_id = int(
+                (pokemon or {}).get("species_id")
+                or raw.get("species_id")
+                or summary.get("species_id")
+                or canonical_species.get("source_species_id")
+                or 0
+            )
             if generation and internal_species_id:
                 try:
                     from data.species import native_to_national  # type: ignore
@@ -1047,20 +1083,12 @@ def pokemon_xp_bar(pokemon):
                     national_dex_id = 0
         if national_dex_id <= 0:
             return 0.0, 0, 0
-        species_id = national_dex_id
-        growth_rate_id = growth_rate_id_for_national(species_id)
-        if growth_rate_id is None:
-            return 0.0, 0, 0
-        current_level = max(1, min(100, int(level_from_species_experience(species_id, int(experience)))))
-        next_level = min(100, current_level + 1)
-        current_xp = int(experience)
-        if next_level <= current_level:
-            return 1.0, current_xp, current_xp
-        min_xp = int(experience_for_level(growth_rate_id, current_level))
-        max_xp = int(experience_for_level(growth_rate_id, next_level))
-        span = max(1, max_xp - min_xp)
-        filled = max(0.0, min(1.0, (current_xp - min_xp) / span))
-        return filled, current_xp, max_xp
+        progress = experience_progress_for_species(national_dex_id, int(experience))
+        return (
+            max(0.0, min(1.0, float(progress.get("fill_ratio") or 0.0))),
+            int(progress.get("experience") or 0),
+            int(progress.get("next_level_experience") or progress.get("experience") or 0),
+        )
     except Exception:
         return 0.0, 0, 0
 
@@ -1423,30 +1451,31 @@ def compact_action_label(value):
 
 def button(surface, fnt, label, desc, x, y, width=None):
     desc = compact_action_label(desc)
-    button_f = font(12)
-    cap_f = font(11, True)
-    width = int(width or max(54, min(118, button_f.size(str(desc or ""))[0] + 30)))
-    area = pygame.Rect(x, y, width, 20)
+    button_f = font(14)
+    cap_f = font(13, True)
+    width = int(width or max(64, min(132, button_f.size(str(desc or ""))[0] + 40)))
+    area = pygame.Rect(x, y, width, 26)
     rect(surface, (209, 230, 248), area.move(1, 1), 4)
     rect(surface, (247, 252, 255), area, 4)
     pygame.draw.rect(surface, BORDER, area, 1, border_radius=4)
-    cap = pygame.Rect(x + 3, y + 3, 16, 14)
+    cap = pygame.Rect(x + 4, y + 3, 20, 20)
     rect(surface, ACCENT, cap, 4)
     text_center(surface, cap_f, label, cap, SCREEN_TEXT)
-    text(surface, button_f, desc, x + 24, y + 4, TEXT, width - 28)
+    desc_area = pygame.Rect(cap.right + 6, area.y + 1, area.right - cap.right - 10, area.h - 2)
+    text_center(surface, button_f, desc, desc_area, TEXT)
 
 
 def draw_footer_actions(screen, fnt, actions):
     draw_footer_bar(screen)
     del fnt
-    footer = pygame.Rect(22, SCREEN_H - 28, SCREEN_W - 44, 22)
+    footer = pygame.Rect(22, SCREEN_H - 32, SCREEN_W - 44, 26)
     gap = 6
-    measure_f = font(12)
+    measure_f = font(14)
     compact_actions = [(label, compact_action_label(desc)) for label, desc in actions]
-    widths = [max(54, min(118, measure_f.size(str(desc or ""))[0] + 32)) for _, desc in compact_actions]
+    widths = [max(64, min(132, measure_f.size(str(desc or ""))[0] + 42)) for _, desc in compact_actions]
     total = sum(widths) + gap * max(0, len(widths) - 1)
     if total > footer.w:
-        width = max(50, (footer.w - gap * max(0, len(widths) - 1)) // max(1, len(widths)))
+        width = max(60, (footer.w - gap * max(0, len(widths) - 1)) // max(1, len(widths)))
         widths = [width] * len(widths)
     x = footer.x
     for (label, desc), width in zip(compact_actions, widths):
@@ -1574,17 +1603,6 @@ def list_scroll_offset(key, selected, total, visible=ROW_VISIBLE):
         current = float(target)
     SCROLL_STATE[key] = current
     return current
-
-
-def draw_scrollbar(surface, panel, offset, total, visible=ROW_VISIBLE):
-    if total <= visible:
-        return
-    track = pygame.Rect(panel.right - 10, panel.y + 12, 4, panel.h - 24)
-    rect(surface, PANEL_2, track, 3)
-    thumb_h = max(24, int(track.h * visible / total))
-    max_offset = max(1, total - visible)
-    thumb_y = track.y + int((track.h - thumb_h) * min(max(offset, 0), max_offset) / max_offset)
-    rect(surface, ACCENT, pygame.Rect(track.x, thumb_y, track.w, thumb_h), 3)
 
 
 def pokemon_sprite_slug(name):
@@ -2103,7 +2121,7 @@ def draw_select_save(screen, fonts, selected, saves, title=None, language="pt"):
             rect(screen, ACCENT, row, 4)
         wrap_text(screen, tiny_f, save_path.name, pygame.Rect(row.x + 9, row.y + 4, row.w - 18, row.h - 6), color, line_gap=0, max_lines=2)
     screen.set_clip(previous_clip)
-    draw_scrollbar(screen, list_panel, scroll, len(saves), visible)
+    LIST_SCROLLBAR.draw(screen, scroll, len(saves), visible)
 
     selected_save = saves[selected] if 0 <= selected < len(saves) else saves[0]
     screen_rect = right_visor_rect(detail_panel)
@@ -2188,35 +2206,68 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
     rect(screen, PANEL, list_panel, 6)
     pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
 
+    content_pad_left = 4
+    content_pad_top = 4
+    content_pad_right = 4
+    content_pad_bottom = 2
+    content = pygame.Rect(
+        list_panel.x + content_pad_left,
+        list_panel.y + content_pad_top,
+        list_panel.w - (content_pad_left + content_pad_right),
+        list_panel.h - (content_pad_top + content_pad_bottom),
+    )
+    card_min_pitch = 53
+    card_gap = 2
+    card_pitch = max(card_min_pitch, content.h // ROW_VISIBLE)
+    card_h = card_pitch - card_gap
+    sprite_size = 52
+    sprite_pad_left = 8
+    text_gap = 10
+    text_pad_right = 12
+    title_y_offset = 4
+    level_y_offset = 19
+    item_y_offset = 32
+    name_font = font(13)
+    meta_font = font(11)
+
     scroll = list_scroll_offset("pokemon", selected, len(pokemon_list))
     first = max(0, int(scroll) - 1)
     last = min(len(pokemon_list), int(scroll) + ROW_VISIBLE + 2)
     previous_clip = screen.get_clip()
-    screen.set_clip(list_panel.inflate(-8, -8))
+    screen.set_clip(content)
     for idx in range(first, last):
         pokemon = pokemon_list[idx]
-        y = list_panel.y + 12 + int((idx - scroll) * ROW_H)
-        row = pygame.Rect(list_panel.x + 8, y, list_panel.w - 20, 40)
+        y = content.y + int((idx - scroll) * card_pitch)
+        row = pygame.Rect(content.x, y, content.w, card_h)
         color = SCREEN if idx == selected else TEXT
+        card_fill = ACCENT if idx == selected else PANEL_2
+        rect(screen, card_fill, row, 6)
+        pygame.draw.rect(screen, BORDER, row, 2, border_radius=6)
         if idx == selected:
-            rect(screen, ACCENT, row, 4)
+            inner = row.inflate(-6, -6)
+            pygame.draw.rect(screen, (255, 255, 255), inner, 1, border_radius=5)
         sprite_loader.request_for(pokemon)
         sprite, loading, _ = sprite_loader.snapshot_for(pokemon)
-        sprite_slot = pygame.Rect(row.x + 5, row.y + 4, 32, 32)
-        rect(screen, BG if idx == selected else PANEL_2, sprite_slot, 4)
+        sprite_slot = pygame.Rect(row.x + sprite_pad_left, row.y + (row.h - sprite_size) // 2, sprite_size, sprite_size)
         if sprite:
-            scaled = pygame.transform.smoothscale(sprite, (30, 30))
-            screen.blit(scaled, (sprite_slot.x + 1, sprite_slot.y + 1))
+            scaled = pygame.transform.smoothscale(sprite, (sprite_size, sprite_size))
+            screen.blit(scaled, sprite_slot.topleft)
         elif loading:
-            text(screen, tiny_f, "...", sprite_slot.x + 8, sprite_slot.y + 8, MUTED)
+            text_center(screen, meta_font, "...", sprite_slot, MUTED)
+        text_x = sprite_slot.right + text_gap
+        text_w = row.right - text_x - text_pad_right
+        title_area = pygame.Rect(text_x, row.y + title_y_offset, text_w, 14)
+        level_area = pygame.Rect(text_x, row.y + level_y_offset, text_w, 12)
+        item_area = pygame.Rect(text_x, row.y + item_y_offset, text_w, 12)
+        level = int(pokemon.get("level") or 0)
+        text(screen, name_font, pokemon_display_name(pokemon, f"Pokemon {idx + 1}"), title_area.x, title_area.y, color, title_area.w)
+        text(screen, meta_font, t(language, "level_tag", level=level), level_area.x, level_area.y, color if idx == selected else MUTED, level_area.w)
         item_info = held_item_info(pokemon)
-        item_slot = pygame.Rect(row.right - 29, row.y + 8, 22, 22)
-        draw_item_icon(screen, item_slot, item_info, idx == selected)
-        text(screen, font(11), pokemon_compact_label(pokemon, f"Pokemon {idx + 1}", language), row.x + 44, row.y + 4, color, row.w - 78)
         item_name = item_info["name"] if item_info else t(language, "item_none")
-        text(screen, tiny_f, t(language, "item_label", name=item_name), row.x + 44, row.y + 23, color if idx == selected else MUTED, row.w - 84)
+        item_text = t(language, "item_label", name=item_name)
+        text(screen, meta_font, item_text, item_area.x, item_area.y, color if idx == selected else MUTED, item_area.w)
     screen.set_clip(previous_clip)
-    draw_scrollbar(screen, list_panel, scroll, len(pokemon_list))
+    LIST_SCROLLBAR.draw(screen, scroll, len(pokemon_list), ROW_VISIBLE)
 
     selected_pokemon = pokemon_list[selected] if 0 <= selected < len(pokemon_list) else None
     sprite_loader.request(selected_pokemon)
@@ -2509,7 +2560,7 @@ def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_i
             label = local_move_name(option.get("move_id", 0))
         text(screen, small_f, label, row.x + 10, row.y + 7, color, row.w - 20)
     screen.set_clip(previous_clip)
-    draw_scrollbar(screen, list_panel, scroll, len(options), visible)
+    LIST_SCROLLBAR.draw(screen, scroll, len(options), visible)
 
     draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_choose")), ("B", t(language, "btn_skip"))])
 

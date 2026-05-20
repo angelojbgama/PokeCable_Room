@@ -39,6 +39,8 @@ def growth_rate_id_for_national(national_dex_id: int) -> int | None:
 def experience_for_level(growth_rate_id: int, level: int) -> int:
     growth_rate_id = int(growth_rate_id)
     level = max(1, min(100, int(level)))
+    if level <= 1:
+        return 0
     cube = level * level * level
     if growth_rate_id == SLOW:
         return (5 * cube) // 4
@@ -82,3 +84,48 @@ def level_from_species_experience(national_dex_id: int, experience: int) -> int:
     if growth_rate_id is None:
         raise ValueError(f"Growth rate nao encontrado para National Dex #{national_dex_id}.")
     return level_from_experience(growth_rate_id, experience)
+
+
+def experience_progress_for_species(national_dex_id: int, experience: int) -> dict[str, int | float | bool]:
+    growth_rate_id = growth_rate_id_for_national(national_dex_id)
+    if growth_rate_id is None:
+        raise ValueError(f"Growth rate nao encontrado para National Dex #{national_dex_id}.")
+
+    current_experience = max(0, int(experience))
+    current_level = level_from_experience(growth_rate_id, current_experience)
+    level_start_experience = experience_for_level(growth_rate_id, current_level)
+
+    if current_level >= 100:
+        return {
+            "growth_rate_id": growth_rate_id,
+            "level": 100,
+            "experience": current_experience,
+            "level_start_experience": level_start_experience,
+            "next_level": 100,
+            "next_level_experience": level_start_experience,
+            "gained_this_level": max(0, current_experience - level_start_experience),
+            "needed_this_level": 0,
+            "remaining_to_next_level": 0,
+            "fill_ratio": 1.0,
+            "is_max_level": True,
+        }
+
+    next_level = current_level + 1
+    next_level_experience = experience_for_level(growth_rate_id, next_level)
+    needed_this_level = max(1, next_level_experience - level_start_experience)
+    gained_this_level = max(0, min(needed_this_level, current_experience - level_start_experience))
+    remaining_to_next_level = max(0, next_level_experience - current_experience)
+
+    return {
+        "growth_rate_id": growth_rate_id,
+        "level": current_level,
+        "experience": current_experience,
+        "level_start_experience": level_start_experience,
+        "next_level": next_level,
+        "next_level_experience": next_level_experience,
+        "gained_this_level": gained_this_level,
+        "needed_this_level": needed_this_level,
+        "remaining_to_next_level": remaining_to_next_level,
+        "fill_ratio": max(0.0, min(1.0, gained_this_level / needed_this_level)),
+        "is_max_level": False,
+    }

@@ -15,7 +15,7 @@ def _ensure_backend_path() -> None:
 _ensure_backend_path()
 
 from data.base_stats import BASE_STATS  # noqa: E402
-from data.growth_rates import level_from_species_experience  # noqa: E402
+from data.growth_rates import experience_progress_for_species, level_from_species_experience  # noqa: E402
 from data.items import item_category, item_exists, item_name  # noqa: E402
 from data.moves import move_exists, move_name  # noqa: E402
 from data.species import SPECIES_NAMES_BY_NATIONAL, native_to_national  # noqa: E402
@@ -62,6 +62,12 @@ def _level_for_pokemon(pokemon: dict[str, Any], national_dex_id: int | None) -> 
         return max(0, level)
     experience = pokemon.get("experience")
     if experience in (None, ""):
+        summary = pokemon.get("summary") if isinstance(pokemon.get("summary"), dict) else {}
+        canonical = pokemon.get("canonical") if isinstance(pokemon.get("canonical"), dict) else {}
+        experience = summary.get("experience")
+        if experience in (None, ""):
+            experience = canonical.get("experience")
+    if experience in (None, ""):
         return max(0, level)
     try:
         return level_from_species_experience(int(national_dex_id), _as_int(experience, 0))
@@ -69,9 +75,21 @@ def _level_for_pokemon(pokemon: dict[str, Any], national_dex_id: int | None) -> 
         return max(0, level)
 
 
+def _experience_for_pokemon(
+    pokemon: dict[str, Any],
+    summary: dict[str, Any],
+    canonical: dict[str, Any],
+) -> int | None:
+    for value in (pokemon.get("experience"), summary.get("experience"), canonical.get("experience")):
+        if value not in (None, ""):
+            return _as_int(value, 0)
+    return None
+
+
 def enrich_one_pokemon(pokemon: dict[str, Any], default_generation: int = 0, default_game: str = "") -> dict[str, Any]:
     enriched = dict(pokemon or {})
     summary = dict(enriched.get("summary") or {})
+    canonical = dict(enriched.get("canonical") or {})
     generation = _as_int(enriched.get("generation") or enriched.get("source_generation") or default_generation, 0)
     species_id = _as_int(enriched.get("species_id") or summary.get("species_id"), 0)
     is_egg = bool(enriched.get("is_egg"))
@@ -79,6 +97,15 @@ def enrich_one_pokemon(pokemon: dict[str, Any], default_generation: int = 0, def
     national_dex_id, species_error = (None, None) if is_egg else _native_species(generation, species_id)
     species_name = "Egg" if is_egg else _species_name(national_dex_id, str(enriched.get("species_name") or ""))
     level = 1 if is_egg and not _as_int(enriched.get("level"), 0) else _level_for_pokemon(enriched, national_dex_id)
+    experience = _experience_for_pokemon(enriched, summary, canonical)
+    if experience is not None and national_dex_id:
+        try:
+            experience_progress = experience_progress_for_species(int(national_dex_id), experience)
+        except Exception:
+            experience_progress = {}
+    else:
+        existing_progress = enriched.get("experience_progress")
+        experience_progress = dict(existing_progress) if isinstance(existing_progress, dict) else {}
 
     held_item_id = _as_int(enriched.get("held_item_id") or summary.get("held_item_id"), 0)
     item_valid = item_exists(held_item_id or None, generation)
@@ -104,6 +131,8 @@ def enrich_one_pokemon(pokemon: dict[str, Any], default_generation: int = 0, def
             "species_error": species_error or "",
             "types": [] if is_egg else _types_for_national(national_dex_id),
             "level": level,
+            "experience": experience if experience is not None else enriched.get("experience"),
+            "experience_progress": experience_progress,
             "nickname": nickname,
             "held_item_id": held_item_id or None,
             "held_item_name": held_name,

@@ -71,6 +71,19 @@ def _level_from_experience(generation: int, species_id: int, experience: int) ->
     return 1
 
 
+def _experience_progress_for_payload(national_dex_id: int, experience: int) -> Dict[str, Any]:
+    if int(national_dex_id or 0) <= 0:
+        return {}
+    try:
+        _ensure_backend_import_path()
+        from data.growth_rates import experience_progress_for_species  # type: ignore
+
+        return dict(experience_progress_for_species(int(national_dex_id), int(experience)))
+    except Exception as exc:
+        logger.debug("Experience progress failed for National Dex #%s: %s", national_dex_id, exc)
+        return {}
+
+
 def _legacy_shiny_dvs(attack_dv: int, defense_dv: int, speed_dv: int, special_dv: int) -> bool:
     return (
         int(attack_dv) in SHINY_ATTACK_DVS
@@ -721,10 +734,7 @@ class SaveModel:
                 mon, ot, nick = self._read_gen1_box_data(parsed["box_index"], parsed["slot_index"])
                 raw_format = GEN1["box_format"]
             raw = mon + ot + nick
-            if parsed["kind"] == "party":
-                experience = (mon[0x0E] << 16) | (mon[0x0F] << 8) | mon[0x10]
-            else:
-                experience = 0
+            experience = (mon[0x0E] << 16) | (mon[0x0F] << 8) | mon[0x10]
         elif self.generation == 2:
             if parsed["kind"] == "party":
                 mon, ot, nick = self._read_gen2_party_data(parsed["index"])
@@ -733,7 +743,7 @@ class SaveModel:
             else:
                 mon, ot, nick = self._read_gen2_box_data(parsed["box_index"], parsed["slot_index"])
                 raw_format = self.layout["box_format"]
-                experience = 0
+                experience = (mon[0x08] << 16) | (mon[0x09] << 8) | mon[0x0A]
             raw = mon + ot + nick
         elif self.generation == 3:
             if parsed["kind"] == "party":
@@ -753,6 +763,7 @@ class SaveModel:
         raw_b64 = base64.b64encode(raw).decode("ascii")
         display = pokemon.get("display_summary") or normalize_pokemon_display(pokemon)
         is_shiny = _pokemon_is_shiny(pokemon)
+        experience_progress = _experience_progress_for_payload(national_dex_id, experience)
         logger.info(
             "Export payload: path=%s generation=%s location=%s species=%s source_kind=%s raw_format=%s raw_size=%s",
             self.path,
@@ -774,6 +785,8 @@ class SaveModel:
             "species_name": pokemon.get("species_name", "Pokemon"),
             "types": pokemon.get("types", []),
             "level": level,
+            "experience": experience,
+            "experience_progress": experience_progress,
             "nickname": pokemon.get("nickname", pokemon.get("species_name", "")),
             "ot_name": pokemon.get("ot_name", ""),
             "trainer_id": pokemon.get("trainer_id", 0),
@@ -790,6 +803,8 @@ class SaveModel:
                 "species_name": pokemon.get("species_name", "Pokemon"),
                 "types": pokemon.get("types", []),
                 "level": level,
+                "experience": experience,
+                "experience_progress": experience_progress,
                 "nickname": pokemon.get("nickname", pokemon.get("species_name", "")),
                 "held_item_id": pokemon.get("held_item_id"),
                 "held_item_name": pokemon.get("held_item_name"),
@@ -831,6 +846,7 @@ class SaveModel:
                     "is_egg": bool(pokemon.get("is_egg")),
                     "source_species_id": species_id,
                     "source_species_id_space": "gen1_internal" if self.generation == 1 else ("national_dex" if self.generation == 2 else "gen3_internal"),
+                    "experience_progress": experience_progress,
                 },
                 "species": {
                     "national_dex_id": national_dex_id if national_dex_id > 0 else species_id,
