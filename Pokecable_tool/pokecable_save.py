@@ -38,6 +38,7 @@ def _ensure_backend_import_path() -> None:
 _ensure_backend_import_path()
 
 from data.moves import default_move_pp  # noqa: E402
+from data.gender_rates import gender_from_gen2_attack_dv, gender_from_gen3_personality  # noqa: E402
 
 
 def _resolve_national_dex_id(generation: int, species_id: int, pokemon: Dict[str, Any]) -> int:
@@ -551,6 +552,8 @@ def parse_gen3_pokemon(raw: bytes) -> Dict[str, Any]:
         "is_egg": is_egg,
         "is_shiny": False if is_egg else _gen3_is_shiny(personality, trainer_id),
         "experience": read_u32(secure, growth + 4),
+        "personality": personality,
+        "gender": None if is_egg else gender_from_gen3_personality(_resolve_national_dex_id(3, species_id, {}), personality),
     }
 
 
@@ -592,6 +595,8 @@ def parse_gen3_box_pokemon(raw: bytes) -> Dict[str, Any]:
         "is_egg": is_egg,
         "is_shiny": False if is_egg else _gen3_is_shiny(personality, trainer_id),
         "experience": experience,
+        "personality": personality,
+        "gender": None if is_egg else gender_from_gen3_personality(_resolve_national_dex_id(3, species_id, {}), personality),
     }
 
 
@@ -655,6 +660,112 @@ class SaveModel:
     def signature(self) -> Dict[str, Any]:
         blob = bytes(self.bytes)
         return {"size": len(blob), "sha256": sha256_hex(blob)}
+
+    def trainer_id(self) -> int:
+        """Return the player's visible Trainer ID (low 16 bits)."""
+        try:
+            data = self.bytes
+            if self.generation == 1:
+                if len(data) > 0x2606:
+                    return ((data[0x2605] << 8) | data[0x2606]) & 0xFFFF
+            elif self.generation == 2:
+                if len(data) > 0x200A:
+                    return ((data[0x2009] << 8) | data[0x200A]) & 0xFFFF
+            elif self.generation == 3:
+                return self._gen3_trainer_id()
+        except Exception:
+            return 0
+        return 0
+
+    def _gen3_trainer_id(self) -> int:
+        SECTOR_SIGNATURE = 0x08012025
+        SECTORS_PER_SLOT = 14
+        data = bytes(self.bytes)
+        best: dict[int, tuple[int, int]] = {}
+        for base in (0, 0xE000):
+            if base + 0x1000 * SECTORS_PER_SLOT > len(data):
+                continue
+            for i in range(SECTORS_PER_SLOT):
+                off = base + i * 0x1000
+                sig = int.from_bytes(data[off + 0xFF8: off + 0xFFC], "little")
+                sid = int.from_bytes(data[off + 0xFF4: off + 0xFF6], "little")
+                ctr = int.from_bytes(data[off + 0xFFC: off + 0x1000], "little")
+                if sig != SECTOR_SIGNATURE or sid >= SECTORS_PER_SLOT:
+                    continue
+                cur = best.get(sid)
+                if cur is None or ctr > cur[0]:
+                    best[sid] = (ctr, off)
+        entry = best.get(0)
+        if entry is None:
+            return 0
+        off = entry[1]
+        return int.from_bytes(data[off + 0x0A: off + 0x0C], "little") & 0xFFFF
+
+    def badges_earned(self) -> int:
+        """Return an 8-bit mask of earned region badges (Gen1/2/3 best-effort)."""
+        try:
+            data = self.bytes
+            if self.generation == 1:
+                if len(data) > 0x2602:
+                    return data[0x2602] & 0xFF
+            elif self.generation == 2:
+                offset = 0x23E5 if (self.game or "").lower() == "pokemon_crystal" else 0x23E4
+                if len(data) > offset:
+                    return data[offset] & 0xFF
+            elif self.generation == 3:
+                return self._gen3_badges_mask()
+        except Exception:
+            return 0
+        return 0
+
+    def _gen3_badges_mask(self) -> int:
+        """Read badges from Gen3 SaveBlock1 event flags. Returns 8-bit mask."""
+        SECTOR_SIGNATURE = 0x08012025
+        SECTORS_PER_SLOT = 14
+        SAVEBLOCK1_START = 1
+        data = bytes(self.bytes)
+        # Choose, per section_id, the physical sector with highest counter across both slots
+        best: dict[int, tuple[int, int]] = {}  # section_id -> (counter, offset)
+        for base in (0, 0xE000):
+            if base + 0x1000 * SECTORS_PER_SLOT > len(data):
+                continue
+            for i in range(SECTORS_PER_SLOT):
+                off = base + i * 0x1000
+                sig = int.from_bytes(data[off + 0xFF8: off + 0xFFC], "little")
+                sid = int.from_bytes(data[off + 0xFF4: off + 0xFF6], "little")
+                ctr = int.from_bytes(data[off + 0xFFC: off + 0x1000], "little")
+                if sig != SECTOR_SIGNATURE or sid >= SECTORS_PER_SLOT:
+                    continue
+                cur = best.get(sid)
+                if cur is None or ctr > cur[0]:
+                    best[sid] = (ctr, off)
+        block1 = bytearray()
+        for sid in range(SAVEBLOCK1_START, SAVEBLOCK1_START + 4):
+            entry = best.get(sid)
+            if entry is None:
+                return 0
+            block1.extend(data[entry[1]: entry[1] + 0xF80])
+        game = (self.game or "").lower()
+        if "emerald" in game:
+            flags_off = 0x1270
+        elif "firered" in game or "leafgreen" in game:
+            flags_off = 0xEE0
+        else:
+            flags_off = 0x1220
+        if "firered" in game or "leafgreen" in game:
+            badge_ids = list(range(0x820, 0x828))
+        else:
+            badge_ids = list(range(0x807, 0x80F))
+        mask = 0
+        for i, fid in enumerate(badge_ids):
+            byte_idx = fid >> 3
+            bit = fid & 7
+            pos = flags_off + byte_idx
+            if pos >= len(block1):
+                continue
+            if block1[pos] & (1 << bit):
+                mask |= 1 << i
+        return mask & 0xFF
 
     def refresh(self) -> None:
         logger.debug("Refreshing save model: path=%s generation=%s game=%s", self.path, self.generation, self.game)
@@ -788,6 +899,7 @@ class SaveModel:
             "experience": experience,
             "experience_progress": experience_progress,
             "nickname": pokemon.get("nickname", pokemon.get("species_name", "")),
+            "gender": pokemon.get("gender"),
             "ot_name": pokemon.get("ot_name", ""),
             "trainer_id": pokemon.get("trainer_id", 0),
             "held_item_id": pokemon.get("held_item_id"),
@@ -806,6 +918,7 @@ class SaveModel:
                 "experience": experience,
                 "experience_progress": experience_progress,
                 "nickname": pokemon.get("nickname", pokemon.get("species_name", "")),
+                "gender": pokemon.get("gender"),
                 "held_item_id": pokemon.get("held_item_id"),
                 "held_item_name": pokemon.get("held_item_name"),
                 "held_item_category": pokemon.get("held_item_category"),
@@ -844,6 +957,7 @@ class SaveModel:
                 "metadata": {
                     "is_shiny": is_shiny,
                     "is_egg": bool(pokemon.get("is_egg")),
+                    "gender": pokemon.get("gender"),
                     "source_species_id": species_id,
                     "source_species_id_space": "gen1_internal" if self.generation == 1 else ("national_dex" if self.generation == 2 else "gen3_internal"),
                     "experience_progress": experience_progress,
@@ -857,7 +971,7 @@ class SaveModel:
             },
             "raw": {"format": raw_format, "data_base64": raw_b64},
             "compatibility_report": preflight_report(True, self.generation),
-            "metadata": {"format": raw_format, "source": "r36s-local-save", "location": location, "is_shiny": is_shiny},
+            "metadata": {"format": raw_format, "source": "r36s-local-save", "location": location, "is_shiny": is_shiny, "gender": pokemon.get("gender")},
         }
 
     def _count_total_pokemon(self) -> int:
@@ -1626,6 +1740,7 @@ class SaveModel:
                 "move_details": move_details,
                 "is_egg": is_egg,
                 "is_shiny": False if is_egg else _legacy_shiny_from_mon(mon, 0x15),
+                "gender": None if is_egg else gender_from_gen2_attack_dv(species_id, mon[0x15] >> 4),
             }
             pokemon["display_summary"] = normalize_pokemon_display(pokemon)
             party.append(pokemon)
@@ -1682,6 +1797,7 @@ class SaveModel:
                     "move_details": move_details,
                     "is_egg": False,
                     "is_shiny": _legacy_shiny_from_mon(mon, 0x15),
+                    "gender": gender_from_gen2_attack_dv(species_id, mon[0x15] >> 4),
                     "box_index": box_index,
                     "slot_index": slot_index,
                     "box_name": self.box_names[box_index],
@@ -1743,6 +1859,8 @@ class SaveModel:
                 "experience": details["experience"],
                 "is_egg": details["is_egg"],
                 "is_shiny": details["is_shiny"],
+                "gender": details.get("gender"),
+                "personality": details.get("personality"),
             }
             pokemon["display_summary"] = normalize_pokemon_display(pokemon)
             party.append(pokemon)
@@ -1809,6 +1927,8 @@ class SaveModel:
                     "experience": details["experience"],
                     "is_egg": details["is_egg"],
                     "is_shiny": details["is_shiny"],
+                    "gender": details.get("gender"),
+                    "personality": details.get("personality"),
                     "box_index": box_index,
                     "slot_index": slot_index,
                     "box_name": box_name,

@@ -64,6 +64,13 @@ def _apply_species_rules(report: CompatibilityReport, canonical: CanonicalPokemo
         report.compatible = False
         report.blocking_reasons.append("Egg nao e transferivel.")
         return
+    # Sanity check: the species must exist in the SOURCE generation too (catches glitched payloads).
+    if not species_exists_in_generation(national_id, report.source_generation):
+        report.compatible = False
+        report.blocking_reasons.append(
+            f"{canonical.species_name} National Dex #{national_id} nao existe na Gen {report.source_generation} (origem)."
+        )
+        return
     if not species_exists_in_generation(national_id, report.target_generation):
         report.compatible = False
         report.blocking_reasons.append(
@@ -161,9 +168,19 @@ def _apply_generation_field_rules(report: CompatibilityReport, canonical: Canoni
             _add_unique(report.data_loss, "trainer_id_high_bits")
             report.transformations.append("Trainer ID Gen 3 sera reduzido para 16 bits no destino.")
         for metadata_field in ("gender", "sex", "form"):
-            if metadata_field in canonical.metadata:
-                report.removed_fields.append(metadata_field)
-                _add_unique(report.data_loss, metadata_field)
+            if metadata_field not in canonical.metadata:
+                continue
+            value = canonical.metadata.get(metadata_field)
+            if value in (None, "", "—"):
+                continue
+            # Gen 2 derives gender from ATK DV — bytes carry it implicitly, no data loss.
+            if metadata_field in ("gender", "sex") and report.target_generation == 2:
+                report.transformations.append(
+                    "Genero sera derivado automaticamente do ATK DV ao escrever na Gen 2 (1:1)."
+                )
+                continue
+            report.removed_fields.append(metadata_field)
+            _add_unique(report.data_loss, metadata_field)
         if canonical.ability or canonical.nature:
             if policy != "auto_retrocompat":
                 report.requires_user_confirmation = True
@@ -180,9 +197,15 @@ def _apply_generation_field_rules(report: CompatibilityReport, canonical: Canoni
             report.requires_user_confirmation = True
     elif report.target_generation == 3 and canonical.source_generation in {1, 2}:
         if not canonical.ability:
-            report.transformations.append("Ability Gen 3 sera gerada pelo parser local.")
+            report.transformations.append("Ability Gen 3 sera gerada deterministicamente a partir do PID.")
         if not canonical.nature:
-            report.transformations.append("Nature Gen 3 sera gerada pelo parser local.")
+            report.transformations.append("Nature Gen 3 sera gerada deterministicamente a partir do PID.")
+        if canonical.source_generation == 1:
+            report.transformations.append(
+                "Genero Gen 3 sera derivado do PID (Gen 1 nao armazenava genero)."
+            )
+        report.transformations.append("DVs (0-15) serao escaladas para IVs (0-31) via DV*2 (max 30/31).")
+        report.transformations.append("Stat Experience (0-65535) sera convertida em EVs (0-252) via floor(StatExp/256).")
 
 
 def _apply_mode_rules(report: CompatibilityReport, canonical: CanonicalPokemon) -> None:
@@ -194,7 +217,10 @@ def _apply_mode_rules(report: CompatibilityReport, canonical: CanonicalPokemon) 
         if report.target_generation == 1:
             report.warnings.append("Gen 1 nao possui amizade, genero, shininess completo, held item ou breeding data.")
     elif report.mode == FORWARD_TRANSFER_TO_GEN3:
-        report.warnings.append("Transfer para Gen 3 exigira recriar campos nativos Gen 3 localmente no client.")
+        report.warnings.append(
+            "Transfer para Gen 3: Nature/Ability/Gender serao recriados a partir do PID; "
+            "EVs limitadas a 252/stat; IVs derivadas das DVs (DV*2)."
+        )
     elif report.mode == LEGACY_DOWNCONVERT_EXPERIMENTAL:
         report.warnings.append("Downconvert de Gen 3 para Gen 1/2 e experimental e pode perder dados modernos.")
         if canonical.held_item is not None and report.target_generation == 1 and "held_item" not in report.data_loss:

@@ -33,6 +33,31 @@ def font(size, bold=False):
     return FONT_CACHE[key]
 
 
+GENDER_FONT_CACHE: dict[int, "pygame.font.Font"] = {}
+
+
+def gender_font(size):
+    """Font for ♂/♀ symbols (fallback chain since the pixel-art UI font lacks these glyphs)."""
+    key = int(size)
+    cached = GENDER_FONT_CACHE.get(key)
+    if cached is not None:
+        return cached
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        "/mnt/c/Windows/Fonts/seguisym.ttf",
+        "/mnt/c/Windows/Fonts/arial.ttf",
+    ]
+    for path in candidates:
+        if Path(path).exists():
+            GENDER_FONT_CACHE[key] = pygame.font.Font(str(path), int(size))
+            return GENDER_FONT_CACHE[key]
+    GENDER_FONT_CACHE[key] = pygame.font.SysFont(None, int(size), bold=True)
+    return GENDER_FONT_CACHE[key]
+
+
 def title_font(size):
     key = int(size)
     cached = TITLE_FONT_CACHE.get(key)

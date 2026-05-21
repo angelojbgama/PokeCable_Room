@@ -460,17 +460,21 @@ class Gen1Parser:
         mon[0x0E:0x11] = max(0, min(0xFFFFFF, experience)).to_bytes(3, "big")
         mon[0x21] = max(1, min(100, canonical_pokemon.level))
 
-        # Write DVs (0x1B-0x1C)
-        atk_dv = min(15, int(canonical_pokemon.ivs.attack or 0) if canonical_pokemon.ivs else 0)
-        def_dv = min(15, int(canonical_pokemon.ivs.defense or 0) if canonical_pokemon.ivs else 0)
-        spd_dv = min(15, int(canonical_pokemon.ivs.speed or 0) if canonical_pokemon.ivs else 0)
-        spc_dv = min(15, int(canonical_pokemon.ivs.special or canonical_pokemon.ivs.special_attack or 0) if canonical_pokemon.ivs else 0)
-        # Convert Gen 3 IVs (0-31) to Gen 1 DVs (0-15) if needed
+        # Write DVs (0x1B-0x1C). For Gen 3 source, divide IV (0-31) before clamping to 15.
+        raw_atk = int(canonical_pokemon.ivs.attack or 0) if canonical_pokemon.ivs else 0
+        raw_def = int(canonical_pokemon.ivs.defense or 0) if canonical_pokemon.ivs else 0
+        raw_spd = int(canonical_pokemon.ivs.speed or 0) if canonical_pokemon.ivs else 0
+        raw_spc = int(canonical_pokemon.ivs.special or (canonical_pokemon.ivs.special_attack if canonical_pokemon.ivs else 0) or 0) if canonical_pokemon.ivs else 0
         if canonical_pokemon.source_generation == 3:
-            atk_dv = min(15, atk_dv // 2)
-            def_dv = min(15, def_dv // 2)
-            spd_dv = min(15, spd_dv // 2)
-            spc_dv = min(15, spc_dv // 2)
+            atk_dv = min(15, raw_atk // 2)
+            def_dv = min(15, raw_def // 2)
+            spd_dv = min(15, raw_spd // 2)
+            spc_dv = min(15, raw_spc // 2)
+        else:
+            atk_dv = min(15, raw_atk)
+            def_dv = min(15, raw_def)
+            spd_dv = min(15, raw_spd)
+            spc_dv = min(15, raw_spc)
         if canonical_pokemon.metadata.get("is_shiny"):
             atk_dv = atk_dv if atk_dv in SHINY_ATTACK_DVS else 10
             def_dv = 10
@@ -512,7 +516,7 @@ class Gen1Parser:
             hp_dv2 = ((atk_dv2 & 1) << 3) | ((def_dv2 & 1) << 2) | ((spd_dv2 & 1) << 1) | (spc_dv2 & 1)
 
             def gen1_stat(base_val, dv, stat_exp, level, is_hp=False):
-                ev_bonus = math.floor(math.ceil(math.sqrt(stat_exp)) / 4) if stat_exp > 0 else 0
+                ev_bonus = math.floor(min(255, math.ceil(math.sqrt(stat_exp))) / 4) if stat_exp > 0 else 0
                 val = ((base_val + dv) * 2 + ev_bonus) * level // 100
                 return val + (level + 10 if is_hp else 5)
 

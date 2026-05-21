@@ -161,6 +161,21 @@ def equivalent_item_id(item_id: int | None, source_generation: int, target_gener
     if item_id in {None, 0}:
         return None
     source = ITEMS_BY_GENERATION.get(int(source_generation), {}).get(int(item_id))
-    if source is None or source.equivalent_name is None:
+    if source is None:
         return None
-    return ITEM_IDS_BY_GENERATION_AND_NAME.get((int(target_generation), source.equivalent_name.lower()))
+    # Prefer explicit equivalent_name mapping, fall back to matching by display name across gens.
+    candidate_names: list[str] = []
+    if source.equivalent_name:
+        candidate_names.append(source.equivalent_name)
+    candidate_names.append(DISPLAY_NAME_OVERRIDES.get(source.name, _fallback_display_name(source.name)))
+    candidate_names.append(source.name)
+    seen: set[str] = set()
+    for name in candidate_names:
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        target_id = ITEM_IDS_BY_GENERATION_AND_NAME.get((int(target_generation), key))
+        if target_id is not None:
+            return target_id
+    return None

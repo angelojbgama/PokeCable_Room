@@ -145,7 +145,7 @@ def draw_lens_pulse(screen, center, progress):
 def draw_glass_panel(screen, area, progress, base_color=(170, 188, 214)):
     glass = pygame.Surface(area.size, pygame.SRCALPHA)
     glass.fill((235, 242, 250, 96))
-    pygame.draw.rect(glass, (255, 255, 255, 54), glass.get_rect(), 1, border_radius=6)
+    pygame.draw.rect(glass, (255, 255, 255, 54), glass.get_rect(), 1, border_radius=0)
     shimmer_w = max(24, area.w // 5)
     shimmer_x = int(progress * (area.w + shimmer_w * 2)) - shimmer_w
     for x in range(area.w):
@@ -191,7 +191,7 @@ def draw_type_badges(surface, font_obj, type_names, x, y, max_width, type_label,
         if cursor_x + badge_w > x + max_width:
             break
         badge = pygame.Rect(cursor_x, y, badge_w, 18)
-        rect(surface, type_colors.get(type_name, muted_color), badge, 4)
+        rect(surface, type_colors.get(type_name, muted_color), badge, 0)
         text(surface, font_obj, label, badge.x + 7, badge.y + 4, (8, 12, 16), badge.w - 12)
         cursor_x += badge_w + 6
 
@@ -210,7 +210,7 @@ def draw_item_icon(surface, area, item_info, selected=False, selected_fill=(0, 0
         "unused": (100, 116, 139),
         "item": (251, 191, 36),
     }
-    rect(surface, selected_fill if selected else fill, area, 4)
+    rect(surface, selected_fill if selected else fill, area, 0)
     if not item_info:
         pygame.draw.line(surface, muted, (area.x + 7, area.centery), (area.right - 7, area.centery), 2)
         return
@@ -225,7 +225,7 @@ class SelectableListItemStyle:
     selected_fill_color: tuple[int, int, int] = (18, 173, 218)
     border_color: tuple[int, int, int] = (31, 73, 124)
     selected_inner_color: tuple[int, int, int] = (255, 255, 255)
-    radius: int = 6
+    radius: int = 0
     border_width: int = 2
     selected_inner_inset: int = 6
 
@@ -399,8 +399,8 @@ class PokedexFrame:
     def __post_init__(self):
         screen_w, screen_h = self.screen_size
         self.content = pygame.Rect(24, 84, screen_w - 48, screen_h - self.header_height - self.footer_height - 56)
-        self.left_panel = pygame.Rect(28, 92, 269, 323)
-        self.right_panel = pygame.Rect(337, 96, 286, 320)
+        self.left_panel = pygame.Rect(20, 98, 286, 323)
+        self.right_panel = pygame.Rect(337, 98, 286, 323)
         self.side_screen = pygame.Rect(390, 124, 168, 54)
         self.keypad = pygame.Rect(342, 214, 256, 144)
         self.footer = pygame.Rect(22, screen_h - 28, screen_w - 44, 22)
@@ -413,7 +413,7 @@ class PokedexFrame:
         return getattr(self, name)
 
 
-def right_info_panel(layout, top_offset=30, inset_x=2, bottom_pad=30):
+def right_info_panel(layout, top_offset=0, inset_x=0, bottom_pad=0):
     base = layout.right_panel
     return pygame.Rect(base.x + inset_x, base.y + top_offset, base.w - inset_x * 2, base.h - bottom_pad)
 
@@ -422,8 +422,8 @@ def draw_right_panel_frame(screen, panel, style, progress=None, glass=False):
     if glass:
         draw_glass_panel(screen, panel, progress if progress is not None else 0.0)
     else:
-        rect(screen, style.panel_2, panel, 6)
-    pygame.draw.rect(screen, style.border, panel, 2, border_radius=6)
+        rect(screen, style.panel_2, panel, 0)
+    pygame.draw.rect(screen, style.border, panel, 2, border_radius=0)
 
 
 def draw_pokedex_shell(
@@ -444,27 +444,37 @@ def draw_pokedex_shell(
     screen.fill(style.bg)
     frame = PokedexFrame(style.screen_size, style.header_height, style.footer_height)
 
-    left_body = pygame.Rect(10, 16, 302, 418)
+    left_body = pygame.Rect(10, 8, 300, 418)
     right_points = [
-        (330, 54), (418, 54), (436, 55), (454, 59), (472, 66), (490, 76), (510, 88), (530, 100), (554, 108), (630, 108),
+        (330, 38), (418, 38), (436, 39), (454, 43), (472, 50), (490, 60), (510, 72), (530, 84), (554, 92), (630, 92),
         (630, 426), (330, 426),
     ]
-    hinge = pygame.Rect(307, 54, 25, 370)
+    hinge = pygame.Rect(308, 38, 25, 388)
 
-    rect(screen, style.shadow, left_body.move(0, 8), 15)
+    rect(screen, style.shadow, left_body.move(0, 8), 0)
     pygame.draw.polygon(screen, style.shadow, [(x, y + 8) for x, y in right_points])
-    rect(screen, style.shell, left_body, 15)
+    rect(screen, style.shell, left_body, 0)
     pygame.draw.polygon(screen, style.shell_2, right_points)
     pygame.draw.lines(screen, style.border, True, right_points, 2)
-    pygame.draw.rect(screen, style.border, left_body, 2, border_radius=15)
+    pygame.draw.rect(screen, style.border, left_body, 2, border_radius=0)
+
+    compartment_points = [
+        (310, 38), (222, 38), (204, 39), (186, 43), (168, 50), (150, 60),
+        (130, 72), (110, 84), (86, 92), (10, 92),
+        (10, 426), (310, 426),
+    ]
+    pygame.draw.polygon(screen, style.shadow, compartment_points)
+    inner_compartment = [(x + 2, y + 2) for (x, y) in compartment_points]
+    pygame.draw.polygon(screen, style.shell_2, inner_compartment)
+    pygame.draw.lines(screen, style.border, True, compartment_points, 2)
 
     hinge_body = pygame.Rect(hinge.x + 1, hinge.y + 1, hinge.w - 2, hinge.h - 2)
-    pygame.draw.rect(screen, style.shell_2, hinge_body, border_radius=6)
+    pygame.draw.rect(screen, style.shell_2, hinge_body, border_radius=0)
     highlight = pygame.Rect(hinge.x + 4, hinge.y + 4, 4, hinge.h - 8)
-    pygame.draw.rect(screen, style.shell, highlight, border_radius=3)
-    for offset in (18, hinge.h - 22):
+    pygame.draw.rect(screen, style.shell, highlight, border_radius=0)
+    for offset in (18, hinge.h - 18):
         pygame.draw.line(screen, style.border, (hinge.x + 2, hinge.y + offset), (hinge.right - 2, hinge.y + offset), 2)
-    pygame.draw.rect(screen, style.border, hinge_body, 2, border_radius=6)
+    pygame.draw.rect(screen, style.border, hinge_body, 2, border_radius=0)
 
     if lens_state["title"] != title:
         lens_state["title"] = title
@@ -483,19 +493,19 @@ def draw_pokedex_shell(
     else:
         accent_color = style.accent
 
-    pygame.draw.circle(screen, style.screen, (55, 57), 33)
-    pygame.draw.circle(screen, (237, 249, 255), (55, 57), 28)
-    pygame.draw.circle(screen, accent_color, (55, 57), 23)
+    pygame.draw.circle(screen, style.screen, (49, 47), 33)
+    pygame.draw.circle(screen, (237, 249, 255), (49, 47), 28)
+    pygame.draw.circle(screen, accent_color, (49, 47), 23)
 
     lens_elapsed = max(0.0, time.perf_counter() - lens_state["start_time"])
     lens_duration = 0.9
     if (loading_progress >= 1.0 or pulsing) and lens_elapsed <= lens_duration:
-        draw_lens_pulse(screen, (55, 57), lens_elapsed / lens_duration)
+        draw_lens_pulse(screen, (49, 47), lens_elapsed / lens_duration)
     elif pulsing:
         lens_state["start_time"] = time.perf_counter()
 
-    pygame.draw.circle(screen, (144, 229, 252), (47, 48), 8)
-    pygame.draw.circle(screen, (255, 255, 255), (42, 41), 5)
+    pygame.draw.circle(screen, (144, 229, 252), (41, 38), 8)
+    pygame.draw.circle(screen, (255, 255, 255), (36, 31), 5)
 
     if pulsing:
         current_time = time.perf_counter()
@@ -509,8 +519,8 @@ def draw_pokedex_shell(
             style.warn: (100, 80, 20),
             style.ok: (30, 80, 100),
         }
-        for idx, (x, color) in enumerate(((116, style.red), (144, style.warn), (172, style.ok))):
-            pygame.draw.circle(screen, style.border, (x, 35), 12)
+        for idx, (x, color) in enumerate(((100, style.red), (128, style.warn), (156, style.ok))):
+            pygame.draw.circle(screen, style.border, (x, 32), 12)
 
             hash_val = int(hashlib.md5(str(x).encode()).hexdigest(), 16)
             cycle_offset = (hash_val % 10) / 10.0
@@ -521,15 +531,15 @@ def draw_pokedex_shell(
 
             if is_on:
                 bright_color = bright_colors.get(color, color)
-                pygame.draw.circle(screen, bright_color, (x, 35), 9)
-                pygame.draw.circle(screen, (255, 255, 255), (x - 2, 32), 3)
+                pygame.draw.circle(screen, bright_color, (x, 32), 9)
+                pygame.draw.circle(screen, (255, 255, 255), (x - 2, 29), 3)
             else:
                 dim_color = dim_colors.get(color, (40, 40, 40))
-                pygame.draw.circle(screen, dim_color, (x, 35), 9)
+                pygame.draw.circle(screen, dim_color, (x, 32), 9)
     else:
-        for x, color in ((116, style.red), (144, style.warn), (172, style.ok)):
-            pygame.draw.circle(screen, style.border, (x, 35), 12)
-            pygame.draw.circle(screen, color, (x, 35), 9)
+        for x, color in ((100, style.red), (128, style.warn), (156, style.ok)):
+            pygame.draw.circle(screen, style.border, (x, 32), 12)
+            pygame.draw.circle(screen, color, (x, 32), 9)
 
     title_panel = pygame.Rect(93, 48, 196, 34)
     if not title_state["start_time"]:
@@ -560,7 +570,7 @@ class Scrollbar:
     thumb_color: tuple[int, int, int] = (24, 212, 242)
     border_color: tuple[int, int, int] = (40, 36, 93)
     rail_color: tuple[int, int, int] = (238, 248, 255)
-    hinge_rect: tuple[int, int, int, int] = (307, 54, 25, 370)
+    hinge_rect: tuple[int, int, int, int] = (308, 38, 25, 388)
     track_width: int = 11
     rail_width: int = 7
     thumb_min_height: int = 24
@@ -569,9 +579,9 @@ class Scrollbar:
         hinge = pygame.Rect(self.hinge_rect)
         return pygame.Rect(
             hinge.x + (hinge.w - self.track_width) // 2,
-            hinge.y + 10,
+            hinge.y + 22,
             self.track_width,
-            hinge.h - 20,
+            hinge.h - 44,
         )
 
     def _draw_track(self, surface, track, offset, total, visible) -> None:

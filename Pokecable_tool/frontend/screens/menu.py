@@ -181,7 +181,7 @@ class LoadSaveScreen(ScreenBase):
             pulse_duration = 0.9
             if pulse_elapsed <= pulse_duration:
                 from frontend.components.primitives import draw_lens_pulse
-                draw_lens_pulse(ctx.screen, (55, 57), pulse_elapsed / pulse_duration)
+                draw_lens_pulse(ctx.screen, (49, 47), pulse_elapsed / pulse_duration)
 
 
 class SelfSelectSaveAScreen(ScreenBase):
@@ -260,7 +260,7 @@ class SelfSelectSaveAScreen(ScreenBase):
             pulse_duration = 0.9
             if pulse_elapsed <= pulse_duration:
                 from frontend.components.primitives import draw_lens_pulse
-                draw_lens_pulse(ctx.screen, (55, 57), pulse_elapsed / pulse_duration)
+                draw_lens_pulse(ctx.screen, (49, 47), pulse_elapsed / pulse_duration)
             else:
                 self._pulse_start = time.perf_counter()
 
@@ -364,6 +364,6 @@ class SelfSelectSaveBScreen(ScreenBase):
             pulse_duration = 0.9
             if pulse_elapsed <= pulse_duration:
                 from frontend.components.primitives import draw_lens_pulse
-                draw_lens_pulse(ctx.screen, (55, 57), pulse_elapsed / pulse_duration)
+                draw_lens_pulse(ctx.screen, (49, 47), pulse_elapsed / pulse_duration)
             else:
                 self._pulse_start = time.perf_counter()

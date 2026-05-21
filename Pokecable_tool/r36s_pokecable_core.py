@@ -477,6 +477,8 @@ class PokecableState:
             "party_count": len(save.party),
             "box_count": len(save.boxes),
             "supports_boxes": bool(save.boxes),
+            "badges_mask": save.badges_earned(),
+            "trainer_id": save.trainer_id(),
             "signature": save.signature(),
             "file_signature": current_sig,
         }
@@ -562,6 +564,7 @@ class PokecableState:
                     "level": pokemon.get("level", 0),
                     "experience": pokemon.get("experience"),
                     "nickname": pokemon.get("nickname", ""),
+                    "gender": pokemon.get("gender") or metadata.get("gender") or canonical_metadata.get("gender"),
                     "location": pokemon.get("location", "party:0"),
                     "source": pokemon.get("source", source),
                     "box_name": pokemon.get("box_name", ""),

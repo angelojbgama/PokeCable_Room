@@ -573,6 +573,8 @@ class Gen2Parser:
         )
 
     def export_canonical(self, location: str) -> CanonicalPokemon:
+        if location.startswith("box:"):
+            return self._export_box_canonical(location)
         index = self._party_index(location)
         summary = self.list_party()[index]
         mon = self._mon_bytes(index)
@@ -653,6 +655,110 @@ class Gen2Parser:
             },
         )
 
+    def _parse_box_location(self, location: str) -> tuple[int, int]:
+        parts = location.split(":")
+        if len(parts) != 3 or parts[0] != "box":
+            raise ValueError(f"Localizacao de box invalida: {location!r}")
+        box_index = int(parts[1])
+        slot_index = int(parts[2])
+        if box_index < 0 or box_index >= BOX_COUNT:
+            raise ValueError(f"Box index fora do range: {box_index}")
+        if slot_index < 0 or slot_index >= BOX_CAPACITY:
+            raise ValueError(f"Slot index fora do range: {slot_index}")
+        return box_index, slot_index
+
+    def _box_storage_offset(self, box_index: int) -> int:
+        current_box = self._current_box_index()
+        layout = self._require_layout()
+        return layout.current_box_data_offset if box_index == current_box else STORED_BOX_OFFSETS[box_index]
+
+    def _read_box_mon_bytes(self, box_index: int, slot_index: int) -> bytes:
+        data = self._require_data()
+        base = self._box_storage_offset(box_index)
+        if slot_index >= data[base]:
+            raise ValueError(f"Slot {slot_index} esta vazio em box {box_index}.")
+        mon_start = base + 0x16 + slot_index * BOX_MON_SIZE
+        return bytes(data[mon_start: mon_start + BOX_MON_SIZE])
+
+    def _export_box_canonical(self, location: str) -> CanonicalPokemon:
+        box_index, slot_index = self._parse_box_location(location)
+        mon = self._read_box_mon_bytes(box_index, slot_index)
+        ot = self._box_ot_bytes(self._box_storage_offset(box_index), slot_index)
+        nick = self._box_nickname_bytes(self._box_storage_offset(box_index), slot_index)
+        raw = mon + ot + nick
+
+        species_id = int(mon[0])
+        # Verify which summary corresponds (re-using list_boxes structures)
+        boxes = self.list_boxes()
+        summary = next(
+            (s for s in boxes if s.location == location),
+            None,
+        )
+        if summary is None:
+            raise ValueError(f"Box slot vazio: {location}")
+
+        held_item_id = mon[0x01] or None
+        atk_dv = mon[0x15] >> 4
+        def_dv = mon[0x15] & 0x0F
+        spd_dv = mon[0x16] >> 4
+        spc_dv = mon[0x16] & 0x0F
+        hp_dv = ((atk_dv & 1) << 3) | ((def_dv & 1) << 2) | ((spd_dv & 1) << 1) | (spc_dv & 1)
+        moves: list[CanonicalMove] = []
+        for offset, move_id in enumerate(mon[0x02:0x06]):
+            if move_id:
+                pp_byte = mon[0x17 + offset]
+                pp_ups = (pp_byte >> 6) & 0x03
+                moves.append(
+                    CanonicalMove(
+                        move_id=move_id, pp=pp_byte & 0x3F,
+                        max_pp=default_move_pp(move_id, 2, pp_ups),
+                        pp_ups=pp_ups, source_generation=2,
+                    )
+                )
+
+        ivs = CanonicalStats(
+            hp=hp_dv, attack=atk_dv, defense=def_dv, speed=spd_dv,
+            special=spc_dv, special_attack=spc_dv, special_defense=spc_dv,
+        )
+        evs = CanonicalStats(
+            hp=int.from_bytes(mon[0x0B:0x0D], "big"),
+            attack=int.from_bytes(mon[0x0D:0x0F], "big"),
+            defense=int.from_bytes(mon[0x0F:0x11], "big"),
+            speed=int.from_bytes(mon[0x11:0x13], "big"),
+            special=int.from_bytes(mon[0x13:0x15], "big"),
+            special_attack=int.from_bytes(mon[0x13:0x15], "big"),
+            special_defense=int.from_bytes(mon[0x13:0x15], "big"),
+        )
+
+        return CanonicalPokemon(
+            source_generation=2,
+            source_game=self.game_id,
+            species_national_id=species_id,
+            species_name=summary.species_name,
+            nickname=summary.nickname,
+            level=summary.level,
+            ot_name=summary.ot_name,
+            trainer_id=summary.trainer_id,
+            experience=int.from_bytes(mon[0x08:0x0B], "big"),
+            moves=moves,
+            held_item=CanonicalItem(item_id=held_item_id, name=item_name(held_item_id, 2), source_generation=2)
+            if held_item_id is not None else None,
+            ivs=ivs,
+            evs=evs,
+            original_data=CanonicalOriginalData(
+                generation=2, game=self.game_id,
+                format=f"gen2-{self._require_layout().name}-box-v1",
+                raw_data_base64=base64.b64encode(raw).decode("ascii"),
+                location=location,
+            ),
+            metadata={
+                "source_species_id_space": "national_dex",
+                "gender": summary.gender,
+                "unown_form": summary.unown_form,
+                "is_shiny": _legacy_shiny_dvs(atk_dv, def_dv, spd_dv, spc_dv),
+            },
+        )
+
     def import_pokemon(self, location: str, payload: PokemonPayload) -> None:
         self.remove_or_replace_sent_pokemon(location, payload)
 
@@ -678,22 +784,75 @@ class Gen2Parser:
         mon[0x08:0x0B] = max(0, min(0xFFFFFF, experience)).to_bytes(3, "big")
         mon[0x1F] = max(1, min(100, canonical_pokemon.level))
 
-        # Write DVs (0x15-0x16, Gen 2 offsets)
-        atk_dv = min(15, int(canonical_pokemon.ivs.attack or 0) if canonical_pokemon.ivs else 0)
-        def_dv = min(15, int(canonical_pokemon.ivs.defense or 0) if canonical_pokemon.ivs else 0)
-        spd_dv = min(15, int(canonical_pokemon.ivs.speed or 0) if canonical_pokemon.ivs else 0)
-        spc_dv = min(15, int(canonical_pokemon.ivs.special or canonical_pokemon.ivs.special_attack or 0) if canonical_pokemon.ivs else 0)
-        # Convert Gen 3 IVs (0-31) to Gen 2 DVs (0-15) if needed
+        # Write DVs (0x15-0x16). For Gen 3 source, divide IV (0-31) before clamping to 15.
+        raw_atk = int(canonical_pokemon.ivs.attack or 0) if canonical_pokemon.ivs else 0
+        raw_def = int(canonical_pokemon.ivs.defense or 0) if canonical_pokemon.ivs else 0
+        raw_spd = int(canonical_pokemon.ivs.speed or 0) if canonical_pokemon.ivs else 0
+        raw_spc = int(canonical_pokemon.ivs.special or (canonical_pokemon.ivs.special_attack if canonical_pokemon.ivs else 0) or 0) if canonical_pokemon.ivs else 0
         if canonical_pokemon.source_generation == 3:
-            atk_dv = min(15, atk_dv // 2)
-            def_dv = min(15, def_dv // 2)
-            spd_dv = min(15, spd_dv // 2)
-            spc_dv = min(15, spc_dv // 2)
+            atk_dv = min(15, raw_atk // 2)
+            def_dv = min(15, raw_def // 2)
+            spd_dv = min(15, raw_spd // 2)
+            spc_dv = min(15, raw_spc // 2)
+        else:
+            atk_dv = min(15, raw_atk)
+            def_dv = min(15, raw_def)
+            spd_dv = min(15, raw_spd)
+            spc_dv = min(15, raw_spc)
+        # Honor source gender first (Gen 2 has no separate gender byte; it derives from ATK DV).
+        src_gender = canonical_pokemon.metadata.get("gender")
+        if src_gender in ("♂", "♀"):
+            from data.gender_rates import gender_rate_for_species  # local import to avoid cycles
+            rate = gender_rate_for_species(species_id)
+            if rate is not None and 0 < rate < 8:
+                threshold = rate * 2 - 1  # ATK DV <= threshold ⇒ female
+                want_female = src_gender == "♀"
+                is_female = atk_dv <= threshold
+                if want_female and not is_female:
+                    atk_dv = threshold
+                elif (not want_female) and is_female:
+                    atk_dv = min(15, threshold + 1)
+        # Shiny constraint overrides gender if both set — pick a SHINY ATK DV closest to gender side when possible.
         if canonical_pokemon.metadata.get("is_shiny"):
-            atk_dv = atk_dv if atk_dv in SHINY_ATTACK_DVS else 10
+            from data.gender_rates import gender_rate_for_species  # noqa: F811
+            shiny_atk_choices = sorted(SHINY_ATTACK_DVS)
+            chosen = None
+            if src_gender in ("♂", "♀"):
+                rate = gender_rate_for_species(species_id)
+                if rate is not None and 0 < rate < 8:
+                    threshold = rate * 2 - 1
+                    if src_gender == "♀":
+                        candidates = [dv for dv in shiny_atk_choices if dv <= threshold]
+                    else:
+                        candidates = [dv for dv in shiny_atk_choices if dv > threshold]
+                    if candidates:
+                        chosen = candidates[-1] if src_gender == "♀" else candidates[0]
+            atk_dv = chosen if chosen is not None else (atk_dv if atk_dv in SHINY_ATTACK_DVS else 10)
             def_dv = 10
             spd_dv = 10
             spc_dv = 10
+        # Unown form: Gen 2 derives form from bits 2,1 of each DV. If the source has an
+        # explicit unown_form, rewrite the DV bits 2,1 to encode it (keep bits 3,0 for stats).
+        if species_id == 201:  # Unown
+            target_form = canonical_pokemon.metadata.get("unown_form")
+            if target_form:
+                from data.unown_forms import UNOWN_FORM_NAMES
+                try:
+                    form_idx = UNOWN_FORM_NAMES.index(target_form)
+                except ValueError:
+                    form_idx = None
+                if form_idx is not None and form_idx <= 25:
+                    # Gen 2 formula: value = (atk[2:1]<<6) | (def[2:1]<<4) | (spd[2:1]<<2) | spc[2:1]
+                    # then form = min(25, value // 10). Pick value = form_idx * 10.
+                    value = form_idx * 10
+                    atk_bits = (value >> 6) & 0x3
+                    def_bits = (value >> 4) & 0x3
+                    spd_bits = (value >> 2) & 0x3
+                    spc_bits = value & 0x3
+                    atk_dv = (atk_dv & ~0x6) | (atk_bits << 1)
+                    def_dv = (def_dv & ~0x6) | (def_bits << 1)
+                    spd_dv = (spd_dv & ~0x6) | (spd_bits << 1)
+                    spc_dv = (spc_dv & ~0x6) | (spc_bits << 1)
         mon[0x15] = ((atk_dv & 0xF) << 4) | (def_dv & 0xF)
         mon[0x16] = ((spd_dv & 0xF) << 4) | (spc_dv & 0xF)
 
@@ -730,7 +889,7 @@ class Gen2Parser:
             hp_dv2 = ((atk_dv2 & 1) << 3) | ((def_dv2 & 1) << 2) | ((spd_dv2 & 1) << 1) | (spc_dv2 & 1)
 
             def gen1_stat(base_val, dv, stat_exp, level, is_hp=False):
-                ev_bonus = math.floor(math.ceil(math.sqrt(stat_exp)) / 4) if stat_exp > 0 else 0
+                ev_bonus = math.floor(min(255, math.ceil(math.sqrt(stat_exp))) / 4) if stat_exp > 0 else 0
                 val = ((base_val + dv) * 2 + ev_bonus) * level // 100
                 return val + (level + 10 if is_hp else 5)
 

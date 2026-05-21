@@ -92,11 +92,18 @@ class SelfTradeConfirmScreen(ScreenBase):
             session.menu_index = 0
 
     def render(self, ctx, session, state, services):
+        pokemon_a = dict(session.self_trade_pokemon_a or {})
+        payload_b = session.self_trade_context.get("payload_b", {}) if isinstance(session.self_trade_context, dict) else {}
+        pokemon_b = dict(payload_b or {})
+        if session.self_trade_save_a is not None:
+            pokemon_a.setdefault("save_name", session.self_trade_save_a.name)
+        if session.self_trade_save_b is not None:
+            pokemon_b.setdefault("save_name", session.self_trade_save_b.name)
         ctx.draw.draw_trade_confirm(
             ctx.screen,
             ctx.fonts,
-            session.self_trade_pokemon_a or {},
-            session.self_trade_context.get("payload_b", {}) if isinstance(session.self_trade_context, dict) else {},
+            pokemon_a,
+            pokemon_b,
             ctx.sprite_loader,
             state.language,
         )
@@ -119,11 +126,16 @@ class TradeConfirmScreen(ScreenBase):
             services.reset_flow_state(state)
 
     def render(self, ctx, session, state, services):
+        mine = dict(state.selected_pokemon or {})
+        peer = dict(session.result_data if isinstance(session.result_data, dict) else {})
+        if state.selected_save is not None:
+            mine.setdefault("save_name", state.selected_save.name)
+        peer.setdefault("save_name", state.room_name or "Sala LAN")
         ctx.draw.draw_trade_confirm(
             ctx.screen,
             ctx.fonts,
-            state.selected_pokemon or {},
-            session.result_data if isinstance(session.result_data, dict) else {},
+            mine,
+            peer,
             ctx.sprite_loader,
             state.language,
         )

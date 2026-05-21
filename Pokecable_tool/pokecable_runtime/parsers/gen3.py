@@ -68,6 +68,65 @@ def _make_gen3_personality_shiny(personality: int, trainer_id: int) -> int:
     shiny = ((high << 16) | low) & 0xFFFFFFFF
     return shiny or 1
 
+
+def _adjust_personality_for_unown_form(personality: int, source_form: str | None) -> int:
+    """Force the Gen3 Unown form-encoding bits in PID to match `source_form` (A..Z, !, ?)."""
+    if not source_form:
+        return personality
+    from data.unown_forms import UNOWN_FORM_NAMES
+    try:
+        target_idx = UNOWN_FORM_NAMES.index(source_form)
+    except ValueError:
+        return personality
+    # Choose value v in [0,255] with v % 28 == target_idx; minimal v = target_idx.
+    v = target_idx
+    pid = int(personality) & 0xFFFFFFFF
+    # Replace the lowest 2 bits of bytes 0, 1, 2, 3 with bits (0,1), (2,3), (4,5), (6,7) of v.
+    pid = (pid & ~0x03) | (v & 0x03)
+    pid = (pid & ~0x0300) | (((v >> 2) & 0x03) << 8)
+    pid = (pid & ~0x030000) | (((v >> 4) & 0x03) << 16)
+    pid = (pid & ~0x03000000) | (((v >> 6) & 0x03) << 24)
+    return pid or 1
+
+
+def _adjust_personality_for_gender(personality: int, national_dex_id: int, source_gender: str | None, trainer_id: int, must_be_shiny: bool) -> int:
+    """Return a PID whose derived gender matches `source_gender` (when possible),
+    keeping shiny property when `must_be_shiny`. Falls back to original PID."""
+    from data.gender_rates import gender_rate_for_species
+    if source_gender not in ("♂", "♀"):
+        return personality
+    rate = gender_rate_for_species(national_dex_id)
+    if rate is None or rate <= 0 or rate >= 8:
+        return personality  # species has fixed gender, nothing to enforce
+    threshold = rate * 32  # 0..255 byte threshold
+    wants_female = source_gender == "♀"
+    pid_high = (personality >> 16) & 0xFFFF
+    pid_lo_hi_byte = (personality >> 8) & 0xFF
+    tid_xor = (trainer_id & 0xFFFF) ^ ((trainer_id >> 16) & 0xFFFF)
+    if must_be_shiny:
+        # Walk PID_HI deterministically until we find a combo that satisfies shiny AND gender.
+        # For each PID_HI, shiny requires low16 ∈ {(tid_xor ^ pid_high) ^ k for k in 0..7}.
+        for delta in range(0x10000):
+            try_high = (pid_high + delta) & 0xFFFF
+            base = tid_xor ^ try_high
+            for k in range(8):
+                candidate_low16 = base ^ k
+                is_female = (candidate_low16 & 0xFF) < threshold
+                if wants_female != is_female:
+                    continue
+                candidate = ((try_high << 16) | candidate_low16) & 0xFFFFFFFF
+                return candidate or 1
+        return personality
+    # Non-shiny: just flip the low byte deterministically to land on the right side
+    if wants_female:
+        # need byte < threshold; use threshold - 1
+        new_low_byte = max(0, threshold - 1)
+    else:
+        # need byte >= threshold; use threshold
+        new_low_byte = min(255, threshold)
+    new_pid = (personality & 0xFFFFFF00) | new_low_byte
+    return new_pid or 1
+
 SUBSTRUCT_ORDERS = (
     (0, 1, 2, 3),
     (0, 1, 3, 2),
@@ -440,6 +499,8 @@ class Gen3Parser:
         )
 
     def export_canonical(self, location: str) -> CanonicalPokemon:
+        if location.startswith("box:"):
+            return self._export_box_canonical(location)
         index = self._party_index(location)
         if index >= self._party_count():
             raise ValueError("Localizacao de party fora da quantidade atual.")
@@ -528,6 +589,111 @@ class Gen3Parser:
                 "is_shiny": _gen3_is_shiny(int.from_bytes(raw[0:4], "little"), summary.trainer_id),
                 "gender": summary.gender,
                 "unown_form": summary.unown_form,
+                # Bit 28 of the ribbons word in misc substruct = FATEFUL_ENCOUNTER (Mew/Celebi/event mons)
+                "fateful_encounter": bool((secure[misc_offset + 11] >> 4) & 1),
+            },
+        )
+
+    def _parse_box_location(self, location: str) -> tuple[int, int]:
+        parts = location.split(":")
+        if len(parts) != 3 or parts[0] != "box":
+            raise ValueError(f"Localizacao de box invalida: {location!r}")
+        box_index = int(parts[1])
+        slot_index = int(parts[2])
+        if box_index < 0 or box_index >= PC_BOX_COUNT:
+            raise ValueError(f"Box index fora do range: {box_index}")
+        if slot_index < 0 or slot_index >= PC_BOX_CAPACITY:
+            raise ValueError(f"Slot index fora do range: {slot_index}")
+        return box_index, slot_index
+
+    def _export_box_canonical(self, location: str) -> CanonicalPokemon:
+        box_index, slot_index = self._parse_box_location(location)
+        pc = self._pc_buffer()
+        start = PC_BUFFER_BOXES_OFFSET + (box_index * PC_BOX_CAPACITY + slot_index) * BOX_MON_SIZE
+        raw = bytes(pc[start: start + BOX_MON_SIZE])
+        if not any(raw):
+            raise ValueError(f"Box slot vazio: {location}")
+        summary = self._parse_box_summary(raw, box_index, slot_index)
+        if summary.species_id <= 0:
+            raise ValueError(f"Box slot vazio: {location}")
+        details = self._parse_boxed_pokemon(raw)
+        secure = self._decrypt_secure(raw)
+        growth = self._substruct_offset(raw, 0)
+        attacks = self._substruct_offset(raw, 1)
+        evs_offset = self._substruct_offset(raw, 2)
+        misc_offset = self._substruct_offset(raw, 3)
+        held_item_id = int.from_bytes(secure[growth + 2: growth + 4], "little") or None
+        is_egg = bool(details["is_egg"])
+        national_id = 0 if is_egg else native_to_national(3, int(details["species_id"]))
+        pp_bonuses = secure[growth + 8]
+        moves = []
+        for slot in range(4):
+            move_id = int.from_bytes(secure[attacks + slot * 2: attacks + slot * 2 + 2], "little")
+            if move_id:
+                pp_ups = (pp_bonuses >> (slot * 2)) & 0x03
+                moves.append(
+                    CanonicalMove(
+                        move_id=move_id,
+                        pp=secure[attacks + 8 + slot],
+                        max_pp=default_move_pp(move_id, 3, pp_ups),
+                        pp_ups=pp_ups,
+                        source_generation=3,
+                    )
+                )
+        iv_raw = int.from_bytes(secure[misc_offset: misc_offset + 4], "little")
+        ivs = CanonicalStats(
+            hp=iv_raw & 0x1F,
+            attack=(iv_raw >> 5) & 0x1F,
+            defense=(iv_raw >> 10) & 0x1F,
+            speed=(iv_raw >> 15) & 0x1F,
+            special_attack=(iv_raw >> 20) & 0x1F,
+            special_defense=(iv_raw >> 25) & 0x1F,
+        )
+        is_egg = bool((iv_raw >> 30) & 1) or is_egg
+        ability_bit = (iv_raw >> 31) & 1
+        evs = CanonicalStats(
+            hp=secure[evs_offset + 0],
+            attack=secure[evs_offset + 1],
+            defense=secure[evs_offset + 2],
+            speed=secure[evs_offset + 3],
+            special_attack=secure[evs_offset + 4],
+            special_defense=secure[evs_offset + 5],
+        )
+
+        return CanonicalPokemon(
+            source_generation=3,
+            source_game=self.game_id,
+            species_national_id=national_id,
+            species_name=summary.species_name,
+            nickname=summary.nickname,
+            level=summary.level,
+            ot_name=summary.ot_name,
+            trainer_id=summary.trainer_id,
+            experience=int.from_bytes(secure[growth + 4: growth + 8], "little"),
+            moves=moves,
+            held_item=CanonicalItem(item_id=held_item_id, name=item_name(held_item_id, 3), source_generation=3)
+            if held_item_id is not None
+            else None,
+            ivs=ivs,
+            evs=evs,
+            ability=str(ability_bit),
+            original_data=CanonicalOriginalData(
+                generation=3,
+                game=self.game_id,
+                format="gen3-box-v1",
+                raw_data_base64=base64.b64encode(raw).decode("ascii"),
+                checksum=f"{int(details['checksum']):04x}",
+                location=location,
+                metadata={"layout": self._require_layout().name},
+            ),
+            metadata={
+                "source_species_id_space": "gen3_internal",
+                "source_species_id": summary.species_id,
+                "is_egg": is_egg,
+                "is_shiny": _gen3_is_shiny(int.from_bytes(raw[0:4], "little"), summary.trainer_id),
+                "gender": summary.gender,
+                "unown_form": summary.unown_form,
+                "fateful_encounter": bool((secure[misc_offset + 11] >> 4) & 1),
             },
         )
 
@@ -542,8 +708,21 @@ class Gen3Parser:
         self.validate_can_write("party:0", canonical_pokemon)
         personality = self._deterministic_personality(canonical_pokemon)
         trainer_id = int(canonical_pokemon.trainer_id) & 0xFFFFFFFF
-        if canonical_pokemon.metadata.get("is_shiny"):
+        must_be_shiny = bool(canonical_pokemon.metadata.get("is_shiny"))
+        if must_be_shiny:
             personality = _make_gen3_personality_shiny(personality, trainer_id)
+        personality = _adjust_personality_for_gender(
+            personality,
+            canonical_pokemon.species.national_dex_id,
+            canonical_pokemon.metadata.get("gender"),
+            trainer_id,
+            must_be_shiny,
+        )
+        if canonical_pokemon.species.national_dex_id == 201:  # Unown
+            personality = _adjust_personality_for_unown_form(
+                personality,
+                canonical_pokemon.metadata.get("unown_form"),
+            )
         species_id = national_to_native(3, canonical_pokemon.species.national_dex_id)
         secure = bytearray(SECURE_SIZE)
         
@@ -576,15 +755,18 @@ class Gen3Parser:
                 secure[growth + 8] |= (pp_ups & 0x03) << (offset * 2)
 
         # EVs Substruct (Effort Values)
-        # Gen 1/2 Stat Exp (0-65535) -> Gen 3 EVs (0-255)
-        # Mapping: floor(StatExp / 256)
+        # Gen 1/2 Stat Exp (0-65535) -> Gen 3 EVs, capped at the per-stat game limit of 252
+        # Mapping: floor(StatExp / 256), then clamp to 252 (Gen 3 won't accept > 252 per stat).
+        EV_CAP = 252
+        def _to_gen3_ev(stat_exp):
+            return min(EV_CAP, int(stat_exp or 0) // 256) if (canonical_pokemon.source_generation or 3) != 3 else min(EV_CAP, int(stat_exp or 0))
         if canonical_pokemon.evs:
-            secure[evs_offset + 0] = min(255, int((canonical_pokemon.evs.hp or 0) / 256))
-            secure[evs_offset + 1] = min(255, int((canonical_pokemon.evs.attack or 0) / 256))
-            secure[evs_offset + 2] = min(255, int((canonical_pokemon.evs.defense or 0) / 256))
-            secure[evs_offset + 3] = min(255, int((canonical_pokemon.evs.speed or 0) / 256))
-            secure[evs_offset + 4] = min(255, int((canonical_pokemon.evs.special_attack or canonical_pokemon.evs.special or 0) / 256))
-            secure[evs_offset + 5] = min(255, int((canonical_pokemon.evs.special_defense or canonical_pokemon.evs.special or 0) / 256))
+            secure[evs_offset + 0] = _to_gen3_ev(canonical_pokemon.evs.hp)
+            secure[evs_offset + 1] = _to_gen3_ev(canonical_pokemon.evs.attack)
+            secure[evs_offset + 2] = _to_gen3_ev(canonical_pokemon.evs.defense)
+            secure[evs_offset + 3] = _to_gen3_ev(canonical_pokemon.evs.speed)
+            secure[evs_offset + 4] = _to_gen3_ev(canonical_pokemon.evs.special_attack or canonical_pokemon.evs.special or 0)
+            secure[evs_offset + 5] = _to_gen3_ev(canonical_pokemon.evs.special_defense or canonical_pokemon.evs.special or 0)
 
         # Misc Substruct (IVs, Egg, Ability)
         # Gen 1/2 DVs (0-15) -> Gen 3 IVs (0-31)
@@ -612,6 +794,13 @@ class Gen3Parser:
         
         secure[misc_offset : misc_offset + 4] = iv_data.to_bytes(4, "little")
 
+        # Ribbons + fateful_encounter (bytes misc_offset+8 .. misc_offset+11).
+        # Bit 28 of the u32 = fateful_encounter (Mew, Celebi, event mons).
+        ribbons_word = 0
+        if canonical_pokemon.metadata.get("fateful_encounter"):
+            ribbons_word |= 1 << 28
+        secure[misc_offset + 8 : misc_offset + 12] = ribbons_word.to_bytes(4, "little")
+
         checksum = self._box_checksum(bytes(secure))
         encrypted = self._encrypt_secure(bytes(secure), personality, trainer_id)
         raw = bytearray(PARTY_MON_SIZE)
@@ -629,12 +818,12 @@ class Gen3Parser:
         base = get_base_stats(canonical_pokemon.species.national_dex_id)
         if base:
             bs = base["stats"]
-            ev_hp = min(255, int((canonical_pokemon.evs.hp or 0) / 256)) if canonical_pokemon.evs else 0
-            ev_atk = min(255, int((canonical_pokemon.evs.attack or 0) / 256)) if canonical_pokemon.evs else 0
-            ev_def = min(255, int((canonical_pokemon.evs.defense or 0) / 256)) if canonical_pokemon.evs else 0
-            ev_spe = min(255, int((canonical_pokemon.evs.speed or 0) / 256)) if canonical_pokemon.evs else 0
-            ev_spa = min(255, int((canonical_pokemon.evs.special_attack or (canonical_pokemon.evs.special or 0)) / 256)) if canonical_pokemon.evs else 0
-            ev_spd = min(255, int((canonical_pokemon.evs.special_defense or (canonical_pokemon.evs.special or 0)) / 256)) if canonical_pokemon.evs else 0
+            ev_hp = _to_gen3_ev(canonical_pokemon.evs.hp) if canonical_pokemon.evs else 0
+            ev_atk = _to_gen3_ev(canonical_pokemon.evs.attack) if canonical_pokemon.evs else 0
+            ev_def = _to_gen3_ev(canonical_pokemon.evs.defense) if canonical_pokemon.evs else 0
+            ev_spe = _to_gen3_ev(canonical_pokemon.evs.speed) if canonical_pokemon.evs else 0
+            ev_spa = _to_gen3_ev(canonical_pokemon.evs.special_attack or (canonical_pokemon.evs.special or 0)) if canonical_pokemon.evs else 0
+            ev_spd = _to_gen3_ev(canonical_pokemon.evs.special_defense or (canonical_pokemon.evs.special or 0)) if canonical_pokemon.evs else 0
 
             max_hp = (2 * bs["hp"] + hp_iv + ev_hp // 4) * level // 100 + level + 10
             stat_atk = (2 * bs["atk"] + atk_iv + ev_atk // 4) * level // 100 + 5

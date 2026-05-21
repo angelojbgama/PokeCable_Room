@@ -28,7 +28,7 @@ except ImportError:
 
 from pokecable_logging import configure_logging
 from pokecable_save import SaveError, _ensure_backend_import_path
-from frontend.fonts import font, title_font
+from frontend.fonts import font, gender_font, title_font
 from frontend.i18n import TYPE_LABELS, TYPE_LABELS_BY_LANG, screen_title, t, translate_literal
 from frontend.input import (
     ACTION_DEBOUNCE,
@@ -231,7 +231,7 @@ def held_item_info(pokemon):
 
 def pokemon_display_name(pokemon, fallback="Pokemon"):
     pokemon = pokemon or {}
-    return (
+    base = (
         pokemon.get("nickname")
         or pokemon.get("species_name")
         or pokemon.get("name")
@@ -239,6 +239,10 @@ def pokemon_display_name(pokemon, fallback="Pokemon"):
         or pokemon.get("display")
         or fallback
     )
+    gender = pokemon.get("gender")
+    if gender in ("♂", "♀"):
+        return f"{base} {gender}"
+    return base
 
 
 def pokemon_compact_label(pokemon, fallback, language="pt"):
@@ -575,7 +579,7 @@ def PokedexFrame():
     return PokedexFrameElement((SCREEN_W, SCREEN_H), HEADER_H, FOOTER_H)
 
 
-def right_info_panel(layout, top_offset=30, inset_x=2, bottom_pad=30):
+def right_info_panel(layout, top_offset=0, inset_x=0, bottom_pad=0):
     return right_info_panel_element(layout, top_offset, inset_x, bottom_pad)
 
 
@@ -638,11 +642,11 @@ def draw_pokemon_detail_component(screen, fonts, panel_area, pokemon, display_na
 
     xp_fill, _, _ = pokemon_xp_bar(pokemon)
     xp_bar = pygame.Rect(text_x, type_box.bottom + 6, text_w, 10)
-    rect(screen, (214, 214, 214), xp_bar, 4)
-    pygame.draw.rect(screen, BORDER, xp_bar, 1, border_radius=4)
+    rect(screen, (214, 214, 214), xp_bar, 0)
+    pygame.draw.rect(screen, BORDER, xp_bar, 1, border_radius=0)
     if xp_fill > 0:
         fill_w = max(2, int((xp_bar.w - 2) * xp_fill))
-        rect(screen, ACCENT, pygame.Rect(xp_bar.x + 1, xp_bar.y + 1, fill_w, xp_bar.h - 2), 3)
+        rect(screen, ACCENT, pygame.Rect(xp_bar.x + 1, xp_bar.y + 1, fill_w, xp_bar.h - 2), 0)
 
     summary_top = visor_area.bottom + 8
     summary_panel = pygame.Rect(panel_area.x + side_pad, summary_top, panel_area.w - side_pad * 2, panel_area.bottom - summary_top - 8)
@@ -658,8 +662,6 @@ def draw_pokemon_detail_component(screen, fonts, panel_area, pokemon, display_na
             place_text = t(language, "party")
         save_label = pokemon.get("save_name") or (pokemon.get("raw", {}) or {}).get("save_name") or ""
         text(screen, tiny_f, place_text, summary_panel.x + 8, summary_panel.y + 8, SCREEN_TEXT, summary_panel.w - 16)
-        if save_label:
-            text(screen, tiny_f, str(save_label), summary_panel.x + 8, summary_panel.y + 20, MUTED, summary_panel.w - 16)
 
         item_info = held_item_info(pokemon)
         item_text = item_info["name"] if item_info else t(language, "item_none")
@@ -675,8 +677,8 @@ def draw_pokemon_detail_component(screen, fonts, panel_area, pokemon, display_na
             for move_idx, move_entry in enumerate(move_entries[:4]):
                 move_y = moves_panel.y + 20 + move_idx * 20
                 move_rect = pygame.Rect(moves_panel.x, move_y, moves_panel.w, 16)
-                rect(screen, BG, move_rect, 4)
-                pygame.draw.rect(screen, BORDER, move_rect, 1, border_radius=4)
+                rect(screen, BG, move_rect, 0)
+                pygame.draw.rect(screen, BORDER, move_rect, 1, border_radius=0)
                 name_area = pygame.Rect(move_rect.x + 6, move_rect.y + 1, move_rect.w - 60, 14)
                 text(screen, move_f, move_entry["name"], name_area.x, name_area.y, TEXT, name_area.w)
                 pp_text = f"{move_entry['pp']}/{move_entry['max_pp']}" if move_entry.get("max_pp") else str(move_entry["pp"])
@@ -685,6 +687,9 @@ def draw_pokemon_detail_component(screen, fonts, panel_area, pokemon, display_na
                 screen.blit(pp_surface, pp_surface.get_rect(midright=pp_area.midright))
         else:
             text(screen, tiny_f, t(language, "no_moves"), moves_panel.x, moves_panel.y + 20, MUTED, moves_panel.w)
+
+        if save_label:
+            text(screen, tiny_f, str(save_label), summary_panel.x + 8, summary_panel.bottom - 22, MUTED, summary_panel.w - 16)
 
 
 def draw_right_panel_frame(screen, panel, progress=None, glass=False):
@@ -738,20 +743,19 @@ def draw_menu(screen, fonts, selected, language):
         t(language, "menu_exit"),
     ]
     list_panel = layout.left_panel
-    rect(screen, PANEL, list_panel, 6)
-    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
-    text(screen, small_f, t(language, "menu_title"), list_panel.x + 14, list_panel.y + 14, MUTED, list_panel.w - 28)
+    rect(screen, PANEL, list_panel, 0)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
 
     for idx, item in enumerate(items):
-        y = list_panel.y + 46 + idx * 48
+        y = list_panel.y + 14 + idx * 48
         row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
         color = SCREEN if idx == selected else TEXT
         draw_selectable_list_item(screen, row, idx == selected)
         text(screen, small_f, item, row.x + 9, row.y + 9, color, row.w - 18)
 
     info_panel = right_info_panel(layout)
-    rect(screen, PANEL_2, info_panel, 6)
-    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=6)
+    rect(screen, PANEL_2, info_panel, 0)
+    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
     title_rect = right_visor_rect(info_panel)
     if MENU_VISOR_STATE["title"] != "menu":
         MENU_VISOR_STATE["title"] = "menu"
@@ -772,8 +776,8 @@ def draw_config_menu(screen, fonts, selected, language, theme):
         (t(language, "config_theme"), theme_display_name(theme)),
     ]
     list_panel = layout.left_panel
-    rect(screen, PANEL, list_panel, 6)
-    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
+    rect(screen, PANEL, list_panel, 0)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
     for idx, (label, value) in enumerate(items):
         y = list_panel.y + 34 + idx * 76
         row = pygame.Rect(list_panel.x + 12, y, list_panel.w - 24, 56)
@@ -809,8 +813,8 @@ def draw_action_menu(screen, fonts, selected, language="pt"):
 
     items = [t(language, "action_create_room"), t(language, "action_join_room")]
     list_panel = layout.left_panel
-    rect(screen, PANEL, list_panel, 6)
-    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
+    rect(screen, PANEL, list_panel, 0)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
     text(screen, small_f, t(language, "choose"), list_panel.x + 14, list_panel.y + 14, MUTED)
 
     for idx, item in enumerate(items):
@@ -846,24 +850,24 @@ def draw_keyboard(screen, fonts, title, value, grid_index, is_password=False, sh
     shift_label = t(language, "shift_on" if shift else "shift_off")
 
     display_value = "*" * len(value) if is_password else value
-    rect(screen, PANEL, display_panel, 6)
-    pygame.draw.rect(screen, BORDER, display_panel, 2, border_radius=6)
+    rect(screen, PANEL, display_panel, 0)
+    pygame.draw.rect(screen, BORDER, display_panel, 2, border_radius=0)
     screen_rect = pygame.Rect(display_panel.x + 18, display_panel.y + 30, display_panel.w - 36, 92)
-    rect(screen, SCREEN, screen_rect, 6)
-    pygame.draw.rect(screen, BORDER, screen_rect, 2, border_radius=6)
+    rect(screen, SCREEN, screen_rect, 0)
+    pygame.draw.rect(screen, BORDER, screen_rect, 2, border_radius=0)
     text(screen, tiny_f, title, screen_rect.x + 12, screen_rect.y + 10, (142, 189, 224), screen_rect.w - 24)
     value_area = pygame.Rect(screen_rect.x + 12, screen_rect.y + 38, screen_rect.w - 24, 34)
     text(screen, body_f, display_value if display_value else t(language, "empty"), value_area.x, value_area.y, SCREEN_TEXT, value_area.w)
     text(screen, tiny_f, shift_label, display_panel.x + 18, screen_rect.bottom + 18, MUTED, display_panel.w - 36)
     pygame.draw.circle(screen, ACCENT if shift else MUTED, (display_panel.x + 30, screen_rect.bottom + 56), 8)
     pygame.draw.circle(screen, WARN, (display_panel.x + 58, screen_rect.bottom + 56), 8)
-    rect(screen, SCREEN, pygame.Rect(display_panel.x + 86, screen_rect.bottom + 48, display_panel.w - 124, 16), 4)
+    rect(screen, SCREEN, pygame.Rect(display_panel.x + 86, screen_rect.bottom + 48, display_panel.w - 124, 16), 0)
 
     chars = keyboard_chars(shift)
-    rect(screen, PANEL, key_panel, 6)
-    pygame.draw.rect(screen, BORDER, key_panel, 2, border_radius=6)
+    rect(screen, PANEL, key_panel, 0)
+    pygame.draw.rect(screen, BORDER, key_panel, 2, border_radius=0)
     top_display = pygame.Rect(key_panel.x + 18, key_panel.y + 18, key_panel.w - 36, 34)
-    rect(screen, SCREEN, top_display, 5)
+    rect(screen, SCREEN, top_display, 0)
     text(screen, tiny_f, t(language, "keypad"), top_display.x + 10, top_display.y + 9, SCREEN_TEXT, top_display.w - 20)
 
     margin_x = key_panel.x + 12
@@ -884,8 +888,8 @@ def draw_keyboard(screen, fonts, title, value, grid_index, is_password=False, sh
         y = start_y + row * (key_h + 4)
         selected = idx == grid_index
         key_rect = pygame.Rect(x, y, key_w, key_h)
-        rect(screen, ACCENT if selected else PANEL_2, key_rect, 5)
-        pygame.draw.rect(screen, BORDER, key_rect, 1, border_radius=5)
+        rect(screen, ACCENT if selected else PANEL_2, key_rect, 0)
+        pygame.draw.rect(screen, BORDER, key_rect, 1, border_radius=0)
         char_surface = key_font.render(char, True, SCREEN if selected else TEXT)
         screen.blit(char_surface, char_surface.get_rect(center=key_rect.center))
 
@@ -898,8 +902,8 @@ def draw_keyboard(screen, fonts, title, value, grid_index, is_password=False, sh
         x = margin_x + offset * (special_w + 10)
         selected = idx == grid_index
         key_rect = pygame.Rect(x, specials_y, special_w, key_h + 4)
-        rect(screen, ACCENT if selected else PANEL_2, key_rect, 5)
-        pygame.draw.rect(screen, BORDER, key_rect, 1, border_radius=5)
+        rect(screen, ACCENT if selected else PANEL_2, key_rect, 0)
+        pygame.draw.rect(screen, BORDER, key_rect, 1, border_radius=0)
         label_surface = special_font.render(label, True, SCREEN if selected else TEXT)
         screen.blit(label_surface, label_surface.get_rect(center=key_rect.center))
 
@@ -913,14 +917,14 @@ def draw_select_save(screen, fonts, selected, saves, title=None, language="pt", 
     list_panel = layout.left_panel
     detail_panel = right_info_panel(layout)
 
-    rect(screen, PANEL, list_panel, 6)
-    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
+    rect(screen, PANEL, list_panel, 0)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
     draw_right_panel_frame(screen, detail_panel)
 
     if not saves:
         message_screen = pygame.Rect(list_panel.x + 18, list_panel.y + 34, list_panel.w - 36, 120)
-        rect(screen, SCREEN, message_screen, 6)
-        pygame.draw.rect(screen, BORDER, message_screen, 2, border_radius=6)
+        rect(screen, SCREEN, message_screen, 0)
+        pygame.draw.rect(screen, BORDER, message_screen, 2, border_radius=0)
         wrap_text(screen, small_f, t(language, "no_saves"), pygame.Rect(message_screen.x + 16, message_screen.y + 44, message_screen.w - 32, 40), SCREEN_TEXT, max_lines=2)
         wrap_text(screen, small_f, t(language, "save_pick_hint"), pygame.Rect(detail_panel.x + 18, detail_panel.y + 38, detail_panel.w - 36, 80), MUTED, max_lines=3)
         draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_back"))])
@@ -955,6 +959,10 @@ def draw_select_save(screen, fonts, selected, saves, title=None, language="pt", 
 
     generation_text = ""
     pokemon_count = 0
+    badges_mask = 0
+    game_id = ""
+    player_name = ""
+    trainer_id = 0
     if state:
         try:
             analysis = state.analyze_save(selected_save)
@@ -964,11 +972,42 @@ def draw_select_save(screen, fonts, selected, saves, title=None, language="pt", 
                 party_count = analysis.get("party_count", 0)
                 box_count = analysis.get("box_count", 0)
                 pokemon_count = party_count + box_count
+                badges_mask = int(analysis.get("badges_mask") or 0)
+                game_id = analysis.get("game") or ""
+                player_name = analysis.get("player_name") or ""
+                trainer_id = int(analysis.get("trainer_id") or 0)
         except Exception:
             pass
 
-    text(screen, body_f, generation_text, screen_rect.x + 12, screen_rect.y + 18, (0, 0, 0), screen_rect.w - 24)
-    text(screen, body_f, f"{pokemon_count} Pokémon", screen_rect.x + 12, screen_rect.y + 50, (0, 0, 0), screen_rect.w - 24)
+    header_y = screen_rect.y + 8
+    if player_name or trainer_id:
+        name_label = player_name or "—"
+        name_surface = body_f.render(name_label, True, (0, 0, 0))
+        screen.blit(name_surface, (screen_rect.x + 12, header_y))
+        if trainer_id:
+            tid_text = f"#{trainer_id:05d}"
+            tid_surface = tiny_f.render(tid_text, True, (0, 0, 0))
+            tid_rect = tid_surface.get_rect()
+            tid_rect.right = screen_rect.right - 12
+            tid_rect.y = header_y + 4
+            screen.blit(tid_surface, tid_rect)
+    text(screen, body_f, generation_text, screen_rect.x + 12, header_y + 22, (0, 0, 0), screen_rect.w - 24)
+    text(screen, body_f, f"{pokemon_count} Pokémon", screen_rect.x + 12, header_y + 42, (0, 0, 0), screen_rect.w - 24)
+    if game_id:
+        from frontend.components.badges import draw_badge_strip, badge_slots_for
+        slots = badge_slots_for(game_id)
+        if slots:
+            badge_size = 16
+            spacing = max(2, (screen_rect.w - 24 - badge_size * len(slots)) // max(1, len(slots) - 1))
+            spacing = min(spacing, 6)
+            draw_badge_strip(
+                screen,
+                (screen_rect.x + 12, screen_rect.bottom - badge_size - 8),
+                game_id,
+                badges_mask,
+                size=badge_size,
+                spacing=spacing,
+            )
 
     draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
 
@@ -980,20 +1019,20 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
     if not pokemon_list:
         list_panel = layout.left_panel
         detail_panel = right_info_panel(layout)
-        rect(screen, PANEL, list_panel, 6)
-        pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
+        rect(screen, PANEL, list_panel, 0)
+        pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
         draw_right_panel_frame(screen, detail_panel)
         message_screen = pygame.Rect(list_panel.x + 18, list_panel.y + 34, list_panel.w - 36, 120)
-        rect(screen, SCREEN, message_screen, 6)
-        pygame.draw.rect(screen, BORDER, message_screen, 2, border_radius=6)
+        rect(screen, SCREEN, message_screen, 0)
+        pygame.draw.rect(screen, BORDER, message_screen, 2, border_radius=0)
         wrap_text(screen, small_f, t(language, "no_pokemon"), pygame.Rect(message_screen.x + 16, message_screen.y + 42, message_screen.w - 32, 44), SCREEN_TEXT, max_lines=2)
         text(screen, small_f, source_label, detail_panel.x + 18, detail_panel.y + 38, MUTED, detail_panel.w - 36)
         draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_back"))])
         return
 
     list_panel = layout.left_panel
-    rect(screen, PANEL, list_panel, 6)
-    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
+    rect(screen, PANEL, list_panel, 0)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
 
     content_pad_left = 4
     content_pad_top = 4
@@ -1060,7 +1099,7 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
 
     if selected_pokemon:
         sprite, loading, error = sprite_loader.snapshot()
-        display_name = selected_pokemon.get("name", "Pokemon")
+        display_name = pokemon_display_name(selected_pokemon, "Pokemon")
         draw_pokemon_detail_component(screen, fonts, detail_panel, selected_pokemon, display_name, sprite, loading, language)
         if error and DEBUG:
             text(screen, tiny_f, error[:40], detail_panel.x + 14, detail_panel.bottom - 30, WARN, detail_panel.w - 28)
@@ -1082,10 +1121,10 @@ def draw_connecting(screen, fonts, frame, language="pt"):
     left_panel = layout.left_panel
     right_panel = right_info_panel(layout)
 
-    rect(screen, PANEL, left_panel, 6)
-    rect(screen, PANEL_2, right_panel, 6)
-    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
-    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=6)
+    rect(screen, PANEL, left_panel, 0)
+    rect(screen, PANEL_2, right_panel, 0)
+    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=0)
+    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=0)
 
     dots = "." * ((frame // 15) % 4)
     message = t(language, "connecting_server", dots=dots)
@@ -1102,7 +1141,7 @@ def draw_connecting(screen, fonts, frame, language="pt"):
     pulse_duration = 0.9
     if pulse_elapsed <= pulse_duration:
         from frontend.components.primitives import draw_lens_pulse
-        draw_lens_pulse(screen, (55, 57), pulse_elapsed / pulse_duration)
+        draw_lens_pulse(screen, (49, 47), pulse_elapsed / pulse_duration)
     else:
         draw_connecting._pulse_start = time.perf_counter()
 
@@ -1115,10 +1154,10 @@ def draw_waiting_partner(screen, fonts, status, language="pt"):
     left_panel = layout.left_panel
     right_panel = right_info_panel(layout)
 
-    rect(screen, PANEL, left_panel, 6)
-    rect(screen, PANEL_2, right_panel, 6)
-    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
-    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=6)
+    rect(screen, PANEL, left_panel, 0)
+    rect(screen, PANEL_2, right_panel, 0)
+    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=0)
+    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=0)
 
     message = translate_literal(language, status) if status else t(language, "waiting_partner")
     visor_rect = right_visor_rect(right_panel)
@@ -1134,7 +1173,7 @@ def draw_waiting_partner(screen, fonts, status, language="pt"):
     pulse_duration = 0.9
     if pulse_elapsed <= pulse_duration:
         from frontend.components.primitives import draw_lens_pulse
-        draw_lens_pulse(screen, (55, 57), pulse_elapsed / pulse_duration)
+        draw_lens_pulse(screen, (49, 47), pulse_elapsed / pulse_duration)
     else:
         draw_waiting_partner._pulse_start = time.perf_counter()
 
@@ -1146,14 +1185,14 @@ def draw_pokedex_prompt(screen, fonts, title, question, detail_lines, actions, l
     layout = draw_pokedex_shell(screen, title)
     left_panel = layout.left_panel
     right_panel = right_info_panel(layout)
-    rect(screen, PANEL, left_panel, 6)
-    rect(screen, PANEL_2, right_panel, 6)
-    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
-    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=6)
+    rect(screen, PANEL, left_panel, 0)
+    rect(screen, PANEL_2, right_panel, 0)
+    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=0)
+    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=0)
 
     status_screen = pygame.Rect(left_panel.x + 18, left_panel.y + 32, left_panel.w - 36, 132)
-    rect(screen, SCREEN, status_screen, 6)
-    pygame.draw.rect(screen, BORDER, status_screen, 2, border_radius=6)
+    rect(screen, SCREEN, status_screen, 0)
+    pygame.draw.rect(screen, BORDER, status_screen, 2, border_radius=0)
     wrap_text(screen, body_f, question, pygame.Rect(status_screen.x + 16, status_screen.y + 28, status_screen.w - 32, status_screen.h - 56), SCREEN_TEXT, max_lines=3)
     for idx, color in enumerate((tone, WARN, OK)):
         pygame.draw.circle(screen, BORDER, (left_panel.x + 74 + idx * 52, status_screen.bottom + 46), 12)
@@ -1220,11 +1259,11 @@ def draw_info_modal(screen, fonts, title, message, language="pt"):
     layout = draw_pokedex_shell(screen, display_title or screen_title(language, "notice"))
     left_panel = layout.left_panel
     right_panel = right_info_panel(layout)
-    rect(screen, PANEL, left_panel, 6)
-    rect(screen, PANEL_2, right_panel, 6)
-    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
-    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=6)
-    rect(screen, SCREEN, pygame.Rect(left_panel.x + 20, left_panel.y + 36, left_panel.w - 40, 118), 6)
+    rect(screen, PANEL, left_panel, 0)
+    rect(screen, PANEL_2, right_panel, 0)
+    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=0)
+    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=0)
+    rect(screen, SCREEN, pygame.Rect(left_panel.x + 20, left_panel.y + 36, left_panel.w - 40, 118), 0)
     text_center(screen, body_f, screen_title(language, "notice"), pygame.Rect(left_panel.x + 20, left_panel.y + 36, left_panel.w - 40, 118), SCREEN_TEXT)
     body_msg = translate_literal(language, (message or "").strip()) or t(language, "no_details")
     wrap_text(screen, small_f, body_msg, pygame.Rect(right_panel.x + 18, right_panel.y + 28, right_panel.w - 36, right_panel.h - 56), TEXT, max_lines=8)
@@ -1236,14 +1275,14 @@ def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_i
     layout = draw_pokedex_shell(screen, screen_title(language, "incompatible_move_title", current=current_idx + 1, total=total))
 
     info_panel = layout.left_panel
-    rect(screen, PANEL, info_panel, 6)
-    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=6)
+    rect(screen, PANEL, info_panel, 0)
+    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
     move_name_text = removed_move.get("name") or local_move_name(removed_move.get("move_id", 0))
     if is_move_number_label(move_name_text):
         move_name_text = local_move_name(removed_move.get("move_id", 0))
     status_screen = pygame.Rect(info_panel.x + 18, info_panel.y + 30, info_panel.w - 36, 122)
-    rect(screen, SCREEN, status_screen, 6)
-    pygame.draw.rect(screen, BORDER, status_screen, 2, border_radius=6)
+    rect(screen, SCREEN, status_screen, 0)
+    pygame.draw.rect(screen, BORDER, status_screen, 2, border_radius=0)
     wrap_text(screen, body_f, t(language, "unsupported_move", move=move_name_text), pygame.Rect(status_screen.x + 14, status_screen.y + 26, status_screen.w - 28, 66), SCREEN_TEXT, max_lines=3)
     wrap_text(screen, small_f, t(language, "choose_replacement"), pygame.Rect(info_panel.x + 18, status_screen.bottom + 28, info_panel.w - 36, 62), MUTED, max_lines=3)
 
@@ -1254,8 +1293,8 @@ def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_i
     ]
     options = replacements + [{"move_id": 0, "name": t(language, "empty_move")}]
     list_panel = right_info_panel(layout)
-    rect(screen, PANEL, list_panel, 6)
-    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=6)
+    rect(screen, PANEL, list_panel, 0)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
 
     visible = 6
     row_h = 38
@@ -1285,7 +1324,7 @@ def draw_cancel_waiting_confirm(screen, fonts, pokemon, sprite_loader, language=
     del title_f
     layout = draw_pokedex_shell(screen, screen_title(language, "cancel_trade_title"))
 
-    pokemon_name = pokemon.get("name") or pokemon.get("nickname") or pokemon.get("species_name") or pokemon.get("display") or "???"
+    pokemon_name = pokemon_display_name(pokemon, "???")
 
     pokemon_entry = dict(pokemon or {})
     pokemon_entry.setdefault("generation", int(pokemon.get("generation") or 0))
@@ -1296,10 +1335,10 @@ def draw_cancel_waiting_confirm(screen, fonts, pokemon, sprite_loader, language=
 
     left_card = layout.left_panel
     right_card = right_info_panel(layout)
-    rect(screen, PANEL, left_card, 6)
-    rect(screen, PANEL_2, right_card, 6)
-    pygame.draw.rect(screen, BORDER, left_card, 2, border_radius=6)
-    pygame.draw.rect(screen, BORDER, right_card, 2, border_radius=6)
+    rect(screen, PANEL, left_card, 0)
+    rect(screen, PANEL_2, right_card, 0)
+    pygame.draw.rect(screen, BORDER, left_card, 2, border_radius=0)
+    pygame.draw.rect(screen, BORDER, right_card, 2, border_radius=0)
 
     draw_confirm_pokemon_visor(screen, fonts, left_card, pokemon, pokemon_name, pokemon_sprite, pokemon_loading, language)
 
@@ -1330,8 +1369,8 @@ def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon, sprite_loade
     del title_f
     layout = draw_pokedex_shell(screen, screen_title(language, "confirm_trade"))
 
-    mine = my_pokemon.get("name") or my_pokemon.get("nickname") or my_pokemon.get("species_name") or my_pokemon.get("display") or my_pokemon.get("display_summary") or "???"
-    peer = opponent_pokemon.get("nickname") or opponent_pokemon.get("species_name") or opponent_pokemon.get("name") or opponent_pokemon.get("display_summary") or "???"
+    mine = pokemon_display_name(my_pokemon, "???")
+    peer = pokemon_display_name(opponent_pokemon, "???")
 
     my_entry = dict(my_pokemon or {})
     my_entry.setdefault("generation", int(my_pokemon.get("generation") or 0))
@@ -1358,36 +1397,40 @@ def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon, sprite_loade
 
     left_card = layout.left_panel
     right_card = right_info_panel(layout)
-    rect(screen, PANEL, left_card, 6)
-    rect(screen, PANEL, right_card, 6)
-    pygame.draw.rect(screen, BORDER, left_card, 2, border_radius=6)
-    pygame.draw.rect(screen, BORDER, right_card, 2, border_radius=6)
+    rect(screen, PANEL, left_card, 0)
+    rect(screen, PANEL, right_card, 0)
+    pygame.draw.rect(screen, BORDER, left_card, 2, border_radius=0)
+    pygame.draw.rect(screen, BORDER, right_card, 2, border_radius=0)
 
     draw_confirm_pokemon_visor(screen, fonts, left_card, my_pokemon, mine, my_sprite, my_loading, language)
     draw_confirm_pokemon_visor(screen, fonts, right_card, opponent_pokemon, peer, peer_sprite, peer_loading, language)
 
     arrow_y = left_card.y + 146
-    pygame.draw.circle(screen, BORDER, (SCREEN_W // 2, arrow_y - 13), 16)
-    pygame.draw.circle(screen, ACCENT, (SCREEN_W // 2, arrow_y - 13), 12)
+    pulse = math.sin(time.perf_counter() * 4.0)
+    dx_right = int(pulse * 4)
+    dx_left = -dx_right
+    cx = SCREEN_W // 2
+    pygame.draw.circle(screen, BORDER, (cx, arrow_y - 13), 17)
+    pygame.draw.circle(screen, ACCENT, (cx, arrow_y - 13), 13)
     pygame.draw.polygon(screen, SCREEN, [
-        (SCREEN_W // 2 - 7, arrow_y - 19),
-        (SCREEN_W // 2 + 3, arrow_y - 19),
-        (SCREEN_W // 2 + 3, arrow_y - 24),
-        (SCREEN_W // 2 + 11, arrow_y - 13),
-        (SCREEN_W // 2 + 3, arrow_y - 2),
-        (SCREEN_W // 2 + 3, arrow_y - 7),
-        (SCREEN_W // 2 - 7, arrow_y - 7),
+        (cx - 9 + dx_right, arrow_y - 19),
+        (cx + 1 + dx_right, arrow_y - 19),
+        (cx + 1 + dx_right, arrow_y - 24),
+        (cx + 9 + dx_right, arrow_y - 13),
+        (cx + 1 + dx_right, arrow_y - 2),
+        (cx + 1 + dx_right, arrow_y - 7),
+        (cx - 9 + dx_right, arrow_y - 7),
     ])
-    pygame.draw.circle(screen, BORDER, (SCREEN_W // 2, arrow_y + 23), 16)
-    pygame.draw.circle(screen, ACCENT, (SCREEN_W // 2, arrow_y + 23), 12)
+    pygame.draw.circle(screen, BORDER, (cx, arrow_y + 23), 17)
+    pygame.draw.circle(screen, ACCENT, (cx, arrow_y + 23), 13)
     pygame.draw.polygon(screen, SCREEN, [
-        (SCREEN_W // 2 + 7, arrow_y + 17),
-        (SCREEN_W // 2 - 3, arrow_y + 17),
-        (SCREEN_W // 2 - 3, arrow_y + 12),
-        (SCREEN_W // 2 - 11, arrow_y + 23),
-        (SCREEN_W // 2 - 3, arrow_y + 34),
-        (SCREEN_W // 2 - 3, arrow_y + 29),
-        (SCREEN_W // 2 + 7, arrow_y + 29),
+        (cx + 9 + dx_left, arrow_y + 17),
+        (cx - 1 + dx_left, arrow_y + 17),
+        (cx - 1 + dx_left, arrow_y + 12),
+        (cx - 9 + dx_left, arrow_y + 23),
+        (cx - 1 + dx_left, arrow_y + 34),
+        (cx - 1 + dx_left, arrow_y + 29),
+        (cx + 9 + dx_left, arrow_y + 29),
     ])
 
     draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_confirm")), ("B", t(language, "btn_cancel"))])
@@ -1466,15 +1509,15 @@ def draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, fin
         stage = pygame.Rect(stage)
     # sombra
     shadow = pygame.Surface((stage.w + 8, stage.h + 8), pygame.SRCALPHA)
-    pygame.draw.rect(shadow, (0, 0, 0, 100), shadow.get_rect(), border_radius=16)
+    pygame.draw.rect(shadow, (0, 0, 0, 100), shadow.get_rect(), border_radius=0)
     screen.blit(shadow, (stage.x - 4, stage.y + 4))
     # bezel claro
-    pygame.draw.rect(screen, (62, 76, 110), stage, border_radius=14)
+    pygame.draw.rect(screen, (62, 76, 110), stage, border_radius=0)
     # borda escura
-    pygame.draw.rect(screen, (12, 18, 32), stage.inflate(-10, -10), 3, border_radius=10)
+    pygame.draw.rect(screen, (12, 18, 32), stage.inflate(-10, -10), 3, border_radius=0)
     # tela
     crt = stage.inflate(-22, -22)
-    pygame.draw.rect(screen, (10, 16, 30), crt, border_radius=8)
+    pygame.draw.rect(screen, (10, 16, 30), crt, border_radius=0)
 
     # area do sprite (deixa espaco embaixo para textbox de ate 2 linhas)
     sprite_area = pygame.Rect(crt.x, crt.y, crt.w, crt.h - 56)
@@ -1535,8 +1578,8 @@ def draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, fin
                 screen.blit(flash, sprite_area.topleft)
 
     # Textbox: fundo branco com borda escura
-    pygame.draw.rect(screen, (240, 240, 230), textbox, border_radius=4)
-    pygame.draw.rect(screen, (12, 18, 32), textbox, 2, border_radius=4)
+    pygame.draw.rect(screen, (240, 240, 230), textbox, border_radius=0)
+    pygame.draw.rect(screen, (12, 18, 32), textbox, 2, border_radius=0)
     source_name = source["species_name"]
     target_name = target["species_name"]
     if cycle < 0.25:
@@ -1556,10 +1599,10 @@ def draw_evolution_cancel_prompt(screen, fonts, evolution, sprite_loader, frame,
 
     stage_panel = layout.left_panel
     decision_panel = right_info_panel(layout)
-    rect(screen, PANEL, stage_panel, 6)
-    rect(screen, PANEL_2, decision_panel, 6)
-    pygame.draw.rect(screen, BORDER, stage_panel, 2, border_radius=6)
-    pygame.draw.rect(screen, BORDER, decision_panel, 2, border_radius=6)
+    rect(screen, PANEL, stage_panel, 0)
+    rect(screen, PANEL_2, decision_panel, 0)
+    pygame.draw.rect(screen, BORDER, stage_panel, 2, border_radius=0)
+    pygame.draw.rect(screen, BORDER, decision_panel, 2, border_radius=0)
     source = evolution.get("source_name", "Pokemon")
     target = evolution.get("target_name", "evolucao")
 
@@ -1567,7 +1610,7 @@ def draw_evolution_cancel_prompt(screen, fonts, evolution, sprite_loader, frame,
     draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, language=language, stage=stage)
     text_center(screen, tiny_f, screen_title(language, "trade_evolution"), pygame.Rect(stage_panel.x + 18, stage.bottom + 18, stage_panel.w - 36, 22), MUTED)
 
-    rect(screen, SCREEN, pygame.Rect(decision_panel.x + 18, decision_panel.y + 22, decision_panel.w - 36, 48), 5)
+    rect(screen, SCREEN, pygame.Rect(decision_panel.x + 18, decision_panel.y + 22, decision_panel.w - 36, 48), 0)
     text_center(screen, small_f, source, pygame.Rect(decision_panel.x + 18, decision_panel.y + 22, decision_panel.w - 36, 48), SCREEN_TEXT)
     wrap_text(screen, body_f, t(language, "wants_evolve", source=source, target=target), pygame.Rect(decision_panel.x + 18, decision_panel.y + 92, decision_panel.w - 36, 70), TEXT, max_lines=3)
     wrap_text(screen, small_f, t(language, "cancel_evolution_question"), pygame.Rect(decision_panel.x + 18, decision_panel.y + 172, decision_panel.w - 36, 48), WARN, max_lines=2)
@@ -1582,17 +1625,17 @@ def draw_evolution_cancel_confirm(screen, fonts, evolution, sprite_loader, frame
 
     stage_panel = layout.left_panel
     decision_panel = right_info_panel(layout)
-    rect(screen, PANEL, stage_panel, 6)
-    rect(screen, PANEL_2, decision_panel, 6)
-    pygame.draw.rect(screen, BORDER, stage_panel, 2, border_radius=6)
-    pygame.draw.rect(screen, BORDER, decision_panel, 2, border_radius=6)
+    rect(screen, PANEL, stage_panel, 0)
+    rect(screen, PANEL_2, decision_panel, 0)
+    pygame.draw.rect(screen, BORDER, stage_panel, 2, border_radius=0)
+    pygame.draw.rect(screen, BORDER, decision_panel, 2, border_radius=0)
     source = evolution.get("source_name", "Pokemon")
     target = evolution.get("target_name", "evolucao")
     stage = pygame.Rect(stage_panel.x + 14, stage_panel.y + 20, stage_panel.w - 28, 180)
     draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, final_form="source", language=language, stage=stage)
     text_center(screen, tiny_f, screen_title(language, "confirm_cancel"), pygame.Rect(stage_panel.x + 18, stage.bottom + 18, stage_panel.w - 36, 22), MUTED)
 
-    rect(screen, SCREEN, pygame.Rect(decision_panel.x + 18, decision_panel.y + 22, decision_panel.w - 36, 48), 5)
+    rect(screen, SCREEN, pygame.Rect(decision_panel.x + 18, decision_panel.y + 22, decision_panel.w - 36, 48), 0)
     text_center(screen, body_f, t(language, "are_you_sure"), pygame.Rect(decision_panel.x + 18, decision_panel.y + 22, decision_panel.w - 36, 48), WARN)
     wrap_text(screen, small_f, t(language, "cancel_evolution_confirm", source=source, target=target), pygame.Rect(decision_panel.x + 18, decision_panel.y + 92, decision_panel.w - 36, 82), TEXT, max_lines=4)
     wrap_text(screen, tiny_f, t(language, "cancel_evolution_result"), pygame.Rect(decision_panel.x + 18, decision_panel.y + 196, decision_panel.w - 36, 50), MUTED, max_lines=3)
@@ -1606,10 +1649,10 @@ def draw_trading(screen, fonts, status, language="pt"):
     left_panel = layout.left_panel
     right_panel = right_info_panel(layout)
 
-    rect(screen, PANEL, left_panel, 6)
-    rect(screen, PANEL_2, right_panel, 6)
-    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
-    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=6)
+    rect(screen, PANEL, left_panel, 0)
+    rect(screen, PANEL_2, right_panel, 0)
+    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=0)
+    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=0)
 
     message = translate_literal(language, status) or t(language, "processing")
     visor_rect = right_visor_rect(right_panel)
@@ -1625,7 +1668,7 @@ def draw_trading(screen, fonts, status, language="pt"):
     pulse_duration = 0.9
     if pulse_elapsed <= pulse_duration:
         from frontend.components.primitives import draw_lens_pulse
-        draw_lens_pulse(screen, (55, 57), pulse_elapsed / pulse_duration)
+        draw_lens_pulse(screen, (49, 47), pulse_elapsed / pulse_duration)
     else:
         draw_trading._pulse_start = time.perf_counter()
 
@@ -1637,13 +1680,13 @@ def draw_trade_result(screen, fonts, success, data, language="pt"):
     layout = draw_pokedex_shell(screen, screen_title(language, "result"))
     left_panel = layout.left_panel
     right_panel = right_info_panel(layout)
-    rect(screen, PANEL, left_panel, 6)
-    rect(screen, PANEL_2, right_panel, 6)
-    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=6)
-    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=6)
+    rect(screen, PANEL, left_panel, 0)
+    rect(screen, PANEL_2, right_panel, 0)
+    pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=0)
+    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=0)
     status_screen = pygame.Rect(left_panel.x + 18, left_panel.y + 34, left_panel.w - 36, 120)
-    rect(screen, SCREEN, status_screen, 6)
-    pygame.draw.rect(screen, BORDER, status_screen, 2, border_radius=6)
+    rect(screen, SCREEN, status_screen, 0)
+    pygame.draw.rect(screen, BORDER, status_screen, 2, border_radius=0)
 
     if success:
         text_center(screen, body_f, t(language, "trade_complete"), status_screen, SCREEN_TEXT)
@@ -1655,7 +1698,7 @@ def draw_trade_result(screen, fonts, success, data, language="pt"):
             if evolution.get("evolved")
             else t(language, "without_evolving", pokemon=evolution.get("source_name"))
             if evolution.get("cancelled")
-            else received.get("display_summary") or peer.get("display_summary") or peer.get("nickname") or peer.get("species_name") or "Pokemon"
+            else pokemon_display_name(received) if received else pokemon_display_name(peer, "Pokemon")
         )
         if isinstance(data, dict) and (data.get("backup_a") or data.get("backup_b")):
             backup_a = Path(data.get("backup_a", "")).name if data.get("backup_a") else t(language, "none")
