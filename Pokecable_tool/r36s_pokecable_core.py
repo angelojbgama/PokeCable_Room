@@ -214,11 +214,14 @@ class PokecableState:
         self.pokemon_list: List[Dict[str, Any]] = []
         self.room_name = ""
         self.room_password = ""
+        self.lan_manual_endpoint = ""
         self.pokemon_source = "party"
         self.action: str = "access"
 
         self._ws = None
         self._ws_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._lan_stop_event: Optional[threading.Event] = None
+        self._lan_connection: Any = None
         self.trade_phase: str = "idle"
         self.cancel_round_requested: bool = False
         self.leave_requested: bool = False
@@ -596,9 +599,14 @@ class PygameUI:
 
 
 def _open_party_selection(state: "PokecableState", ui: "PygameUI") -> None:
-    """Abre a tela de escolha de origem (Party ou PC) para o usuario."""
-    del state  # unused, mantido para assinatura uniforme
-    ui.screen("select_pokemon_source")
+    """Vai direto para a tela de seleção de Pokemon (Party)."""
+    try:
+        state.pokemon_source = "party"
+        state.get_pokemon_list("party", enrich=state.action != "lan")
+        ui.status("")
+    except Exception as exc:
+        logger.debug("Failed to load party: %s", exc)
+    ui.screen("select_pokemon")
 
 
 _BACKUP_RETENTION = 20
@@ -1554,8 +1562,45 @@ def _run_trade_bg(state: PokecableState, action: str, ui_queue: queue.Queue, con
             pass
 
 
+def _run_lan_trade_bg(state: PokecableState, ui_queue: queue.Queue, confirm_queue: queue.Queue, stop_event: threading.Event) -> None:
+    ui = PygameUI(ui_queue, confirm_queue)
+    try:
+        logger.info("LAN trade thread starting: save=%s", state.selected_save)
+        from pokecable_lan import run_lan_trade
+
+        run_lan_trade(state, ui, confirm_queue, stop_event)
+    except Exception as exc:
+        logger.exception("LAN trade thread failed: %s", exc)
+        ui.error(str(exc))
+    finally:
+        state._lan_stop_event = None
+        state._lan_connection = None
+        state.trade_phase = "idle"
+        state.cancel_round_requested = False
+        state.leave_requested = False
+        state.expected_signature = None
+        try:
+            confirm_queue.put_nowait(None)
+        except Exception:
+            pass
+
+
 def request_leave_room(state: PokecableState) -> bool:
     """Gracefully close the trade ws, ending the session and freeing the room."""
+    if state._lan_stop_event is not None:
+        if state.trade_phase == "writing":
+            logger.warning("LAN leave ignored: save write in progress")
+            return False
+        state.leave_requested = True
+        state._lan_stop_event.set()
+        connection = state._lan_connection
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception as exc:
+                logger.debug("LAN leave close failed (ignored): %s", exc)
+        return True
+
     ws = state._ws
     loop = state._ws_loop
     if ws is None or loop is None:
@@ -1587,7 +1632,7 @@ def request_trade_cancel(state: PokecableState) -> bool:
     if phase in ("idle", "writing", "done"):
         logger.warning("Cancel ignored in phase=%s", phase)
         return False
-    if state._ws is None:
+    if state._ws is None and state._lan_stop_event is None:
         logger.warning("Cancel requested but no active ws")
         return False
     state.cancel_round_requested = True
@@ -1605,4 +1650,19 @@ def start_trade_thread(
     )
     thread.start()
     logger.info(f"Trade thread started (action={action})")
+    return thread
+
+
+def start_lan_trade_thread(
+    state: PokecableState, ui_queue: queue.Queue, confirm_queue: queue.Queue
+) -> threading.Thread:
+    stop_event = threading.Event()
+    state._lan_stop_event = stop_event
+    thread = threading.Thread(
+        target=_run_lan_trade_bg,
+        args=(state, ui_queue, confirm_queue, stop_event),
+        daemon=True,
+    )
+    thread.start()
+    logger.info("LAN trade thread started")
     return thread

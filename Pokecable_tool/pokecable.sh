@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 # PokeCable Room launcher for R36S/Linux and WSL development.
+#
+# Uso:
+#   ./pokecable.sh                # Inicia no menu (tela padrão)
+#   ./pokecable.sh select_pokemon # Abre direto em uma tela específica
+#
+# Telas disponíveis para debug:
+#   menu, load_save, select_pokemon, entering_room_name,
+#   enter_password, connecting, waiting_partner, trading,
+#   trade_confirm, trade_result, deposit_confirm, withdraw_confirm, etc.
 
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PYTHON_SCRIPT="$SCRIPT_DIR/r36s_pokecable_ui.py"
+PYTHON_MODULE="frontend.app"
 LOG_ROOT="$SCRIPT_DIR/logs"
 ERROR_LOG="$LOG_ROOT/error.log"
 DEBUG_LOG="$LOG_ROOT/debug.log"
@@ -31,6 +40,7 @@ export POKECABLE_LOG_ROOT="$LOG_ROOT"
 export POKECABLE_ERROR_LOG="$ERROR_LOG"
 export POKECABLE_DEBUG_LOG="$DEBUG_LOG"
 export POKECABLE_SAVE_DIRS="${POKECABLE_SAVE_DIRS:-$PROJECT_DIR/roms/test-saves}"
+export PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}"
 
 . /usr/local/bin/darkos-console-normalize.sh --clear 2>/dev/null || true
 
@@ -192,7 +202,7 @@ install_dependencies() {
     install_apt_package "python3-pygame" || install_pip_package "pygame" "pygame" || true
   fi
 
-  ttyprint "[2/2] websockets (troca por sala)..."
+  ttyprint "[2/2] websockets (modo remoto legado opcional)..."
   if check_python_module websockets; then
     ttyprint "  OK"
   else
@@ -209,7 +219,7 @@ install_dependencies() {
   if check_python_module websockets; then
     ttyprint "  websockets ... OK"
   else
-    ttyprint "  websockets ... AUSENTE (troca por sala indisponivel)"
+    ttyprint "  websockets ... AUSENTE (sala LAN local continua disponivel)"
   fi
 
   if [ -n "$missing" ]; then
@@ -249,7 +259,7 @@ ttyprint "       ~M!M                                             IMP"
 ttyprint ""
 sleep 2
 
-if "$PYTHON_BIN" -B "$PYTHON_SCRIPT" >> "$ERROR_LOG" 2>&1; then
+if "$PYTHON_BIN" -B -m "$PYTHON_MODULE" "$@" >> "$ERROR_LOG" 2>&1; then
   exit 0
 fi
 

@@ -1,0 +1,125 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Callable
+
+
+def default_info_modal():
+    return {"title": "", "message": ""}
+
+
+def default_self_trade_decisions():
+    return {
+        "cancel_evolution_to_a": False,
+        "cancel_evolution_to_b": False,
+        "resolved_moves_to_a": {},
+        "resolved_moves_to_b": {},
+        "_evolution_to_a_done": False,
+        "_evolution_to_b_done": False,
+        "_moves_to_a_done": False,
+        "_moves_to_b_done": False,
+    }
+
+
+@dataclass
+class MutableRef:
+    current: Any = None
+
+
+@dataclass
+class UiSessionState:
+    current_screen: str = "menu"
+    menu_index: int = 0
+    config_dirty: bool = False
+    keyboard_index: int = 0
+    keyboard_shift: bool = False
+    room_name: str = ""
+    room_password: str = ""
+    lan_endpoint: str = ""
+    frame: int = 0
+    running: bool = True
+    trade_status: str = ""
+    result_data: dict[str, Any] = field(default_factory=dict)
+    pending_removed_moves: list[dict[str, Any]] = field(default_factory=list)
+    resolve_current_idx: int = 0
+    resolve_replacement_idx: int = 0
+    resolved_moves_choices: dict[int, int] = field(default_factory=dict)
+    info_modal_data: dict[str, Any] = field(default_factory=default_info_modal)
+    pending_deposit_idx: int = -1
+    pending_withdraw_pokemon: dict[str, Any] | None = None
+    pending_pc_return_screen: str = "select_pokemon"
+    evolution_anim_start: int | None = None
+    self_trade_save_a: Any = None
+    self_trade_save_b: Any = None
+    self_trade_pokemon_a: dict[str, Any] | None = None
+    self_trade_pokemon_b: dict[str, Any] | None = None
+    self_trade_context: dict[str, Any] = field(default_factory=dict)
+    self_trade_pending_decision: str = ""
+    self_trade_decisions: dict[str, Any] = field(default_factory=default_self_trade_decisions)
+
+    def reset_info_modal(self) -> None:
+        self.info_modal_data = default_info_modal()
+
+    def reset_self_trade(self) -> None:
+        self.self_trade_save_a = None
+        self.self_trade_save_b = None
+        self.self_trade_pokemon_a = None
+        self.self_trade_pokemon_b = None
+        self.self_trade_context = {}
+        self.self_trade_pending_decision = ""
+        self.self_trade_decisions = default_self_trade_decisions()
+
+
+@dataclass
+class InputSessionState:
+    axis_state: dict[Any, Any] = field(default_factory=dict)
+    combo_state: dict[str, Any] = field(
+        default_factory=lambda: {"pressed": set(), "last_down": {}, "suppress_until": 0.0}
+    )
+    action_state: dict[str, Any] = field(default_factory=lambda: {"last_action": None, "last_time": 0.0})
+    nav_hold: dict[str, Any] = field(
+        default_factory=lambda: {"direction": None, "started": 0.0, "last_fire": 0.0}
+    )
+    input_source_actions: dict[str, str] = field(default_factory=dict)
+    pressed_input_actions: dict[str, set[str]] = field(default_factory=dict)
+    blocked_input_actions: set[str] = field(default_factory=set)
+    input_guard_until: float = 0.0
+
+
+@dataclass
+class UiContext:
+    screen: Any
+    fonts: Any
+    state: Any
+    sprite_loader: Any
+    logger: Any
+    draw: Any
+
+
+@dataclass
+class UiServices:
+    ui_queue: Any
+    confirm_queue: Any
+    trade_thread_ref: MutableRef
+    apply_theme: Callable[[str], None]
+    reset_flow_state: Callable[[Any], None]
+    reset_self_trade_state: Callable[[], None]
+    same_save_path: Callable[[Any, Any], bool]
+    load_self_trade_source: Callable[..., None]
+    load_self_trade_party: Callable[..., None]
+    self_trade_source_label: Callable[[int, Any], str]
+    reload_after_pc_management: Callable[[str], None]
+    advance_self_trade_prompts: Callable[[], None]
+    finish_self_trade: Callable[[], None]
+    keyboard_chars: Callable[[bool], list[str]]
+    keyboard_limits: Callable[[bool], int]
+    random_room_name: Callable[[], str]
+    start_trade_thread: Callable[..., Any]
+    start_lan_trade_thread: Callable[..., Any]
+    request_trade_cancel: Callable[[Any], bool]
+    request_leave_room: Callable[[Any], None]
+    create_backup: Callable[[Any], None]
+    prepare_self_trade: Callable[..., Any]
+    validate_self_trade_candidate: Callable[..., Any]
+    execute_self_trade: Callable[..., Any]
+    switch_screen: Callable[[str, str], None]
