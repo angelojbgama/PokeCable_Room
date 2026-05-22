@@ -1,0 +1,4 @@
+# Test-suite dependencies (install with `pip install -r tests/requirements.txt --break-system-packages`)
+pyboy>=2.0    # bateria S — emula Gen 1/2 sem renderizar, expõe RAM via Python
+pygame>=2.0   # bateria R — render headless de telas para PNG snapshot
+Pillow>=10.0  # auxiliar (assets de badges, sprites em testes)

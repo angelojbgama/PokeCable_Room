@@ -1,0 +1,10 @@
+{
+  "label": "FireRed",
+  "sram_size": 131072,
+  "sav_size": 131072,
+  "good_sector_signatures": 28,
+  "expected_min_sectors": 14,
+  "bytes_matching_pct": 100,
+  "first_16_sram": "00000000000000000000000000000000",
+  "first_16_sav": "00000000000000000000000000000000"
+}

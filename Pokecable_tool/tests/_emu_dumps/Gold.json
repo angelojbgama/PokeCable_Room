@@ -1,0 +1,25 @@
+{
+  "label": "Gold",
+  "gen": 2,
+  "regions": {
+    "trainer_id": {
+      "offset": "0x2009",
+      "expected_sav": "b424",
+      "actual_sram": "b424",
+      "match": true
+    },
+    "player_name": {
+      "offset": "0x200b",
+      "expected_sav": "8ca0b3b3a8a0e150000000",
+      "actual_sram": "8ca0b3b3a8a0e150000000",
+      "match": true
+    },
+    "money_block": {
+      "offset": "0x23db",
+      "expected_sav": "0f423f014f5e",
+      "actual_sram": "0f423f014f5e",
+      "match": true
+    }
+  },
+  "all_match": true
+}

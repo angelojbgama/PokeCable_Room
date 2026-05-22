@@ -1,0 +1,25 @@
+{
+  "label": "Silver",
+  "gen": 2,
+  "regions": {
+    "trainer_id": {
+      "offset": "0x2009",
+      "expected_sav": "f066",
+      "actual_sram": "f066",
+      "match": true
+    },
+    "player_name": {
+      "offset": "0x200b",
+      "expected_sav": "8ca0b3b3a8a0e150000000",
+      "actual_sram": "8ca0b3b3a8a0e150000000",
+      "match": true
+    },
+    "money_block": {
+      "offset": "0x23db",
+      "expected_sav": "0f423f0173b7",
+      "actual_sram": "0f423f0173b7",
+      "match": true
+    }
+  },
+  "all_match": true
+}

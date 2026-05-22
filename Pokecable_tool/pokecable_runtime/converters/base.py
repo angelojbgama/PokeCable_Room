@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 from canonical import CanonicalMove, CanonicalPokemon
 from compatibility import CompatibilityReport, build_compatibility_report
+from data.items import equivalent_item_id, item_exists, item_name
 from data.moves import default_move_pp, move_exists, move_name
 
 
@@ -44,9 +45,15 @@ class BaseConverter:
         target_location: str,
         policy: str = "safe_default",
         resolved_moves: dict[int, int] | None = None,
+        relocate_dropped_item: bool = True,
     ) -> ConversionResult:
         report = self.can_convert(canonical, policy=policy)
         converted = self._normalized_copy(canonical, report, resolved_moves=resolved_moves)
+        # When the pokemon's held item won't survive the transfer (no equivalent in target gen,
+        # or target gen has no held-item concept at all like Gen 1), try to save the item to the
+        # destination trainer's bag → PC instead of silently dropping it.
+        if relocate_dropped_item:
+            self._relocate_dropped_item(canonical, converted, target_parser, report)
         return ConversionResult(
             canonical_before=canonical,
             canonical_after=converted,
@@ -56,6 +63,70 @@ class BaseConverter:
             wrote_to_save=False,
             data_loss=list(report.data_loss),
             transformations=list(report.transformations),
+        )
+
+    def _relocate_dropped_item(
+        self,
+        original: CanonicalPokemon,
+        converted: CanonicalPokemon,
+        target_parser,
+        report: CompatibilityReport,
+    ) -> None:
+        """If the original held item was dropped during conversion, the item must NOT be
+        discarded. We try:
+          1) target trainer's bag
+          2) target trainer's PC items
+          3) Refuse the trade (set report.compatible=False) — user must clear space or
+             remove the item before retrying.
+        """
+        src_item = original.held_item
+        if src_item is None or not src_item.item_id:
+            return
+        # Item still on the pokemon? Then no relocation needed.
+        if converted.held_item and converted.held_item.item_id:
+            return
+        src_id = int(src_item.item_id)
+        src_gen = int(original.source_generation or self.source_generation)
+        target_gen = int(self.target_generation)
+        # Resolve item id in the target gen (name-based mapping preferred over raw id).
+        target_id = equivalent_item_id(src_id, src_gen, target_gen) or 0
+        if not target_id and src_gen == target_gen:
+            target_id = src_id
+        if not target_id or not item_exists(target_id, target_gen):
+            # No equivalent in destination at all — refuse trade so item isn't lost.
+            report.compatible = False
+            report.blocking_reasons.append(
+                f"Item segurado {item_name(src_id, src_gen) or src_id} nao existe na Gen {target_gen}. "
+                f"Remova-o antes de transferir ou troque por um item compativel."
+            )
+            return
+        # Try bag, then PC. Wrap in try/except since some parsers' has_bag_space can raise
+        # for incompatible item categories.
+        try:
+            if target_parser.has_bag_space(target_id, 1):
+                target_parser.store_item_in_bag(target_id, 1)
+                report.transformations.append(
+                    f"Item segurado {item_name(target_id, target_gen) or target_id} foi para a mochila "
+                    f"do treinador destino (Gen {target_gen})."
+                )
+                return
+        except Exception:
+            pass
+        try:
+            if target_parser.has_pc_space(target_id, 1):
+                target_parser.store_item_in_pc(target_id, 1)
+                report.transformations.append(
+                    f"Item segurado {item_name(target_id, target_gen) or target_id} foi para o PC "
+                    f"de itens (mochila cheia, Gen {target_gen})."
+                )
+                return
+        except Exception:
+            pass
+        # Out of bag and PC space — refuse the trade so the item isn't lost.
+        report.compatible = False
+        report.blocking_reasons.append(
+            f"Mochila e PC cheios na Gen {target_gen}; nao ha onde guardar o item segurado "
+            f"{item_name(target_id, target_gen) or target_id}. Libere espaco antes de transferir."
         )
 
     def apply_to_save(

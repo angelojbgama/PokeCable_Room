@@ -11,9 +11,9 @@ class MenuScreen(ScreenBase):
 
     def handle_action(self, action, ctx, session, state, services):
         if action == "up":
-            session.menu_index = (session.menu_index - 1) % 4
+            session.menu_index = (session.menu_index - 1) % 5
         elif action == "down":
-            session.menu_index = (session.menu_index + 1) % 4
+            session.menu_index = (session.menu_index + 1) % 5
         elif action == "select":
             if session.menu_index == 0:
                 services.reset_flow_state(state)
@@ -33,6 +33,10 @@ class MenuScreen(ScreenBase):
                 services.switch_screen("config", "menu_config")
                 session.menu_index = 0
             elif session.menu_index == 3:
+                ctx.logger.info("Menu select: infos")
+                services.switch_screen("infos_topics", "menu_infos")
+                session.menu_index = 0
+            elif session.menu_index == 4:
                 ctx.logger.info("Menu select: exit")
                 session.running = False
         elif action == "back":
@@ -41,6 +45,52 @@ class MenuScreen(ScreenBase):
 
     def render(self, ctx, session, state, services):
         ctx.draw.draw_menu(ctx.screen, ctx.fonts, session.menu_index, state.language)
+
+
+class InfosTopicsScreen(ScreenBase):
+    screen_id = "infos_topics"
+
+    def handle_action(self, action, ctx, session, state, services):
+        from frontend.infos_content import get_topics
+        topics = get_topics(state.language)
+        if action == "up":
+            session.menu_index = (session.menu_index - 1) % len(topics)
+        elif action == "down":
+            session.menu_index = (session.menu_index + 1) % len(topics)
+        elif action == "select":
+            topic_key = topics[session.menu_index][0]
+            session.infos_topic_key = topic_key
+            session.infos_scroll = 0
+            services.switch_screen("infos_reader", f"infos_open:{topic_key}")
+        elif action == "back":
+            services.switch_screen("menu", "back_from_infos")
+            session.menu_index = 3  # back to "Infos" item
+
+    def render(self, ctx, session, state, services):
+        ctx.draw.draw_infos_topics(ctx.screen, ctx.fonts, session.menu_index, state.language)
+
+
+class InfosReaderScreen(ScreenBase):
+    screen_id = "infos_reader"
+    SCROLL_STEP = 18  # px per up/down press
+
+    def handle_action(self, action, ctx, session, state, services):
+        if action == "up":
+            session.infos_scroll = max(0, getattr(session, "infos_scroll", 0) - self.SCROLL_STEP)
+        elif action == "down":
+            session.infos_scroll = getattr(session, "infos_scroll", 0) + self.SCROLL_STEP
+        elif action == "back":
+            services.switch_screen("infos_topics", "back_to_infos_topics")
+
+    def render(self, ctx, session, state, services):
+        topic_key = getattr(session, "infos_topic_key", "retrocompat") or "retrocompat"
+        scroll = getattr(session, "infos_scroll", 0)
+        # Clamp scroll on render so we never go past the content's actual height
+        max_scroll = ctx.draw.draw_infos_reader(
+            ctx.screen, ctx.fonts, topic_key, scroll, state.language
+        )
+        if scroll > max_scroll:
+            session.infos_scroll = max_scroll
 
 
 class ConfigScreen(ScreenBase):

@@ -1,0 +1,31 @@
+{
+  "label": "Yellow",
+  "gen": 1,
+  "regions": {
+    "player_name": {
+      "offset": "0x2598",
+      "expected_sav": "8ca0b3b3a8a0e150000000",
+      "actual_sram": "8ca0b3b3a8a0e150000000",
+      "match": true
+    },
+    "trainer_id": {
+      "offset": "0x2605",
+      "expected_sav": "7232",
+      "actual_sram": "7232",
+      "match": true
+    },
+    "party_count": {
+      "offset": "0x2f2c",
+      "expected_sav": "06",
+      "actual_sram": "06",
+      "match": true
+    },
+    "party_species_list": {
+      "offset": "0x2f2d",
+      "expected_sav": "0a7e75be9b01",
+      "actual_sram": "0a7e75be9b01",
+      "match": true
+    }
+  },
+  "all_match": true
+}

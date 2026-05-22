@@ -122,7 +122,11 @@ def run(valid_saves: dict[int, list[Path]]) -> BatteryReport:
                 conv = conv_cls()
                 result = conv.convert(src_can, tgt_parser, "party:0", policy="auto_retrocompat")
                 if not result.compatibility_report.compatible:
-                    report.add_fail(f"{label}: auto_retrocompat blocked: {result.compatibility_report.blocking_reasons}")
+                    reasons = result.compatibility_report.blocking_reasons
+                    # An item-incompatibility block is correct behavior (no item discarded). Skip cleanly.
+                    if any("item segurado" in r.lower() or "mochila e pc cheios" in r.lower() for r in reasons):
+                        continue
+                    report.add_fail(f"{label}: auto_retrocompat blocked: {reasons}")
                     continue
                 tgt_parser.import_canonical("party:0", result.canonical_after)
             except Exception as exc:

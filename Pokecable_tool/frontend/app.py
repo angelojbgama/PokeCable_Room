@@ -742,6 +742,7 @@ def draw_menu(screen, fonts, selected, language):
         t(language, "menu_access_room"),
         t(language, "menu_self_trade"),
         t(language, "menu_config"),
+        t(language, "menu_infos"),
         t(language, "menu_exit"),
     ]
     list_panel = layout.left_panel
@@ -767,6 +768,125 @@ def draw_menu(screen, fonts, selected, language):
     draw_digital_visor(screen, title_rect, min(visor_elapsed / visor_duration, 1.0))
     pygame.draw.rect(screen, BORDER, title_rect, 2)
     draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
+
+
+def draw_infos_topics(screen, fonts, selected, language):
+    """List of Info topics on the left, simple info on the right."""
+    from frontend.infos_content import get_topics
+    _, _, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, t(language, "infos_title"))
+
+    topics = get_topics(language)
+    list_panel = layout.left_panel
+    rect(screen, PANEL, list_panel, 0)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
+    # i18n keys for each topic
+    topic_i18n = {"retrocompat": "infos_topic_retrocompat", "about": "infos_topic_about"}
+    for idx, (key, _) in enumerate(topics):
+        y = list_panel.y + 14 + idx * 48
+        row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
+        color = SCREEN if idx == selected else TEXT
+        draw_selectable_list_item(screen, row, idx == selected)
+        text(screen, small_f, t(language, topic_i18n.get(key, "infos_topic_retrocompat")),
+             row.x + 9, row.y + 9, color, row.w - 18)
+
+    info_panel = right_info_panel(layout)
+    rect(screen, PANEL_2, info_panel, 0)
+    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
+    title_rect = right_visor_rect(info_panel)
+    draw_digital_visor(screen, title_rect, 1.0)
+    pygame.draw.rect(screen, BORDER, title_rect, 2)
+    # Brief teaser inside the visor
+    wrap_text(
+        screen, small_f,
+        t(language, "infos_topic_retrocompat") if selected == 0 else t(language, "infos_topic_about"),
+        pygame.Rect(title_rect.x + 10, title_rect.y + 10, title_rect.w - 20, title_rect.h - 20),
+        (0, 0, 0), line_gap=2, max_lines=3,
+    )
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
+
+
+def draw_infos_reader(screen, fonts, topic_key, scroll, language):
+    """Scrollable article view. Returns the maximum scroll value for clamping."""
+    from frontend.infos_content import get_article
+    _, body_f, small_f, tiny_f = fonts
+    article = get_article(topic_key, language)
+    layout = draw_pokedex_shell(screen, article["title"])
+
+    # Full-width content panel = both halves combined for max reading room.
+    content_panel = pygame.Rect(
+        layout.left_panel.x,
+        layout.left_panel.y,
+        right_info_panel(layout).right - layout.left_panel.x,
+        layout.left_panel.h,
+    )
+    rect(screen, PANEL, content_panel, 0)
+    pygame.draw.rect(screen, BORDER, content_panel, 2, border_radius=0)
+
+    inner_pad = 12
+    text_x = content_panel.x + inner_pad
+    text_y0 = content_panel.y + inner_pad
+    text_w = content_panel.w - inner_pad * 2
+    text_h = content_panel.h - inner_pad * 2 - 18  # leave room for scroll hint
+
+    # Pre-render paragraphs into wrapped lines so we know total height + can clip.
+    line_height = small_f.get_linesize() + 2
+    paragraph_gap = 6
+    lines: list[tuple[str, int]] = []  # (line text, y_offset_within_doc)
+    cursor_y = 0
+    for paragraph in article["paragraphs"]:
+        # Use the same word-wrap algorithm as wrap_text but capture per-line strings
+        words = paragraph.replace("\n", " \n ").split(" ")
+        current = ""
+        for word in words:
+            if word == "\n":
+                if current:
+                    lines.append((current, cursor_y))
+                    cursor_y += line_height
+                    current = ""
+                continue
+            candidate = word if not current else f"{current} {word}"
+            if small_f.size(candidate)[0] <= text_w:
+                current = candidate
+                continue
+            if current:
+                lines.append((current, cursor_y))
+                cursor_y += line_height
+            current = word
+        if current:
+            lines.append((current, cursor_y))
+            cursor_y += line_height
+        cursor_y += paragraph_gap  # blank line between paragraphs
+    total_height = cursor_y
+    max_scroll = max(0, total_height - text_h)
+    actual_scroll = min(scroll, max_scroll)
+
+    previous_clip = screen.get_clip()
+    screen.set_clip(pygame.Rect(text_x, text_y0, text_w, text_h))
+    for line_text, y_off in lines:
+        y = text_y0 + (y_off - actual_scroll)
+        if y + line_height < text_y0 or y > text_y0 + text_h:
+            continue  # outside visible window
+        text(screen, small_f, line_text, text_x, y, TEXT, text_w)
+    screen.set_clip(previous_clip)
+
+    # Scroll indicator on the right side
+    if max_scroll > 0:
+        bar_x = content_panel.right - 8
+        bar_y = text_y0
+        bar_h = text_h
+        thumb_h = max(20, int(bar_h * text_h / total_height))
+        thumb_y = bar_y + int((bar_h - thumb_h) * actual_scroll / max_scroll)
+        pygame.draw.rect(screen, BORDER, pygame.Rect(bar_x, bar_y, 4, bar_h), 1)
+        pygame.draw.rect(screen, ACCENT, pygame.Rect(bar_x, thumb_y, 4, thumb_h))
+
+    # Scroll hint under the content
+    hint = t(language, "infos_scroll_hint")
+    text(screen, tiny_f, hint, content_panel.x + inner_pad,
+         content_panel.bottom - 16, MUTED, content_panel.w - inner_pad * 2)
+
+    draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_back"))])
+    return max_scroll
 
 
 def draw_config_menu(screen, fonts, selected, language, theme):
@@ -1917,6 +2037,8 @@ def main(initial_screen=None):
     draw = SimpleNamespace(
         draw_menu=draw_menu,
         draw_config_menu=draw_config_menu,
+        draw_infos_topics=draw_infos_topics,
+        draw_infos_reader=draw_infos_reader,
         draw_select_save=draw_select_save,
         draw_select_pokemon=draw_select_pokemon,
         draw_keyboard=draw_keyboard,

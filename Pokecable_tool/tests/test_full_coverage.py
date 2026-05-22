@@ -28,11 +28,13 @@ def main() -> int:
         fresh_saves,
         glitched_inputs,
         inventory,
+        item_relocation,
         lan_loopback,
         trade_evolution,
         ui_snapshot,
     )
     from tests.emulator import test_rom_validation  # noqa: E402
+    from tests.emulator import test_gen3_smoke  # noqa: E402
 
     batteries = [
         ("F", boxes_full.run, "boxes export+roundtrip"),
@@ -48,7 +50,9 @@ def main() -> int:
         ("P", crystal_layout.run, "Crystal/GS layout"),
         ("Q", inventory.run, "inventory listing"),
         ("R", ui_snapshot.run, "UI snapshot smoke"),
-        ("S", test_rom_validation.run, "emulator ROM validation"),
+        ("U", item_relocation.run, "held item → bag/PC on cross-gen"),
+        ("S", test_rom_validation.run, "PyBoy SRAM dump Gen 1/2"),
+        ("T", test_gen3_smoke.run, "Gen 3 mGBA smoke boot"),
     ]
 
     reports = []

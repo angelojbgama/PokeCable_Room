@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import time
 
-from frontend.screens.menu import ConfigScreen, LoadSaveScreen, MenuScreen, SelfSelectSaveAScreen, SelfSelectSaveBScreen
+from frontend.screens.menu import (
+    ConfigScreen,
+    InfosReaderScreen,
+    InfosTopicsScreen,
+    LoadSaveScreen,
+    MenuScreen,
+    SelfSelectSaveAScreen,
+    SelfSelectSaveBScreen,
+)
 from frontend.screens.selection import (
     EnterLanEndpointScreen,
     SelectPokemonScreen,
@@ -68,6 +76,8 @@ def register_default_screens(controller):
     for screen in (
         MenuScreen(),
         ConfigScreen(),
+        InfosTopicsScreen(),
+        InfosReaderScreen(),
         LoadSaveScreen(),
         SelfSelectSaveAScreen(),
         SelfSelectSaveBScreen(),
