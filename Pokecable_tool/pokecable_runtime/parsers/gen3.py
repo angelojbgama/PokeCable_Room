@@ -1284,18 +1284,24 @@ class Gen3Parser:
             unown_form=unown_form,
         )
 
-    def _read_item_slots(self, pocket_name: str) -> dict[int, int]:
+    def _read_item_slot_entries(self, pocket_name: str) -> list[tuple[int, int]]:
         pocket = inventory_layout_for_game(self.game_id).pocket(pocket_name)
         data = self._require_data()
         base = self._section1_offset() + pocket.offset
         key = self._security_key() if pocket.quantity_xor_with_security_key else 0
-        items: dict[int, int] = {}
+        items: list[tuple[int, int]] = []
         for index in range(pocket.capacity):
             slot_offset = base + index * 4
             item_id = int.from_bytes(data[slot_offset : slot_offset + 2], "little")
             quantity = int.from_bytes(data[slot_offset + 2 : slot_offset + 4], "little") ^ key
             if item_id:
-                items[item_id] = quantity
+                items.append((item_id, quantity))
+        return items
+
+    def _read_item_slots(self, pocket_name: str) -> dict[int, int]:
+        items: dict[int, int] = {}
+        for item_id, quantity in self._read_item_slot_entries(pocket_name):
+            items[item_id] = items.get(item_id, 0) + quantity
         return items
 
     def _write_item_slots(self, pocket_name: str, items: list[tuple[int, int]]) -> None:
@@ -1331,12 +1337,13 @@ class Gen3Parser:
         quantity = int(quantity)
         if quantity <= 0:
             return True
+        entries = self._read_item_slot_entries(pocket_name)
         items = self._read_item_slots(pocket_name)
         current = items.get(int(item_id))
         if current is not None:
             return current + quantity <= GEN3_MAX_STACK
         pocket = inventory_layout_for_game(self.game_id).pocket(pocket_name)
-        return len(items) < pocket.capacity
+        return len(entries) < pocket.capacity
 
     def _store_item_in_pocket(self, pocket_name: str, item_id: int, quantity: int) -> InventoryStoreResult:
         item_id = int(item_id)

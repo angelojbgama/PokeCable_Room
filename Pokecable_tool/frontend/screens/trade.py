@@ -1,7 +1,29 @@
 from __future__ import annotations
 
-from frontend.session import default_info_modal
+from frontend.session import default_info_modal, default_self_trade_decisions
 from frontend.screens.base import ScreenBase, show_info_modal
+
+
+def _without_held_item(pokemon):
+    preview = dict(pokemon or {})
+    if not preview:
+        return preview
+    preview["held_item_id"] = None
+    preview["held_item_name"] = None
+    preview["held_item_category"] = None
+    raw = dict(preview.get("raw") or {})
+    raw["held_item_id"] = None
+    raw["held_item_name"] = None
+    raw["held_item_category"] = None
+    preview["raw"] = raw
+    summary = dict(preview.get("summary") or {})
+    summary["held_item_id"] = None
+    summary["held_item_name"] = None
+    preview["summary"] = summary
+    canonical = dict(preview.get("canonical") or {})
+    canonical["held_item"] = None
+    preview["canonical"] = canonical
+    return preview
 
 
 class ConnectingScreen(ScreenBase):
@@ -213,6 +235,94 @@ class ResolveMovesScreen(ScreenBase):
             session.resolve_current_idx,
             len(session.pending_removed_moves),
             set(session.resolved_moves_choices.values()),
+            ctx.sprite_loader,
+            pokemon,
+            state.language,
+        )
+
+
+class ResolveItemRelocationScreen(ScreenBase):
+    screen_id = "resolve_item_relocation"
+
+    def handle_action(self, action, ctx, session, state, services):
+        if not action or not session.pending_item_relocation:
+            return
+        options = [str(option) for option in (session.pending_item_relocation.get("options") or []) if str(option)]
+        if not options:
+            return
+        if action == "up":
+            session.item_relocation_index = (session.item_relocation_index - 1) % len(options)
+        elif action == "down":
+            session.item_relocation_index = (session.item_relocation_index + 1) % len(options)
+        elif action == "select":
+            choice = options[session.item_relocation_index]
+            ctx.logger.info("Item relocation choice: %s", choice)
+            preview_pokemon = _without_held_item(session.pending_item_relocation_pokemon or state.selected_pokemon or {})
+            if session.self_trade_pending_decision in ("item_relocation_choice_to_a", "item_relocation_choice_to_b"):
+                if session.self_trade_pending_decision == "item_relocation_choice_to_a":
+                    session.self_trade_pokemon_a = preview_pokemon
+                    if isinstance(session.self_trade_context, dict):
+                        session.self_trade_context["payload_a"] = preview_pokemon
+                else:
+                    session.self_trade_pokemon_b = preview_pokemon
+                    if isinstance(session.self_trade_context, dict):
+                        session.self_trade_context["payload_b"] = preview_pokemon
+                session.self_trade_decisions[session.self_trade_pending_decision] = choice
+                session.self_trade_pending_decision = ""
+                session.pending_item_relocation = {}
+                session.pending_item_relocation_pokemon = {}
+                services.advance_self_trade_prompts()
+            else:
+                state.selected_pokemon = preview_pokemon
+                services.confirm_queue.put(choice)
+                session.pending_item_relocation = {}
+                session.pending_item_relocation_pokemon = {}
+        elif action == "back":
+            ctx.logger.info("Item relocation cancelled by user")
+            session.pending_item_relocation = {}
+            session.pending_item_relocation_pokemon = {}
+            pending_decision = str(session.self_trade_pending_decision or "")
+            session.self_trade_pending_decision = ""
+            if pending_decision == "item_relocation_choice_to_a":
+                session.trade_status = "Troca local cancelada. Escolha outro Pokemon."
+                session.self_trade_context = {}
+                session.self_trade_pokemon_a = None
+                session.self_trade_pokemon_b = None
+                session.self_trade_decisions = default_self_trade_decisions()
+                try:
+                    services.load_self_trade_party(session.self_trade_save_a)
+                except Exception as exc:
+                    ctx.logger.warning("Failed to reload self trade party A after item cancellation: %s", exc)
+                services.switch_screen("self_select_pokemon_a", "item_relocation_back_to_a")
+                session.menu_index = 0
+                return
+            if pending_decision == "item_relocation_choice_to_b":
+                session.trade_status = "Troca local cancelada. Escolha outro Pokemon."
+                session.self_trade_context = {}
+                session.self_trade_pokemon_b = None
+                session.self_trade_decisions = default_self_trade_decisions()
+                try:
+                    services.load_self_trade_party(session.self_trade_save_b)
+                except Exception as exc:
+                    ctx.logger.warning("Failed to reload self trade party B after item cancellation: %s", exc)
+                services.switch_screen("self_select_pokemon_b", "item_relocation_back_to_b")
+                session.menu_index = 0
+                return
+            state.selected_pokemon = None
+            services.request_trade_cancel(state)
+            session.trade_status = "Troca cancelada. Escolha outro Pokemon."
+            services.switch_screen("select_pokemon", "item_relocation_back")
+            session.menu_index = 0
+
+    def render(self, ctx, session, state, services):
+        if not session.pending_item_relocation:
+            return
+        pokemon = dict(session.pending_item_relocation_pokemon or state.selected_pokemon or {})
+        ctx.draw.draw_resolve_item_relocation(
+            ctx.screen,
+            ctx.fonts,
+            session.pending_item_relocation,
+            session.item_relocation_index,
             ctx.sprite_loader,
             pokemon,
             state.language,

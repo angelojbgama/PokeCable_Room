@@ -10,7 +10,7 @@ from compatibility import CompatibilityReport, build_compatibility_report
 from data.base_stats import get_base_stats
 from data.gender_rates import gender_from_gen2_attack_dv
 from data.inventory_layouts import inventory_layout_for_game
-from data.items import equivalent_item_id, item_exists, item_name
+from data.items import equivalent_item_id, item_category, item_exists, item_name
 from data.moves import default_move_pp, move_exists
 from data.unown_forms import gen2_unown_form_from_dvs
 
@@ -1312,11 +1312,13 @@ class Gen2Parser:
         self.recalculate_checksums()
 
     def _bag_pocket_for_item(self, item_id: int) -> str:
-        name = item_name(item_id, 2) or ""
-        if name.startswith("TM") or name.startswith("HM"):
+        category = item_category(item_id, 2)
+        if category in {"tm", "hm", "tmhm"}:
             return "tm_hm"
-        if name in GEN2_BALL_NAMES:
+        if category == "ball":
             return "balls"
+        if category == "key_item":
+            return "key_items"
         return "items"
 
     def _has_space_in_pocket(self, pocket_name: str, item_id: int, quantity: int) -> bool:

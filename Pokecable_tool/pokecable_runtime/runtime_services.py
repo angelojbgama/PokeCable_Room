@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import tempfile
 import sys
 from pathlib import Path
 from typing import Any
@@ -22,6 +24,7 @@ from data.species import SPECIES_NAMES_BY_NATIONAL, native_to_national  # noqa: 
 from evolutions import preview_trade_evolution  # noqa: E402
 from canonical import CanonicalPokemon  # noqa: E402
 from converters import get_converter  # noqa: E402
+from parsers import Gen1Parser, Gen2Parser, Gen3Parser  # noqa: E402
 
 
 def _as_int(value: Any, default: int = 0) -> int:
@@ -199,6 +202,40 @@ def trade_evolution_dict(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _build_target_parser(payload: dict[str, Any], target_generation: int):
+    save_blob = str(payload.get("target_save_bytes_base64") or "").strip()
+    if not save_blob:
+        return None
+    parser_cls = {1: Gen1Parser, 2: Gen2Parser, 3: Gen3Parser}.get(int(target_generation))
+    if parser_cls is None:
+        return None
+    suffix = str(payload.get("target_save_suffix") or ".sav")
+    raw = base64.b64decode(save_blob.encode("ascii"))
+    tmpdir = tempfile.TemporaryDirectory(prefix="pokecable_runtime_preflight_")
+    tmp_path = Path(tmpdir.name) / f"target{suffix if suffix.startswith('.') else '.sav'}"
+    tmp_path.write_bytes(raw)
+    parser = parser_cls()
+    parser.load(tmp_path)
+    return tmpdir, parser
+
+
+def _build_source_parser(payload: dict[str, Any], source_generation: int):
+    save_blob = str(payload.get("source_save_bytes_base64") or "").strip()
+    if not save_blob:
+        return None
+    parser_cls = {1: Gen1Parser, 2: Gen2Parser, 3: Gen3Parser}.get(int(source_generation))
+    if parser_cls is None:
+        return None
+    suffix = str(payload.get("source_save_suffix") or ".sav")
+    raw = base64.b64decode(save_blob.encode("ascii"))
+    tmpdir = tempfile.TemporaryDirectory(prefix="pokecable_runtime_outgoing_")
+    tmp_path = Path(tmpdir.name) / f"source{suffix if suffix.startswith('.') else '.sav'}"
+    tmp_path.write_bytes(raw)
+    parser = parser_cls()
+    parser.load(tmp_path)
+    return tmpdir, parser
+
+
 def build_trade_preflight(payload: dict[str, Any]) -> dict[str, Any]:
     received = dict(payload.get("received_payload") or payload.get("payload") or {})
     target_generation = _as_int(payload.get("target_generation") or received.get("target_generation") or received.get("generation"), 0)
@@ -222,6 +259,10 @@ def build_trade_preflight(payload: dict[str, Any]) -> dict[str, Any]:
     evolution = trade_evolution_dict(received)
     mode = "same_generation" if source_generation == target_generation else "cross_generation"
     removed_moves: list[dict[str, Any]] = []
+    removed_items: list[dict[str, Any]] = []
+    transformations: list[str] = []
+    suggested_actions: list[str] = []
+    requires_user_confirmation = False
     if mode == "cross_generation" and source_generation and target_generation:
         canonical_payload = received.get("canonical") if isinstance(received.get("canonical"), dict) else None
         if not canonical_payload:
@@ -237,6 +278,10 @@ def build_trade_preflight(payload: dict[str, Any]) -> dict[str, Any]:
                 if converter is not None:
                     report = converter.can_convert(canonical, policy="auto_retrocompat")
                     removed_moves = list(report.removed_moves or [])
+                    removed_items = list(report.removed_items or [])
+                    transformations = [str(item).strip() for item in (report.transformations or []) if str(item).strip()]
+                    suggested_actions = [str(item).strip() for item in (report.suggested_actions or []) if str(item).strip()]
+                    requires_user_confirmation = bool(report.requires_user_confirmation)
                     for reason in report.blocking_reasons or []:
                         text = str(reason).strip()
                         if text and text not in reasons:
@@ -248,6 +293,10 @@ def build_trade_preflight(payload: dict[str, Any]) -> dict[str, Any]:
             except Exception as exc:
                 reasons.append(f"Erro avaliando compatibilidade: {exc}")
                 removed_moves = []
+                removed_items = []
+                transformations = []
+                suggested_actions = []
+                requires_user_confirmation = False
     compatible = not reasons
     return {
         "compatible": compatible,
@@ -257,8 +306,45 @@ def build_trade_preflight(payload: dict[str, Any]) -> dict[str, Any]:
         "blocking_reasons": reasons,
         "warnings": warnings,
         "data_loss": [],
-        "suggested_actions": [],
+        "suggested_actions": suggested_actions,
         "pokemon": enriched,
         "trade_evolution": evolution,
         "removed_moves": removed_moves,
+        "removed_items": removed_items,
+        "transformations": transformations,
+        "requires_user_confirmation": requires_user_confirmation,
+        "item_relocation": {},
     }
+
+
+def build_outgoing_item_relocation(payload: dict[str, Any]) -> dict[str, Any]:
+    sent = dict(payload.get("sent_payload") or payload.get("payload") or {})
+    target_generation = _as_int(payload.get("target_generation") or sent.get("target_generation"), 0)
+    source_generation = _as_int(sent.get("generation") or sent.get("source_generation"), 0)
+    if not sent or not source_generation or not target_generation or source_generation == target_generation:
+        return {}
+    canonical_payload = sent.get("canonical") if isinstance(sent.get("canonical"), dict) else None
+    if not canonical_payload:
+        return {}
+    try:
+        canonical = CanonicalPokemon.from_dict(canonical_payload)
+        converter = get_converter(source_generation, target_generation)
+        report = converter.can_convert(canonical, policy="auto_retrocompat")
+        if not report.removed_items:
+            return {}
+        source_parser_bundle = _build_source_parser(payload, source_generation)
+        if source_parser_bundle is None:
+            return {}
+        tmpdir, source_parser = source_parser_bundle
+        try:
+            raw_item_relocation = converter.inspect_item_relocation(canonical, source_parser, report)
+        finally:
+            tmpdir.cleanup()
+        if not raw_item_relocation:
+            return {}
+        item_relocation = dict(raw_item_relocation)
+        item_relocation["source_generation"] = source_generation
+        item_relocation["target_generation"] = target_generation
+        return item_relocation
+    except Exception:
+        return {}

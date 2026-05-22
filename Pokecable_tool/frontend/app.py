@@ -30,6 +30,7 @@ from pokecable_logging import configure_logging
 from pokecable_save import SaveError, _ensure_backend_import_path
 from frontend.fonts import font, gender_font, title_font
 from frontend.i18n import TYPE_LABELS, TYPE_LABELS_BY_LANG, screen_title, t, translate_literal
+from frontend.item_sprites import draw_item_sprite
 from frontend.input import (
     ACTION_DEBOUNCE,
     AXIS_THRESHOLD,
@@ -207,10 +208,43 @@ TYPE_COLORS = {
     "fairy": (214, 133, 173),
 }
 
+def _resolve_item_name_by_id(item_id, generation):
+    try:
+        item_id = int(item_id or 0)
+    except (TypeError, ValueError):
+        return None
+    try:
+        generation = int(generation or 0)
+    except (TypeError, ValueError):
+        generation = 0
+    if item_id <= 0 or generation <= 0:
+        return None
+    try:
+        _ensure_backend_import_path()
+        from data.items import item_name as runtime_item_name  # type: ignore
+
+        return runtime_item_name(item_id, generation)
+    except Exception:
+        return None
+
+
 def held_item_label(pokemon):
     raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
     item_id = (pokemon or {}).get("held_item_id") or raw.get("held_item_id")
-    item_name = (pokemon or {}).get("held_item_name") or raw.get("held_item_name")
+    canonical = (pokemon or {}).get("canonical", {}) if isinstance(pokemon, dict) else {}
+    held_item = canonical.get("held_item", {}) if isinstance(canonical, dict) else {}
+    generation = (
+        (pokemon or {}).get("generation")
+        or raw.get("generation")
+        or canonical.get("source_generation")
+        or (pokemon or {}).get("source_generation")
+    )
+    item_name = (
+        (pokemon or {}).get("held_item_name")
+        or raw.get("held_item_name")
+        or held_item.get("name")
+        or _resolve_item_name_by_id(item_id, generation)
+    )
     if not item_id:
         return "Item: nenhum"
     return f"Item: {item_name or f'#{item_id}'}"
@@ -218,14 +252,29 @@ def held_item_label(pokemon):
 
 def held_item_info(pokemon):
     raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
+    canonical = (pokemon or {}).get("canonical", {}) if isinstance(pokemon, dict) else {}
+    held_item = canonical.get("held_item", {}) if isinstance(canonical, dict) else {}
     item_id = (pokemon or {}).get("held_item_id") or raw.get("held_item_id")
     if not item_id:
         return None
     item_id = int(item_id)
+    generation = (
+        (pokemon or {}).get("generation")
+        or raw.get("generation")
+        or canonical.get("source_generation")
+        or (pokemon or {}).get("source_generation")
+    )
     return {
         "id": item_id,
-        "name": (pokemon or {}).get("held_item_name") or raw.get("held_item_name") or f"#{item_id}",
+        "name": (
+            (pokemon or {}).get("held_item_name")
+            or raw.get("held_item_name")
+            or held_item.get("name")
+            or _resolve_item_name_by_id(item_id, generation)
+            or f"#{item_id}"
+        ),
         "category": (pokemon or {}).get("held_item_category") or raw.get("held_item_category") or "item",
+        "generation": generation,
     }
 
 
@@ -452,6 +501,8 @@ def draw_type_badges(surface, font_obj, type_names, x, y, max_width, language="p
 
 
 def draw_item_icon(surface, area, item_info, selected=False):
+    if draw_item_sprite(surface, area, item_info, BG if selected else PANEL):
+        return
     draw_item_icon_element(surface, area, item_info, selected, BG, PANEL, MUTED, TEXT)
 
 
@@ -1517,6 +1568,44 @@ def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_i
     draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_choose")), ("B", t(language, "btn_skip"))])
 
 
+def draw_resolve_item_relocation(screen, fonts, item_relocation, selected_index, sprite_loader=None, pokemon=None, language="pt"):
+    _, _, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, screen_title(language, "incompatible_item_title"), warn_pulse=True)
+
+    list_panel = layout.left_panel
+    right_panel = right_info_panel(layout)
+    rect(screen, PANEL, list_panel, 0)
+    rect(screen, PANEL_2, right_panel, 0)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
+    pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=0)
+
+    options = [str(option) for option in (item_relocation.get("options") or []) if str(option)]
+    labels = {
+        "bag": t(language, "item_destination_bag"),
+        "pc": t(language, "item_destination_pc"),
+        "remove": t(language, "item_destination_remove"),
+    }
+    for idx, option in enumerate(options):
+        row = pygame.Rect(list_panel.x + 8, list_panel.y + 14 + idx * 38, list_panel.w - 16, 30)
+        selected = idx == selected_index
+        draw_selectable_list_item(screen, row, selected)
+        color = SCREEN if selected else TEXT
+        text(screen, small_f, labels.get(option, option.upper()), row.x + 10, row.y + 7, color, row.w - 20)
+
+    if sprite_loader and pokemon:
+        entry = _build_sprite_entry(pokemon)
+        sprite_loader.request_for(entry)
+        sprite, loading, _ = sprite_loader.snapshot_for(entry)
+        display_name = pokemon_display_name(pokemon, "Pokemon")
+        draw_pokemon_detail_component(screen, fonts, right_panel, pokemon, display_name, sprite, loading, language)
+    else:
+        visor_rect = right_visor_rect(right_panel)
+        draw_digital_visor(screen, visor_rect, 1.0)
+        pygame.draw.rect(screen, BORDER, visor_rect, 2, border_radius=0)
+
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_store_item")), ("B", t(language, "btn_back"))])
+
+
 def draw_cancel_waiting_confirm(screen, fonts, pokemon, sprite_loader, language="pt"):
     title_f, body_f, small_f, tiny_f = fonts
     del title_f
@@ -2050,6 +2139,7 @@ def main(initial_screen=None):
         draw_info_modal=draw_info_modal,
         draw_deposit_confirm=draw_deposit_confirm,
         draw_withdraw_confirm=draw_withdraw_confirm,
+        draw_resolve_item_relocation=draw_resolve_item_relocation,
         draw_resolve_moves=draw_resolve_moves,
         draw_evolution_cancel_prompt=draw_evolution_cancel_prompt,
         draw_evolution_cancel_confirm=draw_evolution_cancel_confirm,

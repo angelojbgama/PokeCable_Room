@@ -34,6 +34,16 @@ def dispatch_ui_queue(session, services, logger):
                     services.switch_screen("resolve_moves", "resolve_moves_prompt")
                 else:
                     services.confirm_queue.put({})
+            elif msg_type == "resolve_item_prompt":
+                data = payload if isinstance(payload, dict) else {}
+                session.pending_item_relocation = dict(data.get("item_relocation") or {})
+                session.pending_item_relocation_pokemon = dict(data.get("pokemon") or {})
+                session.item_relocation_index = 0
+                logger.info("QUEUE resolve_item_prompt: %s", session.pending_item_relocation)
+                if session.pending_item_relocation:
+                    services.switch_screen("resolve_item_relocation", "resolve_item_prompt")
+                else:
+                    services.confirm_queue.put("")
             elif msg_type == "evolution_cancel_prompt":
                 session.result_data = payload if isinstance(payload, dict) else {}
                 logger.info("QUEUE evolution_cancel_prompt: %s", session.result_data)

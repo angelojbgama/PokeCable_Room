@@ -1368,9 +1368,11 @@ class SaveModel:
         self,
         location: str,
         payload: Dict[str, Any],
+        outgoing_payload: Optional[Dict[str, Any]] = None,
         trade_evolution: Optional[Dict[str, Any]] = None,
         cancel_trade_evolution: bool = False,
         resolved_moves: Optional[Dict[int, int]] = None,
+        item_relocation_choice: Optional[str] = None,
     ) -> Dict[str, Any]:
         parsed = parse_location(location)
         payload_generation = int(payload.get("generation", 0))
@@ -1445,6 +1447,30 @@ class SaveModel:
                     tmp_path.write_bytes(bytes(self.bytes))
                     target_parser = parser()
                     target_parser.load(tmp_path)
+                    if outgoing_payload:
+                        outgoing_generation = int(outgoing_payload.get("generation") or outgoing_payload.get("source_generation") or 0)
+                        outgoing_canonical_payload = (
+                            outgoing_payload.get("canonical") if isinstance(outgoing_payload.get("canonical"), dict) else None
+                        )
+                        if outgoing_generation == self.generation and outgoing_canonical_payload:
+                            outgoing_canonical = CanonicalPokemon.from_dict(outgoing_canonical_payload)
+                            outgoing_converter = get_converter(outgoing_generation, payload_generation)
+                            outgoing_result = outgoing_converter.convert(
+                                outgoing_canonical,
+                                target_parser,
+                                location,
+                                policy="auto_retrocompat",
+                                relocate_dropped_item=False,
+                            )
+                            outgoing_converter._relocate_dropped_item(
+                                outgoing_canonical,
+                                outgoing_result.canonical_after,
+                                target_parser,
+                                outgoing_result.compatibility_report,
+                                item_relocation_choice=item_relocation_choice,
+                            )
+                            if not outgoing_result.compatibility_report.compatible:
+                                raise SaveError("; ".join(outgoing_result.compatibility_report.blocking_reasons))
                     converter = get_converter(int(canonical.source_generation), self.generation)
                     converter.apply_to_save(
                         target_parser,
@@ -1452,6 +1478,7 @@ class SaveModel:
                         canonical,
                         policy="auto_retrocompat",
                         resolved_moves=resolved_moves,
+                        item_relocation_choice=item_relocation_choice,
                     )
                     target_parser.save(tmp_path)
                     self.bytes = bytearray(tmp_path.read_bytes())

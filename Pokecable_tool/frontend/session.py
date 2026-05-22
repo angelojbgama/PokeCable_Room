@@ -12,10 +12,14 @@ def default_self_trade_decisions():
     return {
         "cancel_evolution_to_a": False,
         "cancel_evolution_to_b": False,
+        "item_relocation_choice_to_a": "",
+        "item_relocation_choice_to_b": "",
         "resolved_moves_to_a": {},
         "resolved_moves_to_b": {},
         "_evolution_to_a_done": False,
         "_evolution_to_b_done": False,
+        "_item_to_a_done": False,
+        "_item_to_b_done": False,
         "_moves_to_a_done": False,
         "_moves_to_b_done": False,
     }
@@ -41,8 +45,11 @@ class UiSessionState:
     trade_status: str = ""
     result_data: dict[str, Any] = field(default_factory=dict)
     pending_removed_moves: list[dict[str, Any]] = field(default_factory=list)
+    pending_item_relocation: dict[str, Any] = field(default_factory=dict)
+    pending_item_relocation_pokemon: dict[str, Any] = field(default_factory=dict)
     resolve_current_idx: int = 0
     resolve_replacement_idx: int = 0
+    item_relocation_index: int = 0
     resolved_moves_choices: dict[int, int] = field(default_factory=dict)
     info_modal_data: dict[str, Any] = field(default_factory=default_info_modal)
     pending_deposit_idx: int = -1

@@ -45,15 +45,12 @@ class BaseConverter:
         target_location: str,
         policy: str = "safe_default",
         resolved_moves: dict[int, int] | None = None,
-        relocate_dropped_item: bool = True,
+        item_relocation_choice: str | None = None,
+        relocate_dropped_item: bool = False,
     ) -> ConversionResult:
         report = self.can_convert(canonical, policy=policy)
         converted = self._normalized_copy(canonical, report, resolved_moves=resolved_moves)
-        # When the pokemon's held item won't survive the transfer (no equivalent in target gen,
-        # or target gen has no held-item concept at all like Gen 1), try to save the item to the
-        # destination trainer's bag → PC instead of silently dropping it.
-        if relocate_dropped_item:
-            self._relocate_dropped_item(canonical, converted, target_parser, report)
+        del item_relocation_choice, relocate_dropped_item
         return ConversionResult(
             canonical_before=canonical,
             canonical_after=converted,
@@ -65,68 +62,123 @@ class BaseConverter:
             transformations=list(report.transformations),
         )
 
+    def inspect_item_relocation(
+        self,
+        original: CanonicalPokemon,
+        source_parser,
+        report: CompatibilityReport | None = None,
+    ) -> dict[str, object] | None:
+        src_item = original.held_item
+        if src_item is None or not src_item.item_id:
+            return None
+        if report is not None and not report.removed_items:
+            return None
+        src_id = int(src_item.item_id)
+        src_gen = int(original.source_generation or self.source_generation)
+        target_gen = int(self.target_generation)
+        item_label = item_name(src_id, src_gen) or str(src_id)
+        if target_gen == 1:
+            compatibility_reason = (
+                f"A Gen 1 nao possui a mecânica de Pokemon segurar item. "
+                f"Deseja enviar o item {item_label} para a mochila, para o computador, ou jogar fora neste save antes de transferir?"
+            )
+            manual_remove_reason = (
+                f"A Gen 1 nao possui a mecânica de Pokemon segurar item. "
+                f"Como nao ha espaco disponivel neste save, remova o item {item_label} manualmente no seu jogo antes de transferir."
+            )
+        else:
+            target_item_label = item_name(equivalent_item_id(src_id, src_gen, target_gen) or 0, target_gen) or item_label
+            compatibility_reason = (
+                f"O item {target_item_label} nao pode acompanhar o Pokemon na Gen {target_gen}. "
+                f"Deseja enviar o item original {item_label} para a mochila, para o computador, ou jogar fora neste save antes de transferir?"
+            )
+            manual_remove_reason = (
+                f"O item {item_label} nao pode acompanhar o Pokemon na Gen {target_gen}. "
+                f"Como nao ha espaco disponivel neste save, remova esse item manualmente no seu jogo antes de transferir."
+            )
+        bag_available = False
+        pc_available = False
+        try:
+            bag_available = bool(source_parser.has_bag_space(src_id, 1))
+        except Exception:
+            bag_available = False
+        try:
+            pc_available = bool(source_parser.has_pc_space(src_id, 1))
+        except Exception:
+            pc_available = False
+        options: list[str] = []
+        if bag_available or pc_available:
+            if bag_available:
+                options.append("bag")
+            if pc_available:
+                options.append("pc")
+            options.append("remove")
+            status = "choose_destination"
+            reason = compatibility_reason
+        else:
+            status = "manual_remove_required"
+            reason = manual_remove_reason
+        return {
+            "status": status,
+            "reason": reason,
+            "item_id": src_id,
+            "item_name": item_label,
+            "target_item_id": equivalent_item_id(src_id, src_gen, target_gen) or 0,
+            "target_item_name": item_name(equivalent_item_id(src_id, src_gen, target_gen) or 0, target_gen),
+            "target_generation": target_gen,
+            "bag_available": bag_available,
+            "pc_available": pc_available,
+            "options": options,
+        }
+
     def _relocate_dropped_item(
         self,
         original: CanonicalPokemon,
         converted: CanonicalPokemon,
-        target_parser,
+        source_parser,
         report: CompatibilityReport,
+        *,
+        item_relocation_choice: str | None = None,
     ) -> None:
-        """If the original held item was dropped during conversion, the item must NOT be
-        discarded. We try:
-          1) target trainer's bag
-          2) target trainer's PC items
-          3) Refuse the trade (set report.compatible=False) — user must clear space or
-             remove the item before retrying.
-        """
-        src_item = original.held_item
-        if src_item is None or not src_item.item_id:
-            return
-        # Item still on the pokemon? Then no relocation needed.
         if converted.held_item and converted.held_item.item_id:
             return
-        src_id = int(src_item.item_id)
-        src_gen = int(original.source_generation or self.source_generation)
-        target_gen = int(self.target_generation)
-        # Resolve item id in the target gen (name-based mapping preferred over raw id).
-        target_id = equivalent_item_id(src_id, src_gen, target_gen) or 0
-        if not target_id and src_gen == target_gen:
-            target_id = src_id
-        if not target_id or not item_exists(target_id, target_gen):
-            # No equivalent in destination at all — refuse trade so item isn't lost.
+        plan = self.inspect_item_relocation(original, source_parser, report)
+        if not plan:
+            return
+        status = str(plan.get("status") or "")
+        if status == "manual_remove_required":
+            report.compatible = False
+            reason = str(plan.get("reason") or "Remova o item do Pokemon antes de transferir.")
+            if reason not in report.blocking_reasons:
+                report.blocking_reasons.append(reason)
+            if reason not in report.suggested_actions:
+                report.suggested_actions.append(reason)
+            return
+        source_id = int(plan.get("item_id") or 0)
+        source_name = str(plan.get("item_name") or source_id)
+        target_gen = int(plan.get("target_generation") or self.target_generation)
+        normalized_choice = str(item_relocation_choice or "").strip().lower()
+        if normalized_choice not in {"bag", "pc", "remove"}:
             report.compatible = False
             report.blocking_reasons.append(
-                f"Item segurado {item_name(src_id, src_gen) or src_id} nao existe na Gen {target_gen}. "
-                f"Remova-o antes de transferir ou troque por um item compativel."
+                f"Escolha o que fazer com o item segurado {source_name} antes de transferir: mochila, computador ou jogar fora."
+            )
+            report.suggested_actions.append("Escolha mochila, computador ou jogar fora para o item incompatível.")
+            return
+        if normalized_choice == "remove":
+            report.transformations.append(
+                f"Item segurado {source_name} foi jogado fora antes da transferencia para a Gen {target_gen}."
             )
             return
-        # Try bag, then PC. Wrap in try/except since some parsers' has_bag_space can raise
-        # for incompatible item categories.
-        try:
-            if target_parser.has_bag_space(target_id, 1):
-                target_parser.store_item_in_bag(target_id, 1)
-                report.transformations.append(
-                    f"Item segurado {item_name(target_id, target_gen) or target_id} foi para a mochila "
-                    f"do treinador destino (Gen {target_gen})."
-                )
-                return
-        except Exception:
-            pass
-        try:
-            if target_parser.has_pc_space(target_id, 1):
-                target_parser.store_item_in_pc(target_id, 1)
-                report.transformations.append(
-                    f"Item segurado {item_name(target_id, target_gen) or target_id} foi para o PC "
-                    f"de itens (mochila cheia, Gen {target_gen})."
-                )
-                return
-        except Exception:
-            pass
-        # Out of bag and PC space — refuse the trade so the item isn't lost.
-        report.compatible = False
-        report.blocking_reasons.append(
-            f"Mochila e PC cheios na Gen {target_gen}; nao ha onde guardar o item segurado "
-            f"{item_name(target_id, target_gen) or target_id}. Libere espaco antes de transferir."
+        if normalized_choice == "bag":
+            source_parser.store_item_in_bag(source_id, 1)
+            report.transformations.append(
+                f"Item segurado {source_name} voltou para a mochila deste save antes da transferencia para a Gen {target_gen}."
+            )
+            return
+        source_parser.store_item_in_pc(source_id, 1)
+        report.transformations.append(
+            f"Item segurado {source_name} voltou para o computador deste save antes da transferencia para a Gen {target_gen}."
         )
 
     def apply_to_save(
@@ -136,8 +188,16 @@ class BaseConverter:
         canonical: CanonicalPokemon,
         policy: str = "safe_default",
         resolved_moves: dict[int, int] | None = None,
+        item_relocation_choice: str | None = None,
     ) -> ConversionResult:
-        result = self.convert(canonical, target_parser, target_location, policy=policy, resolved_moves=resolved_moves)
+        result = self.convert(
+            canonical,
+            target_parser,
+            target_location,
+            policy=policy,
+            resolved_moves=resolved_moves,
+            item_relocation_choice=item_relocation_choice,
+        )
         if not result.compatibility_report.compatible:
             raise ValueError("; ".join(result.compatibility_report.blocking_reasons))
         target_parser.import_canonical(target_location, result.canonical_after)

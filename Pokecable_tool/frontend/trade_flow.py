@@ -66,6 +66,19 @@ def advance_self_trade_prompts(session, state, services, logger):
             return
         logger.info("Self-trade no evolution prompt for save A: evolved=%s reason=%s", evolution.get("evolved"), evolution.get("reason"))
 
+    if not session.self_trade_decisions.get("_item_to_a_done"):
+        session.self_trade_decisions["_item_to_a_done"] = True
+        relocation = session.self_trade_context.get("outgoing_item_relocation_a", {}) if isinstance(session.self_trade_context, dict) else {}
+        relocation = relocation if isinstance(relocation, dict) else {}
+        if relocation.get("status") == "choose_destination":
+            session.pending_item_relocation = dict(relocation)
+            session.pending_item_relocation_pokemon = dict(session.self_trade_context.get("payload_a", {}) or {})
+            session.item_relocation_index = 0
+            session.self_trade_pending_decision = "item_relocation_choice_to_a"
+            session.trade_status = f"{Path(session.self_trade_save_a).name}: guardar item"
+            services.switch_screen("resolve_item_relocation", "self_trade_item_to_a")
+            return
+
     if not session.self_trade_decisions.get("_moves_to_a_done"):
         session.self_trade_decisions["_moves_to_a_done"] = True
         removed = list(preflight_to_a.get("removed_moves") or []) if isinstance(preflight_to_a, dict) else []
@@ -93,6 +106,19 @@ def advance_self_trade_prompts(session, state, services, logger):
             services.switch_screen("evolution_cancel_prompt", "self_trade_evolution_to_b")
             return
         logger.info("Self-trade no evolution prompt for save B: evolved=%s reason=%s", evolution.get("evolved"), evolution.get("reason"))
+
+    if not session.self_trade_decisions.get("_item_to_b_done"):
+        session.self_trade_decisions["_item_to_b_done"] = True
+        relocation = session.self_trade_context.get("outgoing_item_relocation_b", {}) if isinstance(session.self_trade_context, dict) else {}
+        relocation = relocation if isinstance(relocation, dict) else {}
+        if relocation.get("status") == "choose_destination":
+            session.pending_item_relocation = dict(relocation)
+            session.pending_item_relocation_pokemon = dict(session.self_trade_context.get("payload_b", {}) or {})
+            session.item_relocation_index = 0
+            session.self_trade_pending_decision = "item_relocation_choice_to_b"
+            session.trade_status = f"{Path(session.self_trade_save_b).name}: guardar item"
+            services.switch_screen("resolve_item_relocation", "self_trade_item_to_b")
+            return
 
     if not session.self_trade_decisions.get("_moves_to_b_done"):
         session.self_trade_decisions["_moves_to_b_done"] = True
@@ -124,6 +150,8 @@ def finish_self_trade(session, state, services, logger):
             cancel_evolution_to_b=bool(session.self_trade_decisions.get("cancel_evolution_to_b")),
             resolved_moves_to_a=dict(session.self_trade_decisions.get("resolved_moves_to_a") or {}),
             resolved_moves_to_b=dict(session.self_trade_decisions.get("resolved_moves_to_b") or {}),
+            item_relocation_choice_to_a=str(session.self_trade_decisions.get("item_relocation_choice_to_a") or ""),
+            item_relocation_choice_to_b=str(session.self_trade_decisions.get("item_relocation_choice_to_b") or ""),
         )
         session.trade_status = "Troca local concluida!"
         state.save_analysis.clear()

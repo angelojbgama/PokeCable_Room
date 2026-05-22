@@ -329,12 +329,28 @@ def _blocking_message(preflight: Dict[str, Any]) -> str:
     return _preflight_block_message(preflight)
 
 
-def _confirm_incoming_trade(ui, confirm_queue: queue.Queue, incoming_payload: Dict[str, Any], preflight: Dict[str, Any], evolution: Dict[str, Any]) -> tuple[bool, bool, Dict[int, int]]:
+def _confirm_incoming_trade(
+    ui,
+    confirm_queue: queue.Queue,
+    incoming_payload: Dict[str, Any],
+    preflight: Dict[str, Any],
+    evolution: Dict[str, Any],
+    outgoing_item_relocation: Dict[str, Any],
+    outgoing_pokemon: Dict[str, Any],
+) -> tuple[bool, bool, Dict[int, int], str | None]:
     cancel_evolution = False
     resolved_moves: Dict[int, int] = {}
+    item_relocation_choice: str | None = None
     if evolution.get("evolved"):
         ui.ui_queue.put(("evolution_cancel_prompt", evolution))
         cancel_evolution = bool(confirm_queue.get())
+
+    item_relocation = dict(outgoing_item_relocation or {})
+    if item_relocation.get("status") == "choose_destination":
+        ui.ui_queue.put(("resolve_item_prompt", {"item_relocation": item_relocation, "pokemon": dict(outgoing_pokemon or {})}))
+        choice = confirm_queue.get()
+        if isinstance(choice, str) and choice.strip().lower() in {"bag", "pc", "remove"}:
+            item_relocation_choice = choice.strip().lower()
 
     removed_moves = list(preflight.get("removed_moves") or [])
     if removed_moves:
@@ -348,11 +364,11 @@ def _confirm_incoming_trade(ui, confirm_queue: queue.Queue, incoming_payload: Di
     ui.status(f"Pronto para trocar com {summary}")
     ui.ui_queue.put(("confirm_prompt", incoming_payload))
     confirmed = bool(confirm_queue.get())
-    return confirmed, cancel_evolution, resolved_moves
+    return confirmed, cancel_evolution, resolved_moves, item_relocation_choice
 
 
 def run_lan_trade(state, ui, confirm_queue: queue.Queue, stop_event: threading.Event) -> None:
-    from r36s_pokecable_core import _create_backup, _save_unchanged_on_disk
+    from r36s_pokecable_core import _create_backup, _local_outgoing_item_relocation, _save_unchanged_on_disk
 
     save, signature = _load_selected_save(state)
     state.expected_signature = signature
@@ -387,6 +403,8 @@ def run_lan_trade(state, ui, confirm_queue: queue.Queue, stop_event: threading.E
     peer_confirm: Dict[str, Any] = {}
     cancel_evolution = False
     resolved_moves: Dict[int, int] = {}
+    item_relocation_choice: str | None = None
+    local_item_relocation: Dict[str, Any] = {}
     local_write_ready = False
     peer_write_ready = False
     wrote_local = False
@@ -397,7 +415,7 @@ def run_lan_trade(state, ui, confirm_queue: queue.Queue, stop_event: threading.E
     def reset_round(message: str = "", open_selection: bool = True) -> None:
         nonlocal peer_offer, local_offer, local_location, local_offer_sent, local_preflight_sent
         nonlocal local_preflight, local_evolution, peer_preflight, local_confirm_sent, peer_confirm
-        nonlocal cancel_evolution, resolved_moves, local_write_ready, peer_write_ready
+        nonlocal cancel_evolution, resolved_moves, item_relocation_choice, local_item_relocation, local_write_ready, peer_write_ready
         nonlocal wrote_local, peer_write_done, backup_path, saved_pokemon
         peer_offer = {}
         local_offer = {}
@@ -411,6 +429,8 @@ def run_lan_trade(state, ui, confirm_queue: queue.Queue, stop_event: threading.E
         peer_confirm = {}
         cancel_evolution = False
         resolved_moves = {}
+        item_relocation_choice = None
+        local_item_relocation = {}
         local_write_ready = False
         peer_write_ready = False
         wrote_local = False
@@ -531,12 +551,22 @@ def run_lan_trade(state, ui, confirm_queue: queue.Queue, stop_event: threading.E
                 and not local_confirm_sent
                 and peer_offer
             ):
-                confirmed, cancel_evolution, resolved_moves = _confirm_incoming_trade(
+                local_item_relocation = _local_outgoing_item_relocation(local_offer, save, int(peer_generation or 0))
+                if local_item_relocation.get("status") == "manual_remove_required":
+                    reason = str(local_item_relocation.get("reason") or "Remova o item do Pokemon antes de transferir.")
+                    ui.ui_queue.put(("info_modal", {"title": "Item incompatível", "message": reason}))
+                    confirm_queue.get()
+                    conn.send({"type": "cancel_trade_round", "reason": "item_relocation_blocked"})
+                    reset_round("Troca cancelada. Escolha outro Pokemon.")
+                    continue
+                confirmed, cancel_evolution, resolved_moves, item_relocation_choice = _confirm_incoming_trade(
                     ui,
                     confirm_queue,
                     peer_offer,
                     local_preflight,
                     local_evolution,
+                    local_item_relocation,
+                    local_offer,
                 )
                 local_confirm_sent = True
                 conn.send(
@@ -545,6 +575,7 @@ def run_lan_trade(state, ui, confirm_queue: queue.Queue, stop_event: threading.E
                         "confirmed": bool(confirmed),
                         "cancel_evolution": bool(cancel_evolution),
                         "resolved_moves": resolved_moves,
+                        "item_relocation_choice": item_relocation_choice or "",
                     }
                 )
                 if not confirmed:
@@ -569,9 +600,11 @@ def run_lan_trade(state, ui, confirm_queue: queue.Queue, stop_event: threading.E
                     saved_pokemon = save.apply_payload(
                         local_location,
                         peer_offer,
+                        outgoing_payload=local_offer,
                         trade_evolution=local_evolution or local_preflight.get("trade_evolution") or {},
                         cancel_trade_evolution=cancel_evolution,
                         resolved_moves=resolved_moves,
+                        item_relocation_choice=item_relocation_choice,
                     )
                     save.write_to_disk()
                     refreshed = state.refresh_selected_save()

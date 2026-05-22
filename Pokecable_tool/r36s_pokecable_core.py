@@ -6,6 +6,7 @@ PokeCable R36S - Core logic for local save parsing and websocket trading.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -678,9 +679,11 @@ def _build_preflight(
         "blocking_reasons": reasons,
         "warnings": warnings,
         "data_loss": [],
-        "suggested_actions": [],
+        "suggested_actions": list(server_preflight.get("suggested_actions") or []),
         "server_preflight": server_preflight,
         "trade_evolution": server_preflight.get("trade_evolution") or {},
+        "item_relocation": server_preflight.get("item_relocation") or {},
+        "removed_items": list(server_preflight.get("removed_items") or []),
     }
 
 
@@ -696,10 +699,35 @@ def _local_trade_preflight(received_payload: Dict[str, Any], target_save: SaveMo
                 "received_payload": received_payload,
                 "target_generation": target_save.generation,
                 "target_game": target_save.game,
+                "target_save_bytes_base64": base64.b64encode(bytes(target_save.bytes)).decode("ascii"),
+                "target_save_suffix": target_save.path.suffix or ".sav",
             }
         )
     except Exception as exc:
         raise SaveError(f"Falha no preflight local: {exc}") from exc
+
+
+def _local_outgoing_item_relocation(
+    sent_payload: Dict[str, Any],
+    source_save: SaveModel,
+    target_generation: int,
+) -> Dict[str, Any]:
+    try:
+        _ensure_tool_runtime_import_path()
+        from runtime_services import build_outgoing_item_relocation  # type: ignore
+    except Exception as exc:
+        raise SaveError(f"Validador local de item indisponivel: {exc}") from exc
+    try:
+        return build_outgoing_item_relocation(
+            {
+                "sent_payload": sent_payload,
+                "target_generation": target_generation,
+                "source_save_bytes_base64": base64.b64encode(bytes(source_save.bytes)).decode("ascii"),
+                "source_save_suffix": source_save.path.suffix or ".sav",
+            }
+        )
+    except Exception as exc:
+        raise SaveError(f"Falha avaliando item do Pokemon que sai do save: {exc}") from exc
 
 
 def _trade_preflight_for_target(
@@ -823,16 +851,24 @@ def prepare_self_trade(
 
     preflight_to_a = _trade_preflight_for_target(state, payload_b, save_a)
     preflight_to_b = _trade_preflight_for_target(state, payload_a, save_b)
+    outgoing_item_relocation_a = _local_outgoing_item_relocation(payload_a, save_a, save_b.generation)
+    outgoing_item_relocation_b = _local_outgoing_item_relocation(payload_b, save_b, save_a.generation)
     trade_evolution_to_a = _self_trade_evolution_preview_for_target(payload_b, save_a)
     trade_evolution_to_b = _self_trade_evolution_preview_for_target(payload_a, save_b)
     block_to_a = _preflight_block_message(preflight_to_a)
     block_to_b = _preflight_block_message(preflight_to_b)
-    if block_to_a or block_to_b:
+    item_block_to_a = str(outgoing_item_relocation_a.get("reason") or "") if outgoing_item_relocation_a.get("status") == "manual_remove_required" else ""
+    item_block_to_b = str(outgoing_item_relocation_b.get("reason") or "") if outgoing_item_relocation_b.get("status") == "manual_remove_required" else ""
+    if block_to_a or block_to_b or item_block_to_a or item_block_to_b:
         messages = []
         if block_to_a:
             messages.append(f"{save_a_path.name} receberia troca invalida: {block_to_a}")
         if block_to_b:
             messages.append(f"{save_b_path.name} receberia troca invalida: {block_to_b}")
+        if item_block_to_a:
+            messages.append(f"{save_a_path.name} precisa tratar o item do Pokemon enviado: {item_block_to_a}")
+        if item_block_to_b:
+            messages.append(f"{save_b_path.name} precisa tratar o item do Pokemon enviado: {item_block_to_b}")
         raise SaveError(" ".join(messages))
 
     return {
@@ -844,6 +880,8 @@ def prepare_self_trade(
         "payload_b": payload_b,
         "preflight_to_a": preflight_to_a,
         "preflight_to_b": preflight_to_b,
+        "outgoing_item_relocation_a": outgoing_item_relocation_a,
+        "outgoing_item_relocation_b": outgoing_item_relocation_b,
         "trade_evolution_to_a": trade_evolution_to_a,
         "trade_evolution_to_b": trade_evolution_to_b,
         "signature_a": save_a.signature(),
@@ -865,10 +903,13 @@ def validate_self_trade_candidate(
     target_save = load_save(Path(target_save_path))
     payload = source_save.export_payload(source_pokemon_location)
     preflight = _trade_preflight_for_target(state, payload, target_save)
+    outgoing_item_relocation = _local_outgoing_item_relocation(payload, source_save, target_save.generation)
+    outgoing_block = str(outgoing_item_relocation.get("reason") or "") if outgoing_item_relocation.get("status") == "manual_remove_required" else ""
+    blocking_message = outgoing_block or _preflight_block_message(preflight)
     return {
-        "compatible": not bool(_preflight_block_message(preflight)),
+        "compatible": not bool(blocking_message),
         "preflight": preflight,
-        "blocking_message": _preflight_block_message(preflight),
+        "blocking_message": blocking_message,
     }
 
 
@@ -879,6 +920,8 @@ def execute_self_trade(
     cancel_evolution_to_b: bool = False,
     resolved_moves_to_a: Optional[Dict[int, int]] = None,
     resolved_moves_to_b: Optional[Dict[int, int]] = None,
+    item_relocation_choice_to_a: Optional[str] = None,
+    item_relocation_choice_to_b: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Applies a prepared local two-save trade with backups and rollback."""
     save_a_path = Path(context.get("save_a_path"))
@@ -907,17 +950,21 @@ def execute_self_trade(
         received_a = save_a.apply_payload(
             str(context.get("pokemon_a_location") or "party:0"),
             payload_b,
+            outgoing_payload=payload_a,
             trade_evolution=trade_evolution_to_a or preflight_to_a.get("trade_evolution") or {},
             cancel_trade_evolution=cancel_evolution_to_a,
             resolved_moves=resolved_moves_to_a or {},
+            item_relocation_choice=item_relocation_choice_to_a,
         )
         save_a.write_to_disk()
         received_b = save_b.apply_payload(
             str(context.get("pokemon_b_location") or "party:0"),
             payload_a,
+            outgoing_payload=payload_b,
             trade_evolution=trade_evolution_to_b or preflight_to_b.get("trade_evolution") or {},
             cancel_trade_evolution=cancel_evolution_to_b,
             resolved_moves=resolved_moves_to_b or {},
+            item_relocation_choice=item_relocation_choice_to_b,
         )
         save_b.write_to_disk()
         return {
@@ -1100,6 +1147,8 @@ async def _websocket_trade(
             cancel_trade_evolution = False
             trade_evolution: Dict[str, Any] = {}
             resolved_moves: Dict[int, int] = {}
+            item_relocation_choice: str | None = None
+            local_item_relocation: Dict[str, Any] = {}
             client_id = ""
             local_slot = ""
 
@@ -1302,6 +1351,8 @@ async def _websocket_trade(
                                     "received_payload": msg.get("received_payload") or peer_offer,
                                     "target_generation": save.generation,
                                     "target_game": save.game,
+                                    "target_save_bytes_base64": base64.b64encode(bytes(save.bytes)).decode("ascii"),
+                                    "target_save_suffix": save.path.suffix or ".sav",
                                 },
                             )
                         except SaveError as exc:
@@ -1349,6 +1400,34 @@ async def _websocket_trade(
                         logger.info("Waiting for evolution cancel decision: %s", trade_evolution)
                         cancel_trade_evolution = bool(await asyncio.to_thread(confirm_queue.get))
                         logger.info("Evolution cancel decision: %s", cancel_trade_evolution)
+                    item_relocation_choice = None
+                    try:
+                        local_item_relocation = _local_outgoing_item_relocation(offer_payload, save, int(peer_generation or 0))
+                    except SaveError as exc:
+                        ui.error(str(exc))
+                        return
+                    if local_item_relocation.get("status") == "manual_remove_required":
+                        reason_text = str(local_item_relocation.get("reason") or "Remova o item do Pokemon antes de transferir.")
+                        ui.ui_queue.put(("info_modal", {"title": "Item incompatível", "message": reason_text}))
+                        await asyncio.to_thread(confirm_queue.get)
+                        await ws.send(json.dumps({"type": "cancel_trade_round", "reason": "item_relocation_blocked"}))
+                        our_offer_sent = False
+                        state.selected_pokemon = None
+                        _open_party_selection(state, ui)
+                        ui.status("Troca cancelada")
+                        continue
+                    if local_item_relocation.get("status") == "choose_destination":
+                        ui.ui_queue.put(
+                            (
+                                "resolve_item_prompt",
+                                {"item_relocation": local_item_relocation, "pokemon": dict(offer_payload or {})},
+                            )
+                        )
+                        logger.info("Waiting for item relocation choice: %s", local_item_relocation)
+                        choice = await asyncio.to_thread(confirm_queue.get)
+                        if isinstance(choice, str) and choice.strip().lower() in {"bag", "pc", "remove"}:
+                            item_relocation_choice = choice.strip().lower()
+                        logger.info("Item relocation choice received: %s", item_relocation_choice)
                     removed_moves = list(server_preflight.get("removed_moves") or [])
                     resolved_moves = {}
                     if removed_moves:
@@ -1370,7 +1449,15 @@ async def _websocket_trade(
                         return
                     ui.screen("trading")
                     ui.status("Confirmação enviada. Aguardando o outro treinador...")
-                    await ws.send(json.dumps({"type": "confirm_trade", "resolved_moves": resolved_moves}))
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "type": "confirm_trade",
+                                "resolved_moves": resolved_moves,
+                                "item_relocation_choice": item_relocation_choice or "",
+                            }
+                        )
+                    )
                     continue
 
                 if mtype == "trade_blocked":
@@ -1444,9 +1531,11 @@ async def _websocket_trade(
                         saved_pokemon = save.apply_payload(
                             pokemon_location,
                             received_payload,
+                            outgoing_payload=offer_payload,
                             trade_evolution=trade_evolution,
                             cancel_trade_evolution=cancel_trade_evolution,
                             resolved_moves=resolved_moves,
+                            item_relocation_choice=item_relocation_choice,
                         )
                         save.write_to_disk()
                         refreshed = state.refresh_selected_save()
@@ -1507,6 +1596,7 @@ async def _websocket_trade(
                     saved_pokemon = {}
                     trade_evolution = {}
                     resolved_moves = {}
+                    item_relocation_choice = None
                     backup_path = None
                     state.trade_phase = "waiting"
                     continue
@@ -1519,6 +1609,7 @@ async def _websocket_trade(
                     logger.info("Server confirmed trade_round_cancelled: %s", msg.get("reason"))
                     our_offer_sent = False
                     state.selected_pokemon = None
+                    item_relocation_choice = None
                     ui.status("Troca cancelada. Escolha outro Pokemon.")
                     _open_party_selection(state, ui)
                     continue
