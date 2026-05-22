@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(python3 tests/stress_cross_gen.py --limit 3)",
-      "Bash(python3 *)"
-    ]
-  }
-}
