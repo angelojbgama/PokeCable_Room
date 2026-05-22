@@ -204,6 +204,7 @@ class ResolveMovesScreen(ScreenBase):
     def render(self, ctx, session, state, services):
         if not session.pending_removed_moves:
             return
+        pokemon = dict(state.selected_pokemon or {})
         ctx.draw.draw_resolve_moves(
             ctx.screen,
             ctx.fonts,
@@ -212,6 +213,8 @@ class ResolveMovesScreen(ScreenBase):
             session.resolve_current_idx,
             len(session.pending_removed_moves),
             set(session.resolved_moves_choices.values()),
+            ctx.sprite_loader,
+            pokemon,
             state.language,
         )
 
@@ -386,7 +389,7 @@ class DepositConfirmScreen(ScreenBase):
         target_pokemon = None
         if 0 <= session.pending_deposit_idx < len(state.pokemon_list):
             target_pokemon = state.pokemon_list[session.pending_deposit_idx]
-        ctx.draw.draw_deposit_confirm(ctx.screen, ctx.fonts, target_pokemon or {}, state.language)
+        ctx.draw.draw_deposit_confirm(ctx.screen, ctx.fonts, target_pokemon or {}, ctx.sprite_loader, state.language)
 
 
 class TradingScreen(ScreenBase):
@@ -418,4 +421,4 @@ class TradeResultScreen(ScreenBase):
     def render(self, ctx, session, state, services):
         success = bool(isinstance(session.result_data, dict) and session.result_data.get("success"))
         data = session.result_data if success else session.result_data.get("error", session.trade_status) if isinstance(session.result_data, dict) else session.trade_status
-        ctx.draw.draw_trade_result(ctx.screen, ctx.fonts, success, data, state.language)
+        ctx.draw.draw_trade_result(ctx.screen, ctx.fonts, success, data, ctx.sprite_loader, state.language)

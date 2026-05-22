@@ -3,6 +3,7 @@ from __future__ import annotations
 from canonical import CanonicalPokemon
 from data.items import equivalent_item_id, item_exists, item_name
 from data.learnsets import get_learnable_moves
+from data.move_combat_data import MOVE_COMBAT_DATA
 from data.moves import move_exists, move_name
 from data.species import national_to_native, species_exists_in_generation
 
@@ -93,7 +94,8 @@ def _apply_move_rules(report: CompatibilityReport, canonical: CanonicalPokemon, 
     
     valid_replacements = []
     for m_id in learnable_ids:
-        valid_replacements.append({"move_id": m_id, "name": move_name(m_id) or f"Move #{m_id}"})
+        move_type = (MOVE_COMBAT_DATA.get(m_id) or {}).get("type", "")
+        valid_replacements.append({"move_id": m_id, "name": move_name(m_id) or f"Move #{m_id}", "type": move_type})
 
     for move in canonical.moves:
         if move.move_id in {0, None}:

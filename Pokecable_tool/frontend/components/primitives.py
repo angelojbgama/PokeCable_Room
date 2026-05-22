@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import time
+import math
 import hashlib
 
 import pygame
@@ -164,9 +165,11 @@ def draw_glass_panel(screen, area, progress, base_color=(170, 188, 214)):
     screen.blit(glass, area.topleft)
 
 
-def draw_digital_visor(screen, area, progress):
+def draw_digital_visor(screen, area, progress, tint=None):
     visor = pygame.Surface(area.size, pygame.SRCALPHA)
-    visor.fill((196, 206, 214, 255))
+    base_color = tint if tint else (196, 206, 214, 255)
+    visor.fill(base_color if len(base_color) == 4 else (*base_color, 255))
+    glow_color = tint[:3] if tint else (170, 232, 206)
     glow_span = area.w + area.h
     glow_pos = int(progress * (glow_span + 40)) - 20
     for x in range(area.w):
@@ -175,8 +178,8 @@ def draw_digital_visor(screen, area, progress):
             if distance > 18:
                 continue
             strength = 1.0 - (distance / 18.0)
-            alpha = int(128 * strength)
-            pygame.draw.line(visor, (170, 232, 206, alpha), (x, y), (x, min(area.h, y + 1)))
+            alpha = int(180 * strength) if tint else int(128 * strength)
+            pygame.draw.line(visor, (*glow_color, alpha), (x, y), (x, min(area.h, y + 1)))
     for y in range(2, area.h - 2, 6):
         pygame.draw.line(visor, (236, 242, 236, 36), (2, y), (area.w - 3, y), 1)
     pygame.draw.rect(visor, (255, 255, 255, 70), visor.get_rect(), 1)
@@ -437,6 +440,8 @@ def draw_pokedex_shell(
     title_state=None,
     loading_progress=0.0,
     pulsing=False,
+    ok_pulse=False,
+    warn_pulse=False,
 ):
     style = style or PokedexStyle()
     lens_state = lens_state if lens_state is not None else {"start_time": 0.0, "title": None}
@@ -537,9 +542,23 @@ def draw_pokedex_shell(
                 dim_color = dim_colors.get(color, (40, 40, 40))
                 pygame.draw.circle(screen, dim_color, (x, 32), 9)
     else:
+        current_time = time.perf_counter()
         for x, color in ((100, style.red), (128, style.warn), (156, style.ok)):
             pygame.draw.circle(screen, style.border, (x, 32), 12)
-            pygame.draw.circle(screen, color, (x, 32), 9)
+            if ok_pulse and color == style.ok:
+                pulse = 0.5 + 0.5 * math.sin(current_time * 4.0)
+                bright = (int(80 + 175 * pulse), int(200 + 55 * pulse), int(80 + 80 * pulse))
+                pygame.draw.circle(screen, bright, (x, 32), 9)
+                if pulse > 0.7:
+                    pygame.draw.circle(screen, (255, 255, 255), (x - 2, 29), 3)
+            elif warn_pulse and color == style.warn:
+                pulse = 0.5 + 0.5 * math.sin(current_time * 4.0)
+                bright = (int(200 + 55 * pulse), int(160 + 80 * pulse), int(20 + 30 * pulse))
+                pygame.draw.circle(screen, bright, (x, 32), 9)
+                if pulse > 0.7:
+                    pygame.draw.circle(screen, (255, 255, 255), (x - 2, 29), 3)
+            else:
+                pygame.draw.circle(screen, color, (x, 32), 9)
 
     title_panel = pygame.Rect(93, 48, 196, 34)
     if not title_state["start_time"]:
