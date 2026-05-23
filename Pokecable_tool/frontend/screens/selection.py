@@ -82,8 +82,11 @@ class SelfSelectPokemonAScreen(ScreenBase):
                 )
         elif action == "back":
             session.self_trade_pokemon_a = None
-            services.switch_screen("self_select_save_b", "back_from_self_pokemon_a")
-            session.menu_index = 0
+            services.switch_screen("self_select_save_b", "back_from_self_pokemon_a", nav_mode="replace")
+            if session.self_trade_save_b in state.saves:
+                session.menu_index = state.saves.index(session.self_trade_save_b)
+            else:
+                session.menu_index = 0
 
     def render(self, ctx, session, state, services):
         label = services.self_trade_source_label(1, session.self_trade_save_a)
@@ -149,6 +152,14 @@ class SelfSelectPokemonBScreen(ScreenBase):
                         reason="self_candidate_incompatible",
                     )
                     return
+                session.self_trade_return_context = services.capture_selection_context(
+                    "self_select_pokemon_b",
+                    save_path=session.self_trade_save_b,
+                    source=state.pokemon_source,
+                    selected_location=session.self_trade_pokemon_b.get("location"),
+                    selected_index=session.menu_index,
+                    enrich=False,
+                )
                 session.trade_status = "Validando troca local..."
                 services.switch_screen("trading", "self_trade_preflight")
                 try:
@@ -214,8 +225,17 @@ class SelfSelectPokemonBScreen(ScreenBase):
                 services.load_self_trade_party(session.self_trade_save_a)
             except Exception:
                 pass
-            services.switch_screen("self_select_pokemon_a", "back_from_self_pokemon_b")
-            session.menu_index = 0
+            services.switch_screen("self_select_pokemon_a", "back_from_self_pokemon_b", nav_mode="replace")
+            if session.self_trade_pokemon_a:
+                selected_location = str(session.self_trade_pokemon_a.get("location") or "")
+                for idx, pokemon in enumerate(state.pokemon_list):
+                    if str((pokemon or {}).get("location") or "") == selected_location:
+                        session.menu_index = idx
+                        break
+                else:
+                    session.menu_index = 0
+            else:
+                session.menu_index = 0
 
     def render(self, ctx, session, state, services):
         label = services.self_trade_source_label(2, session.self_trade_save_b)
@@ -253,6 +273,12 @@ class SelectPokemonScreen(ScreenBase):
                 )
             else:
                 state.selected_pokemon = state.pokemon_list[session.menu_index]
+                session.trade_return_context = services.capture_selection_context(
+                    "select_pokemon",
+                    selected_location=state.selected_pokemon.get("location"),
+                    selected_index=session.menu_index,
+                    enrich=state.action != "lan",
+                )
                 ctx.logger.info(
                     "Pokemon selected: %s location=%s",
                     state.selected_pokemon.get("display"),
@@ -291,11 +317,12 @@ class SelectPokemonScreen(ScreenBase):
                     reason="source_toggle_failed",
                 )
         elif action == "back":
-            if in_room_selection:
-                services.switch_screen("load_save", "back_from_pokemon")
+            state.selected_pokemon = None
+            services.switch_screen("load_save", "back_from_pokemon", nav_mode="replace")
+            if state.selected_save in state.saves:
+                session.menu_index = state.saves.index(state.selected_save)
             else:
-                services.switch_screen("load_save", "back_from_pokemon")
-            session.menu_index = 0
+                session.menu_index = 0
 
     def render(self, ctx, session, state, services):
         source_label = t(state.language, "your_party") if state.pokemon_source == "party" else t(state.language, "your_pc")
@@ -349,7 +376,7 @@ class EnterLanEndpointScreen(ScreenBase):
             if session.lan_endpoint:
                 session.lan_endpoint = session.lan_endpoint[:-1]
             else:
-                services.switch_screen("waiting_partner", "back_from_lan_endpoint")
+                services.switch_screen("waiting_partner", "back_from_lan_endpoint", nav_mode="replace")
 
     def render(self, ctx, session, state, services):
         ctx.draw.draw_keyboard(

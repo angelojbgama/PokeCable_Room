@@ -46,6 +46,22 @@ def reload_after_pc_management(session, state, source):
 
 
 def advance_self_trade_prompts(session, state, services, logger):
+    def _self_trade_prompt_context(side: str, screen_id: str) -> dict[str, object]:
+        if side == "a":
+            save_path = session.self_trade_save_a
+            selected = session.self_trade_pokemon_a or {}
+        else:
+            save_path = session.self_trade_save_b
+            selected = session.self_trade_pokemon_b or {}
+        return services.capture_selection_context(
+            screen_id,
+            save_path=save_path,
+            source="party",
+            selected_location=(selected or {}).get("location"),
+            selected_index=0,
+            enrich=False,
+        )
+
     preflight_to_a = session.self_trade_context.get("preflight_to_a", {}) if isinstance(session.self_trade_context, dict) else {}
     preflight_to_b = session.self_trade_context.get("preflight_to_b", {}) if isinstance(session.self_trade_context, dict) else {}
     evolution_to_a = session.self_trade_context.get("trade_evolution_to_a", {}) if isinstance(session.self_trade_context, dict) else {}
@@ -71,6 +87,7 @@ def advance_self_trade_prompts(session, state, services, logger):
         relocation = session.self_trade_context.get("outgoing_item_relocation_a", {}) if isinstance(session.self_trade_context, dict) else {}
         relocation = relocation if isinstance(relocation, dict) else {}
         if relocation.get("status") == "choose_destination":
+            session.prompt_return_context = _self_trade_prompt_context("a", "self_select_pokemon_a")
             session.pending_item_relocation = dict(relocation)
             session.pending_item_relocation_pokemon = dict(session.self_trade_context.get("payload_a", {}) or {})
             session.item_relocation_index = 0
@@ -83,7 +100,11 @@ def advance_self_trade_prompts(session, state, services, logger):
         session.self_trade_decisions["_moves_to_a_done"] = True
         removed = list(preflight_to_a.get("removed_moves") or []) if isinstance(preflight_to_a, dict) else []
         if removed:
+            session.prompt_return_context = _self_trade_prompt_context("b", "self_select_pokemon_b")
             session.pending_removed_moves = removed
+            session.pending_removed_moves_pokemon = dict(session.self_trade_context.get("payload_b", {}) or {})
+            session.pending_removed_moves_target_generation = int(preflight_to_a.get("target_generation") or 0)
+            session.pending_removed_moves_target_game = str(preflight_to_a.get("target_game") or "")
             session.resolve_current_idx = 0
             session.resolve_replacement_idx = 0
             session.resolved_moves_choices = {}
@@ -112,6 +133,7 @@ def advance_self_trade_prompts(session, state, services, logger):
         relocation = session.self_trade_context.get("outgoing_item_relocation_b", {}) if isinstance(session.self_trade_context, dict) else {}
         relocation = relocation if isinstance(relocation, dict) else {}
         if relocation.get("status") == "choose_destination":
+            session.prompt_return_context = _self_trade_prompt_context("b", "self_select_pokemon_b")
             session.pending_item_relocation = dict(relocation)
             session.pending_item_relocation_pokemon = dict(session.self_trade_context.get("payload_b", {}) or {})
             session.item_relocation_index = 0
@@ -124,7 +146,11 @@ def advance_self_trade_prompts(session, state, services, logger):
         session.self_trade_decisions["_moves_to_b_done"] = True
         removed = list(preflight_to_b.get("removed_moves") or []) if isinstance(preflight_to_b, dict) else []
         if removed:
+            session.prompt_return_context = _self_trade_prompt_context("a", "self_select_pokemon_a")
             session.pending_removed_moves = removed
+            session.pending_removed_moves_pokemon = dict(session.self_trade_context.get("payload_a", {}) or {})
+            session.pending_removed_moves_target_generation = int(preflight_to_b.get("target_generation") or 0)
+            session.pending_removed_moves_target_game = str(preflight_to_b.get("target_game") or "")
             session.resolve_current_idx = 0
             session.resolve_replacement_idx = 0
             session.resolved_moves_choices = {}

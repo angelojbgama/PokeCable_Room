@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from canonical import CanonicalPokemon
 from data.items import equivalent_item_id, item_exists, item_name
-from data.learnsets import get_learnable_moves
+from data.learnsets import get_level_up_replacements
 from data.move_combat_data import MOVE_COMBAT_DATA
 from data.moves import move_exists, move_name
 from data.species import national_to_native, species_exists_in_generation
@@ -27,6 +27,7 @@ def build_compatibility_report(
     *,
     cross_generation_enabled: bool = True,
     policy: str = "safe_default",
+    target_game: str = "",
 ) -> CompatibilityReport:
     if policy not in POLICIES:
         raise ValueError(f"Politica de compatibilidade invalida: {policy}")
@@ -44,7 +45,8 @@ def build_compatibility_report(
         report.blocking_reasons.append("Par de geracoes nao suportado pela matriz de compatibilidade.")
         return report
     _apply_species_rules(report, canonical)
-    _apply_move_rules(report, canonical, policy)
+    report.normalized_species["target_game"] = str(target_game or "")
+    _apply_move_rules(report, canonical, policy, target_game)
     _apply_item_rules(report, canonical, policy)
     _apply_generation_field_rules(report, canonical, policy)
     if mode == SAME_GENERATION:
@@ -87,15 +89,19 @@ def _apply_species_rules(report: CompatibilityReport, canonical: CanonicalPokemo
     }[report.target_generation]
 
 
-def _apply_move_rules(report: CompatibilityReport, canonical: CanonicalPokemon, policy: str) -> None:
+def _apply_move_rules(report: CompatibilityReport, canonical: CanonicalPokemon, policy: str, target_game: str = "") -> None:
     original_move_count = 0
     national_id = report.normalized_species.get("national_dex_id")
-    learnable_ids = get_learnable_moves(report.target_generation, national_id) if national_id else []
-    
-    valid_replacements = []
-    for m_id in learnable_ids:
-        move_type = (MOVE_COMBAT_DATA.get(m_id) or {}).get("type", "")
-        valid_replacements.append({"move_id": m_id, "name": move_name(m_id) or f"Move #{m_id}", "type": move_type})
+    valid_replacements = (
+        get_level_up_replacements(
+            target_game,
+            int(national_id),
+            int(canonical.level or 100),
+            generation=report.target_generation,
+        )
+        if national_id
+        else []
+    )
 
     for move in canonical.moves:
         if move.move_id in {0, None}:
@@ -107,7 +113,9 @@ def _apply_move_rules(report: CompatibilityReport, canonical: CanonicalPokemon, 
         removed = {
             "move_id": move.move_id, 
             "name": move.name or move_name(move.move_id) or f"Move #{move.move_id}",
-            "valid_replacements": valid_replacements
+            "valid_replacements": valid_replacements,
+            "target_game": str(target_game or ""),
+            "pokemon_level": int(canonical.level or 0),
         }
         
         if policy in {"strict", "safe_default"}:

@@ -239,6 +239,7 @@ def _build_source_parser(payload: dict[str, Any], source_generation: int):
 def build_trade_preflight(payload: dict[str, Any]) -> dict[str, Any]:
     received = dict(payload.get("received_payload") or payload.get("payload") or {})
     target_generation = _as_int(payload.get("target_generation") or received.get("target_generation") or received.get("generation"), 0)
+    target_game = str(payload.get("target_game") or received.get("target_game") or "")
     source_generation = _as_int(received.get("generation") or received.get("source_generation"), 0)
     reasons: list[str] = []
     warnings: list[str] = []
@@ -276,7 +277,7 @@ def build_trade_preflight(payload: dict[str, Any]) -> dict[str, Any]:
                     reasons.append(f"Conversao Gen {source_generation} -> Gen {target_generation} nao suportada.")
                     converter = None
                 if converter is not None:
-                    report = converter.can_convert(canonical, policy="auto_retrocompat")
+                    report = converter.can_convert(canonical, policy="auto_retrocompat", target_game=target_game)
                     removed_moves = list(report.removed_moves or [])
                     removed_items = list(report.removed_items or [])
                     transformations = [str(item).strip() for item in (report.transformations or []) if str(item).strip()]
@@ -303,6 +304,7 @@ def build_trade_preflight(payload: dict[str, Any]) -> dict[str, Any]:
         "mode": mode,
         "source_generation": source_generation,
         "target_generation": target_generation,
+        "target_game": target_game,
         "blocking_reasons": reasons,
         "warnings": warnings,
         "data_loss": [],
@@ -320,6 +322,7 @@ def build_trade_preflight(payload: dict[str, Any]) -> dict[str, Any]:
 def build_outgoing_item_relocation(payload: dict[str, Any]) -> dict[str, Any]:
     sent = dict(payload.get("sent_payload") or payload.get("payload") or {})
     target_generation = _as_int(payload.get("target_generation") or sent.get("target_generation"), 0)
+    target_game = str(payload.get("target_game") or sent.get("target_game") or "")
     source_generation = _as_int(sent.get("generation") or sent.get("source_generation"), 0)
     if not sent or not source_generation or not target_generation or source_generation == target_generation:
         return {}
@@ -329,7 +332,7 @@ def build_outgoing_item_relocation(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         canonical = CanonicalPokemon.from_dict(canonical_payload)
         converter = get_converter(source_generation, target_generation)
-        report = converter.can_convert(canonical, policy="auto_retrocompat")
+        report = converter.can_convert(canonical, policy="auto_retrocompat", target_game=target_game)
         if not report.removed_items:
             return {}
         source_parser_bundle = _build_source_parser(payload, source_generation)

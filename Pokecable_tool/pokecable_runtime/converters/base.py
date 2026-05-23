@@ -26,8 +26,19 @@ class BaseConverter:
     target_generation: int = 0
     mode: str = "unsupported"
 
-    def can_convert(self, canonical: CanonicalPokemon, policy: str = "safe_default") -> CompatibilityReport:
-        report = build_compatibility_report(canonical, self.target_generation, cross_generation_enabled=True, policy=policy)
+    def can_convert(
+        self,
+        canonical: CanonicalPokemon,
+        policy: str = "safe_default",
+        target_game: str = "",
+    ) -> CompatibilityReport:
+        report = build_compatibility_report(
+            canonical,
+            self.target_generation,
+            cross_generation_enabled=True,
+            policy=policy,
+            target_game=target_game,
+        )
         if int(canonical.source_generation) != int(self.source_generation):
             report.compatible = False
             report.blocking_reasons.append(
@@ -48,7 +59,8 @@ class BaseConverter:
         item_relocation_choice: str | None = None,
         relocate_dropped_item: bool = False,
     ) -> ConversionResult:
-        report = self.can_convert(canonical, policy=policy)
+        target_game = str(target_parser.get_game_id() or "")
+        report = self.can_convert(canonical, policy=policy, target_game=target_game)
         converted = self._normalized_copy(canonical, report, resolved_moves=resolved_moves)
         del item_relocation_choice, relocate_dropped_item
         return ConversionResult(
@@ -56,7 +68,7 @@ class BaseConverter:
             canonical_after=converted,
             compatibility_report=report,
             target_generation=self.target_generation,
-            target_game=target_parser.get_game_id(),
+            target_game=target_game,
             wrote_to_save=False,
             data_loss=list(report.data_loss),
             transformations=list(report.transformations),
@@ -224,15 +236,46 @@ class BaseConverter:
             converted.species.target_species_id = target_species_id
             converted.species.target_species_id_space = report.normalized_species.get("target_species_id_space")
         
-        removed_move_ids = {int(move["move_id"]) for move in report.removed_moves if move.get("move_id") is not None}
+        removed_move_entries = {
+            int(move["move_id"]): move
+            for move in report.removed_moves
+            if move.get("move_id") is not None
+        }
+        removed_move_ids = set(removed_move_entries)
         
         if removed_move_ids:
+            replacement_choices: dict[int, int] = {}
+            for removed_id, removed_entry in removed_move_entries.items():
+                replacement_id = (
+                    int(resolved_moves.get(removed_id, resolved_moves.get(str(removed_id), 0)))
+                    if resolved_moves
+                    else 0
+                )
+                if replacement_id <= 0:
+                    continue
+                valid_replacement_ids = {
+                    int(option.get("move_id") or 0)
+                    for option in (removed_entry.get("valid_replacements") or [])
+                    if int(option.get("move_id") or 0) > 0
+                }
+                if replacement_id not in valid_replacement_ids:
+                    report.compatible = False
+                    removed_name = removed_entry.get("name") or move_name(removed_id) or f"Move #{removed_id}"
+                    replacement_name = move_name(replacement_id) or f"Move #{replacement_id}"
+                    reason = (
+                        f"Move substituto {replacement_name} nao e valido para substituir {removed_name} "
+                        f"na Gen {self.target_generation} neste jogo/nivel."
+                    )
+                    if reason not in report.blocking_reasons:
+                        report.blocking_reasons.append(reason)
+                    return
+                replacement_choices[removed_id] = replacement_id
+
             new_moves = []
             for move in converted.moves:
                 m_id = int(move.move_id or 0)
                 if m_id in removed_move_ids:
-                    # Aplica resolucao do usuario se existir
-                    replacement_id = int(resolved_moves.get(m_id, resolved_moves.get(str(m_id), 0))) if resolved_moves else 0
+                    replacement_id = replacement_choices.get(m_id, 0)
                     if replacement_id > 0:
                         replacement_pp = default_move_pp(replacement_id, self.target_generation)
                         new_moves.append(

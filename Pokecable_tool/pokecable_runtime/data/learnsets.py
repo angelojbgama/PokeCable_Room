@@ -793,3 +793,123 @@ LEARNSETS: dict[tuple[int, int], list[int]] = {
 
 def get_learnable_moves(generation: int, national_dex_id: int) -> list[int]:
     return LEARNSETS.get((int(generation), int(national_dex_id)), [])
+
+
+try:
+    from .learnsets_gen1 import (
+        HM_MOVES_BY_VERSION_GROUP as HM_MOVES_BY_VERSION_GROUP_GEN1,
+        LEVEL_UP_LEARNSETS as LEVEL_UP_LEARNSETS_GEN1,
+        VERSION_GROUP_BY_GAME as VERSION_GROUP_BY_GAME_GEN1,
+    )
+    from .learnsets_gen2 import (
+        HM_MOVES_BY_VERSION_GROUP as HM_MOVES_BY_VERSION_GROUP_GEN2,
+        LEVEL_UP_LEARNSETS as LEVEL_UP_LEARNSETS_GEN2,
+        VERSION_GROUP_BY_GAME as VERSION_GROUP_BY_GAME_GEN2,
+    )
+    from .learnsets_gen3 import (
+        HM_MOVES_BY_VERSION_GROUP as HM_MOVES_BY_VERSION_GROUP_GEN3,
+        LEVEL_UP_LEARNSETS as LEVEL_UP_LEARNSETS_GEN3,
+        VERSION_GROUP_BY_GAME as VERSION_GROUP_BY_GAME_GEN3,
+    )
+except Exception:
+    HM_MOVES_BY_VERSION_GROUP = {}
+    LEVEL_UP_LEARNSETS = {}
+    VERSION_GROUP_BY_GAME = {}
+else:
+    HM_MOVES_BY_VERSION_GROUP = {}
+    LEVEL_UP_LEARNSETS = {}
+    VERSION_GROUP_BY_GAME = {}
+    for value in (
+        HM_MOVES_BY_VERSION_GROUP_GEN1,
+        HM_MOVES_BY_VERSION_GROUP_GEN2,
+        HM_MOVES_BY_VERSION_GROUP_GEN3,
+    ):
+        HM_MOVES_BY_VERSION_GROUP.update(value)
+    for value in (LEVEL_UP_LEARNSETS_GEN1, LEVEL_UP_LEARNSETS_GEN2, LEVEL_UP_LEARNSETS_GEN3):
+        LEVEL_UP_LEARNSETS.update(value)
+    for value in (VERSION_GROUP_BY_GAME_GEN1, VERSION_GROUP_BY_GAME_GEN2, VERSION_GROUP_BY_GAME_GEN3):
+        VERSION_GROUP_BY_GAME.update(value)
+
+
+DEFAULT_VERSION_GROUP_BY_GENERATION = {
+    1: "red-blue",
+    2: "crystal",
+    3: "emerald",
+}
+
+
+def version_group_for_game(game: str, generation: int | None = None) -> str:
+    value = str(game or "").strip().lower().replace("-", "_")
+    if value in VERSION_GROUP_BY_GAME:
+        return str(VERSION_GROUP_BY_GAME[value])
+    if value.startswith("pokemon_"):
+        value = value[8:]
+    normalized_game = f"pokemon_{value}" if value else ""
+    if normalized_game in VERSION_GROUP_BY_GAME:
+        return str(VERSION_GROUP_BY_GAME[normalized_game])
+    try:
+        gen = int(generation or 0)
+    except (TypeError, ValueError):
+        gen = 0
+    return DEFAULT_VERSION_GROUP_BY_GENERATION.get(gen, "")
+
+
+def _normalized_level(level: int | None) -> int:
+    try:
+        numeric = int(level or 0)
+    except (TypeError, ValueError):
+        numeric = 0
+    if numeric < 1 or numeric > 100:
+        return 100
+    return numeric
+
+
+def get_level_up_learnset(game: str, national_dex_id: int, *, generation: int | None = None) -> list[dict[str, object]]:
+    version_group = version_group_for_game(game, generation)
+    entries = LEVEL_UP_LEARNSETS.get((version_group, int(national_dex_id)), ())
+    return [dict(entry) for entry in entries]
+
+
+def get_level_up_replacements(
+    game: str,
+    national_dex_id: int,
+    pokemon_level: int | None,
+    *,
+    generation: int | None = None,
+) -> list[dict[str, object]]:
+    from .move_combat_data import MOVE_COMBAT_DATA
+    from .moves import move_name
+
+    level = _normalized_level(pokemon_level)
+    entries = get_level_up_learnset(game, national_dex_id, generation=generation)
+    if not entries and generation:
+        hm_move_ids = set(HM_MOVES_BY_VERSION_GROUP.get(version_group_for_game(game, generation), ()))
+        return [
+            {
+                "move_id": move_id,
+                "name": move_name(move_id) or f"Move #{move_id}",
+                "type": (MOVE_COMBAT_DATA.get(move_id) or {}).get("type", ""),
+                "learn_level": 1,
+                "method": "legacy-learnset",
+            }
+            for move_id in get_learnable_moves(int(generation), int(national_dex_id))
+            if move_id not in hm_move_ids
+        ]
+    replacements = []
+    for entry in entries:
+        learn_level = int(entry.get("learn_level") or 1)
+        if learn_level > level:
+            continue
+        move_id = int(entry.get("move_id") or 0)
+        if move_id <= 0:
+            continue
+        enriched = dict(entry)
+        enriched["name"] = enriched.get("name") or move_name(move_id) or f"Move #{move_id}"
+        enriched["type"] = (MOVE_COMBAT_DATA.get(move_id) or {}).get("type", "")
+        replacements.append(enriched)
+    return replacements
+
+
+def is_hm_move_for_game(game: str, move_id: int, *, generation: int | None = None) -> bool:
+    version_group = version_group_for_game(game, generation)
+    return int(move_id or 0) in set(HM_MOVES_BY_VERSION_GROUP.get(version_group, ()))

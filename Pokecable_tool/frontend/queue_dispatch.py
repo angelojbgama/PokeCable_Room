@@ -15,6 +15,8 @@ def dispatch_ui_queue(session, services, logger):
                 services.switch_screen(payload, "ui_queue")
             elif msg_type == "confirm_prompt":
                 session.result_data = payload if isinstance(payload, dict) else {}
+                if not session.trade_return_context:
+                    session.trade_return_context = services.capture_selection_context("select_pokemon")
                 logger.info("QUEUE confirm_prompt: %s", session.result_data)
                 services.switch_screen("trade_confirm", "confirm_prompt")
             elif msg_type == "info_modal":
@@ -26,9 +28,18 @@ def dispatch_ui_queue(session, services, logger):
             elif msg_type == "resolve_moves_prompt":
                 data = payload if isinstance(payload, dict) else {}
                 session.pending_removed_moves = list(data.get("removed_moves") or [])
+                session.pending_removed_moves_pokemon = dict(data.get("pokemon") or {})
+                try:
+                    session.pending_removed_moves_target_generation = int(data.get("target_generation") or 0)
+                except (TypeError, ValueError):
+                    session.pending_removed_moves_target_generation = 0
+                session.pending_removed_moves_target_game = str(data.get("target_game") or "")
+                session.pending_removed_moves_trade_evolution = dict(data.get("trade_evolution") or {})
+                session.pending_removed_moves_cancel_evolution = bool(data.get("cancel_evolution"))
                 session.resolve_current_idx = 0
                 session.resolve_replacement_idx = 0
                 session.resolved_moves_choices = {}
+                session.prompt_return_context = dict(session.trade_return_context or {})
                 logger.info("QUEUE resolve_moves_prompt: %s moves", len(session.pending_removed_moves))
                 if session.pending_removed_moves:
                     services.switch_screen("resolve_moves", "resolve_moves_prompt")
@@ -39,6 +50,7 @@ def dispatch_ui_queue(session, services, logger):
                 session.pending_item_relocation = dict(data.get("item_relocation") or {})
                 session.pending_item_relocation_pokemon = dict(data.get("pokemon") or {})
                 session.item_relocation_index = 0
+                session.prompt_return_context = dict(session.trade_return_context or {})
                 logger.info("QUEUE resolve_item_prompt: %s", session.pending_item_relocation)
                 if session.pending_item_relocation:
                     services.switch_screen("resolve_item_relocation", "resolve_item_prompt")

@@ -676,6 +676,7 @@ def _build_preflight(
         "mode": str(server_preflight.get("mode") or "same_generation"),
         "source_generation": save.generation,
         "target_generation": save.generation,
+        "target_game": str(server_preflight.get("target_game") or save.game or ""),
         "blocking_reasons": reasons,
         "warnings": warnings,
         "data_loss": [],
@@ -683,6 +684,7 @@ def _build_preflight(
         "server_preflight": server_preflight,
         "trade_evolution": server_preflight.get("trade_evolution") or {},
         "item_relocation": server_preflight.get("item_relocation") or {},
+        "removed_moves": list(server_preflight.get("removed_moves") or []),
         "removed_items": list(server_preflight.get("removed_items") or []),
     }
 
@@ -1431,7 +1433,19 @@ async def _websocket_trade(
                     removed_moves = list(server_preflight.get("removed_moves") or [])
                     resolved_moves = {}
                     if removed_moves:
-                        ui.ui_queue.put(("resolve_moves_prompt", {"removed_moves": removed_moves}))
+                        ui.ui_queue.put(
+                            (
+                                "resolve_moves_prompt",
+                                {
+                                    "removed_moves": removed_moves,
+                                    "pokemon": dict(incoming_payload or {}),
+                                    "target_generation": int(server_preflight.get("target_generation") or save.generation or 0),
+                                    "target_game": str(server_preflight.get("target_game") or save.game or ""),
+                                    "trade_evolution": dict(trade_evolution or {}),
+                                    "cancel_evolution": bool(cancel_trade_evolution),
+                                },
+                            )
+                        )
                         logger.info("Waiting for move resolution: %s removed moves", len(removed_moves))
                         choice = await asyncio.to_thread(confirm_queue.get)
                         if isinstance(choice, dict):

@@ -16,6 +16,16 @@ def default_self_trade_decisions():
         "item_relocation_choice_to_b": "",
         "resolved_moves_to_a": {},
         "resolved_moves_to_b": {},
+        "evolved_species_a": 0,
+        "evolved_species_b": 0,
+        "evolved_native_species_a": 0,
+        "evolved_native_species_b": 0,
+        "evolved_generation_a": 0,
+        "evolved_generation_b": 0,
+        "evolved_name_a": "",
+        "evolved_name_b": "",
+        "evolved_consumed_item_a": False,
+        "evolved_consumed_item_b": False,
         "_evolution_to_a_done": False,
         "_evolution_to_b_done": False,
         "_item_to_a_done": False,
@@ -31,8 +41,25 @@ class MutableRef:
 
 
 @dataclass
+class NavigationEntry:
+    screen_id: str
+    menu_index: int = 0
+    keyboard_index: int = 0
+    keyboard_shift: bool = False
+    infos_scroll: int = 0
+    infos_topic_key: str = "retrocompat"
+    item_relocation_index: int = 0
+    resolve_current_idx: int = 0
+    resolve_replacement_idx: int = 0
+
+
+@dataclass
 class UiSessionState:
     current_screen: str = "menu"
+    navigation_history: list[NavigationEntry] = field(default_factory=list)
+    trade_return_context: dict[str, Any] = field(default_factory=dict)
+    self_trade_return_context: dict[str, Any] = field(default_factory=dict)
+    prompt_return_context: dict[str, Any] = field(default_factory=dict)
     menu_index: int = 0
     config_dirty: bool = False
     keyboard_index: int = 0
@@ -45,6 +72,11 @@ class UiSessionState:
     trade_status: str = ""
     result_data: dict[str, Any] = field(default_factory=dict)
     pending_removed_moves: list[dict[str, Any]] = field(default_factory=list)
+    pending_removed_moves_pokemon: dict[str, Any] = field(default_factory=dict)
+    pending_removed_moves_target_generation: int = 0
+    pending_removed_moves_target_game: str = ""
+    pending_removed_moves_trade_evolution: dict[str, Any] = field(default_factory=dict)
+    pending_removed_moves_cancel_evolution: bool = False
     pending_item_relocation: dict[str, Any] = field(default_factory=dict)
     pending_item_relocation_pokemon: dict[str, Any] = field(default_factory=dict)
     resolve_current_idx: int = 0
@@ -70,6 +102,10 @@ class UiSessionState:
         self.info_modal_data = default_info_modal()
 
     def reset_self_trade(self) -> None:
+        self.navigation_history = []
+        self.trade_return_context = {}
+        self.self_trade_return_context = {}
+        self.prompt_return_context = {}
         self.self_trade_save_a = None
         self.self_trade_save_b = None
         self.self_trade_pokemon_a = None
@@ -131,4 +167,7 @@ class UiServices:
     prepare_self_trade: Callable[..., Any]
     validate_self_trade_candidate: Callable[..., Any]
     execute_self_trade: Callable[..., Any]
-    switch_screen: Callable[[str, str], None]
+    switch_screen: Callable[..., None]
+    go_back: Callable[[str, str], None]
+    capture_selection_context: Callable[..., dict[str, Any]]
+    restore_selection_context: Callable[..., bool]

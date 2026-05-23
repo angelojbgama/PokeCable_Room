@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from frontend.i18n import screen_title
 from frontend.screens.base import ScreenBase, show_info_modal
@@ -63,7 +64,7 @@ class InfosTopicsScreen(ScreenBase):
             session.infos_scroll = 0
             services.switch_screen("infos_reader", f"infos_open:{topic_key}")
         elif action == "back":
-            services.switch_screen("menu", "back_from_infos")
+            services.go_back("menu", "back_from_infos")
             session.menu_index = 3  # back to "Infos" item
 
     def render(self, ctx, session, state, services):
@@ -80,7 +81,7 @@ class InfosReaderScreen(ScreenBase):
         elif action == "down":
             session.infos_scroll = getattr(session, "infos_scroll", 0) + self.SCROLL_STEP
         elif action == "back":
-            services.switch_screen("infos_topics", "back_to_infos_topics")
+            services.go_back("infos_topics", "back_to_infos_topics")
 
     def render(self, ctx, session, state, services):
         topic_key = getattr(session, "infos_topic_key", "retrocompat") or "retrocompat"
@@ -121,8 +122,7 @@ class ConfigScreen(ScreenBase):
             if session.config_dirty:
                 state.save_ui_config(state.language, state.theme)
                 session.config_dirty = False
-            services.switch_screen("menu", "back_from_config")
-            session.menu_index = 0
+            services.go_back("menu", "back_from_config")
 
     def render(self, ctx, session, state, services):
         ctx.draw.draw_config_menu(ctx.screen, ctx.fonts, session.menu_index, state.language, state.theme)
@@ -137,25 +137,51 @@ class LoadSaveScreen(ScreenBase):
         self._valid_saves = []
         self._preload_done = False
         self._preload_progress = 0.0
+        self._session_menu_index = 0
 
     def _preload_saves_thread(self, state, ctx):
-        """Thread para pré-carregar análise dos saves."""
+        """Thread para pré-carregar análise dos saves em paralelo."""
         try:
-            ctx.logger.info("Pre-analyzing saves in background...")
+            ctx.logger.info("Pre-analyzing saves in background (parallel)...")
             total = len(state.saves)
 
-            for idx, save_path in enumerate(state.saves):
+            if not state.saves:
+                self._preload_done = True
+                return
+
+            # Priorizar o save selecionado
+            selected_idx = self._session_menu_index
+            selected_save = state.saves[selected_idx] if selected_idx < len(state.saves) else None
+            other_saves = state.saves[:selected_idx] + state.saves[selected_idx + 1:]
+
+            # Analisar o save selecionado primeiro
+            if selected_save:
                 try:
-                    state.analyze_save(save_path)
+                    state.analyze_save(selected_save)
+                    self._preload_progress = 1 / total if total > 0 else 0
                 except Exception as exc:
-                    ctx.logger.debug("Failed to pre-analyze %s: %s", save_path.name, exc)
-                finally:
-                    self._preload_progress = (idx + 1) / total if total > 0 else 0
+                    ctx.logger.debug("Failed to pre-analyze %s: %s", selected_save.name, exc)
+
+            # Analisar os outros saves em paralelo
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {executor.submit(state.analyze_save, save): idx for idx, save in enumerate(other_saves)}
+                completed = 1
+
+                for future in as_completed(futures):
+                    try:
+                        future.result()
+                    except Exception as exc:
+                        save_idx = futures[future]
+                        ctx.logger.debug("Failed to pre-analyze %s: %s", other_saves[save_idx].name, exc)
+                    finally:
+                        completed += 1
+                        self._preload_progress = completed / total if total > 0 else 0
 
             self._valid_saves = []
             for save_path in state.saves:
                 try:
-                    analysis = state.analyze_save(save_path)
+                    key = str(save_path.resolve())
+                    analysis = state.save_analysis.get(key)
                     if analysis and analysis.get("party_count", 0) > 0:
                         self._valid_saves.append(save_path)
                 except Exception:
@@ -200,11 +226,11 @@ class LoadSaveScreen(ScreenBase):
                 session.trade_status = "Procurando sala local na rede..."
                 session.menu_index = 0
         elif action == "back":
-            services.switch_screen("menu", "back_from_load_save")
-            session.menu_index = 0
+            services.go_back("menu", "back_from_load_save")
 
     def render(self, ctx, session, state, services):
         if self._preload_thread is None and state.saves:
+            self._session_menu_index = session.menu_index
             self._preload_thread = threading.Thread(
                 target=self._preload_saves_thread,
                 args=(state, ctx),
@@ -242,20 +268,45 @@ class SelfSelectSaveAScreen(ScreenBase):
         self._preload_thread = None
         self._preload_done = False
         self._preload_progress = 0.0
+        self._session_menu_index = 0
 
     def _preload_saves_thread(self, state, ctx):
-        """Thread para pré-carregar análise dos saves."""
+        """Thread para pré-carregar análise dos saves em paralelo."""
         try:
-            ctx.logger.info("Pre-analyzing saves in background...")
+            ctx.logger.info("Pre-analyzing saves in background (parallel)...")
             total = len(state.saves)
 
-            for idx, save_path in enumerate(state.saves):
+            if not state.saves:
+                self._preload_done = True
+                return
+
+            # Priorizar o save selecionado
+            selected_idx = self._session_menu_index
+            selected_save = state.saves[selected_idx] if selected_idx < len(state.saves) else None
+            other_saves = state.saves[:selected_idx] + state.saves[selected_idx + 1:]
+
+            # Analisar o save selecionado primeiro
+            if selected_save:
                 try:
-                    state.analyze_save(save_path)
+                    state.analyze_save(selected_save)
+                    self._preload_progress = 1 / total if total > 0 else 0
                 except Exception as exc:
-                    ctx.logger.debug("Failed to pre-analyze %s: %s", save_path.name, exc)
-                finally:
-                    self._preload_progress = (idx + 1) / total if total > 0 else 0
+                    ctx.logger.debug("Failed to pre-analyze %s: %s", selected_save.name, exc)
+
+            # Analisar os outros saves em paralelo
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {executor.submit(state.analyze_save, save): idx for idx, save in enumerate(other_saves)}
+                completed = 1
+
+                for future in as_completed(futures):
+                    try:
+                        future.result()
+                    except Exception as exc:
+                        save_idx = futures[future]
+                        ctx.logger.debug("Failed to pre-analyze %s: %s", other_saves[save_idx].name, exc)
+                    finally:
+                        completed += 1
+                        self._preload_progress = completed / total if total > 0 else 0
 
             ctx.logger.info("Pre-analysis complete for save A")
             self._preload_done = True
@@ -275,11 +326,11 @@ class SelfSelectSaveAScreen(ScreenBase):
             session.menu_index = 0
         elif action == "back":
             services.reset_self_trade_state()
-            services.switch_screen("menu", "back_from_self_save_a")
-            session.menu_index = 0
+            services.go_back("menu", "back_from_self_save_a")
 
     def render(self, ctx, session, state, services):
         if self._preload_thread is None and state.saves:
+            self._session_menu_index = session.menu_index
             self._preload_thread = threading.Thread(
                 target=self._preload_saves_thread,
                 args=(state, ctx),
@@ -323,20 +374,45 @@ class SelfSelectSaveBScreen(ScreenBase):
         self._preload_thread = None
         self._preload_done = False
         self._preload_progress = 0.0
+        self._session_menu_index = 0
 
     def _preload_saves_thread(self, state, ctx):
-        """Thread para pré-carregar análise dos saves."""
+        """Thread para pré-carregar análise dos saves em paralelo."""
         try:
-            ctx.logger.info("Pre-analyzing saves in background...")
+            ctx.logger.info("Pre-analyzing saves in background (parallel)...")
             total = len(state.saves)
 
-            for idx, save_path in enumerate(state.saves):
+            if not state.saves:
+                self._preload_done = True
+                return
+
+            # Priorizar o save selecionado
+            selected_idx = self._session_menu_index
+            selected_save = state.saves[selected_idx] if selected_idx < len(state.saves) else None
+            other_saves = state.saves[:selected_idx] + state.saves[selected_idx + 1:]
+
+            # Analisar o save selecionado primeiro
+            if selected_save:
                 try:
-                    state.analyze_save(save_path)
+                    state.analyze_save(selected_save)
+                    self._preload_progress = 1 / total if total > 0 else 0
                 except Exception as exc:
-                    ctx.logger.debug("Failed to pre-analyze %s: %s", save_path.name, exc)
-                finally:
-                    self._preload_progress = (idx + 1) / total if total > 0 else 0
+                    ctx.logger.debug("Failed to pre-analyze %s: %s", selected_save.name, exc)
+
+            # Analisar os outros saves em paralelo
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {executor.submit(state.analyze_save, save): idx for idx, save in enumerate(other_saves)}
+                completed = 1
+
+                for future in as_completed(futures):
+                    try:
+                        future.result()
+                    except Exception as exc:
+                        save_idx = futures[future]
+                        ctx.logger.debug("Failed to pre-analyze %s: %s", other_saves[save_idx].name, exc)
+                    finally:
+                        completed += 1
+                        self._preload_progress = completed / total if total > 0 else 0
 
             ctx.logger.info("Pre-analysis complete for save B")
             self._preload_done = True
@@ -379,11 +455,11 @@ class SelfSelectSaveBScreen(ScreenBase):
                     )
         elif action == "back":
             session.self_trade_save_b = None
-            services.switch_screen("self_select_save_a", "back_from_self_save_b")
-            session.menu_index = 0
+            services.go_back("self_select_save_a", "back_from_self_save_b")
 
     def render(self, ctx, session, state, services):
         if self._preload_thread is None and state.saves:
+            self._session_menu_index = session.menu_index
             self._preload_thread = threading.Thread(
                 target=self._preload_saves_thread,
                 args=(state, ctx),

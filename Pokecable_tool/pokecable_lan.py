@@ -354,7 +354,19 @@ def _confirm_incoming_trade(
 
     removed_moves = list(preflight.get("removed_moves") or [])
     if removed_moves:
-        ui.ui_queue.put(("resolve_moves_prompt", {"removed_moves": removed_moves}))
+        ui.ui_queue.put(
+            (
+                "resolve_moves_prompt",
+                {
+                    "removed_moves": removed_moves,
+                    "pokemon": dict(incoming_payload or {}),
+                    "target_generation": int(preflight.get("target_generation") or 0),
+                    "target_game": str(preflight.get("target_game") or ""),
+                    "trade_evolution": dict(evolution or {}),
+                    "cancel_evolution": bool(cancel_evolution),
+                },
+            )
+        )
         choice = confirm_queue.get()
         if isinstance(choice, dict):
             resolved_moves = {int(k): int(v) for k, v in choice.items() if v}
