@@ -1,12 +1,12 @@
 """Badge metadata and sprite loading helpers."""
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Iterable
 
 import pygame
+from frontend.paths import ASSETS_DIR
 
-ASSETS_ROOT = Path(__file__).resolve().parent.parent / "assets" / "badges"
+ASSETS_ROOT = ASSETS_DIR / "badges"
 
 KANTO_SLOTS = ("boulder", "cascade", "thunder", "rainbow", "soul", "marsh", "volcano", "earth")
 JOHTO_SLOTS = ("zephyr", "hive", "plain", "fog", "storm", "mineral", "glacier", "rising")
