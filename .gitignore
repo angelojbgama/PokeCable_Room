@@ -19,3 +19,4 @@ server/.env
 r36s-client/.env
 *.pid
 test_results/
+CLAUDE.md
