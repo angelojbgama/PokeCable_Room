@@ -1,0 +1,28 @@
+name: Create Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: |
+      startsWith(github.event.head_commit.message, 'up versão') ||
+      startsWith(github.event.head_commit.message, 'up versao')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract version from commit message
+        id: ver
+        run: |
+          MSG="${{ github.event.head_commit.message }}"
+          VERSION=$(echo "$MSG" | sed -E 's/^up vers[aã]o[[:space:]]*//' | head -1 | tr -d '[:space:]')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: PokeCable v${{ steps.ver.outputs.version }}
+          generate_release_notes: true

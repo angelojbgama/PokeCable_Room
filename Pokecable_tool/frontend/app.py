@@ -927,6 +927,7 @@ def draw_menu(screen, fonts, selected, language):
         t(language, "menu_self_trade"),
         t(language, "menu_config"),
         t(language, "menu_infos"),
+        t(language, "menu_update"),
         t(language, "menu_exit"),
     ]
     list_panel = layout.left_panel
@@ -2514,6 +2515,56 @@ def draw_trade_result(screen, fonts, success, data, sprite_loader, language="pt"
     draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok"))])
 
 
+def draw_update_screen(screen, fonts, update_status, update_data, language):
+    _, body_f, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, "PokeCable")
+
+    panel = layout.left_panel
+    rect(screen, PANEL, panel, 0)
+    pygame.draw.rect(screen, BORDER, panel, 2, border_radius=0)
+
+    status_text = ""
+    detail_text = ""
+    show_update_btn = False
+
+    if update_status == "checking" or update_status == "":
+        status_text = t(language, "update_checking")
+        detail_text = ""
+    elif update_status == "error":
+        status_text = t(language, "update_error")
+        detail_text = update_data.get("error", "Unknown error")[:100]
+    elif update_status == "up_to_date":
+        status_text = t(language, "update_up_to_date")
+        current = update_data.get("current", "?")
+        detail_text = f"v{current}"
+    elif update_status == "available":
+        status_text = t(language, "update_available")
+        latest = update_data.get("latest", "?")
+        detail_text = f"v{latest}\n\n{t(language, 'update_press_a')}"
+        show_update_btn = True
+    elif update_status == "updating":
+        status_text = t(language, "update_updating")
+        detail_text = ""
+    elif update_status == "done":
+        status_text = t(language, "update_done")
+        detail_text = ""
+
+    y_offset = panel.y + 20
+    text(screen, small_f, status_text, panel.x + 20, y_offset, TEXT, panel.w - 40)
+
+    if detail_text:
+        detail_y = y_offset + 50
+        for line in detail_text.split('\n'):
+            text(screen, tiny_f, line, panel.x + 20, detail_y, MUTED, panel.w - 40)
+            detail_y += 20
+
+    action_text = t(language, "btn_back")
+    if show_update_btn:
+        draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
+    else:
+        draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_back"))])
+
+
 def reset_flow_state(state):
     state.selected_save = None
     state.selected_pokemon = None
@@ -2616,6 +2667,7 @@ def main(initial_screen=None):
         draw_evolution_cancel_confirm=draw_evolution_cancel_confirm,
         draw_trading=draw_trading,
         draw_trade_result=draw_trade_result,
+        draw_update_screen=draw_update_screen,
         next_theme=next_theme,
         KEYBOARD_GRID_W=KEYBOARD_GRID_W,
     )

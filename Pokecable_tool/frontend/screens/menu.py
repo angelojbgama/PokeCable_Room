@@ -12,9 +12,9 @@ class MenuScreen(ScreenBase):
 
     def handle_action(self, action, ctx, session, state, services):
         if action == "up":
-            session.menu_index = (session.menu_index - 1) % 5
+            session.menu_index = (session.menu_index - 1) % 6
         elif action == "down":
-            session.menu_index = (session.menu_index + 1) % 5
+            session.menu_index = (session.menu_index + 1) % 6
         elif action == "select":
             if session.menu_index == 0:
                 services.reset_flow_state(state)
@@ -38,6 +38,10 @@ class MenuScreen(ScreenBase):
                 services.switch_screen("infos_topics", "menu_infos")
                 session.menu_index = 0
             elif session.menu_index == 4:
+                ctx.logger.info("Menu select: check for update")
+                services.switch_screen("update_check", "menu_update")
+                session.menu_index = 0
+            elif session.menu_index == 5:
                 ctx.logger.info("Menu select: exit")
                 session.running = False
         elif action == "back":
@@ -493,3 +497,75 @@ class SelfSelectSaveBScreen(ScreenBase):
                 draw_lens_pulse(ctx.screen, (49, 47), pulse_elapsed / pulse_duration)
             else:
                 self._pulse_start = time.perf_counter()
+
+
+class UpdateScreen(ScreenBase):
+    screen_id = "update_check"
+
+    def __init__(self):
+        super().__init__()
+        self._check_thread = None
+        self._apply_thread = None
+
+    def on_enter(self, ctx, session, state, services):
+        if not session.update_status or session.update_status == "":
+            session.update_status = "checking"
+            session.update_data = {}
+            self._check_thread = threading.Thread(
+                target=self._background_check,
+                args=(state, ctx),
+                daemon=True,
+            )
+            self._check_thread.start()
+
+    def _background_check(self, state, ctx):
+        from r36s_pokecable_core import check_for_update
+        try:
+            result = check_for_update()
+            ctx.logger.info(f"Update check result: {result}")
+            if result.get("error"):
+                state.session.update_status = "error"
+                state.session.update_data = result
+            elif result.get("up_to_date"):
+                state.session.update_status = "up_to_date"
+                state.session.update_data = result
+            else:
+                state.session.update_status = "available"
+                state.session.update_data = result
+        except Exception as e:
+            ctx.logger.error(f"Error checking for update: {e}")
+            state.session.update_status = "error"
+            state.session.update_data = {"error": str(e)[:100]}
+
+    def _background_apply(self, state, ctx):
+        from r36s_pokecable_core import apply_update
+        try:
+            result = apply_update()
+            ctx.logger.info(f"Update apply result: {result}")
+            if result.get("success"):
+                state.session.update_status = "done"
+            else:
+                state.session.update_status = "error"
+            state.session.update_data = result
+        except Exception as e:
+            ctx.logger.error(f"Error applying update: {e}")
+            state.session.update_status = "error"
+            state.session.update_data = {"error": str(e)[:100]}
+
+    def handle_action(self, action, ctx, session, state, services):
+        if action == "back":
+            session.update_status = ""
+            session.update_data = {}
+            services.go_back("menu", "back_from_update")
+            session.menu_index = 4
+        elif action == "select" and session.update_status == "available":
+            session.update_status = "updating"
+            self._apply_thread = threading.Thread(
+                target=self._background_apply,
+                args=(state, ctx),
+                daemon=True,
+            )
+            self._apply_thread.start()
+
+    def render(self, ctx, session, state, services):
+        ctx.draw.draw_update_screen(ctx.screen, ctx.fonts, session.update_status, session.update_data, state.language)

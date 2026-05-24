@@ -97,6 +97,8 @@ class UiSessionState:
     self_trade_decisions: dict[str, Any] = field(default_factory=default_self_trade_decisions)
     infos_topic_key: str = "retrocompat"
     infos_scroll: int = 0
+    update_status: str = ""
+    update_data: dict[str, Any] = field(default_factory=dict)
 
     def reset_info_modal(self) -> None:
         self.info_modal_data = default_info_modal()

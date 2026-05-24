@@ -11,6 +11,7 @@ from frontend.screens.menu import (
     MenuScreen,
     SelfSelectSaveAScreen,
     SelfSelectSaveBScreen,
+    UpdateScreen,
 )
 from frontend.screens.selection import (
     EnterLanEndpointScreen,
@@ -151,6 +152,7 @@ def register_default_screens(controller):
     for screen in (
         MenuScreen(),
         ConfigScreen(),
+        UpdateScreen(),
         InfosTopicsScreen(),
         InfosReaderScreen(),
         LoadSaveScreen(),

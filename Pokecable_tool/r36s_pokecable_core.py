@@ -1786,3 +1786,88 @@ def start_lan_trade_thread(
     thread.start()
     logger.info("LAN trade thread started")
     return thread
+
+
+def check_for_update() -> Dict[str, Any]:
+    """Check GitHub Releases API for new version without external dependencies."""
+    try:
+        from version import APP_VERSION
+    except ImportError:
+        APP_VERSION = "1.0.0"
+
+    try:
+        url = "https://api.github.com/repos/angelojbgama/PokeCable_Room/releases/latest"
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "PokeCable-R36S/1.0", "Accept": "application/vnd.github.v3+json"},
+        )
+        with urllib.request.urlopen(req, timeout=8) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            latest_version = data.get("tag_name", "").lstrip("v")
+            release_url = data.get("html_url", "")
+
+            return {
+                "current": APP_VERSION,
+                "latest": latest_version,
+                "up_to_date": APP_VERSION >= latest_version,
+                "release_url": release_url,
+                "error": None,
+            }
+    except urllib.error.URLError as e:
+        logger.error(f"URL error checking for updates: {e}")
+        return {
+            "error": f"Erro de conexão: {str(e)[:100]}",
+            "current": APP_VERSION,
+            "latest": None,
+            "up_to_date": True,
+            "release_url": None,
+        }
+    except Exception as e:
+        logger.error(f"Error checking for updates: {e}")
+        return {
+            "error": f"Erro ao verificar: {str(e)[:100]}",
+            "current": APP_VERSION,
+            "latest": None,
+            "up_to_date": True,
+            "release_url": None,
+        }
+
+
+def apply_update() -> Dict[str, Any]:
+    """Apply update using git pull. Returns success status and message."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "pull", "origin", "main"],
+            cwd=str(Path(__file__).parent),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode == 0:
+            return {
+                "success": True,
+                "message": "Atualização aplicada com sucesso. Reinicie o aplicativo.",
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"Erro ao atualizar: {result.stderr[:200]}",
+            }
+    except FileNotFoundError:
+        return {
+            "success": False,
+            "message": "Git não disponível. Faça download manualmente no GitHub.",
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "message": "Timeout ao atualizar (>60s). Tente manualmente.",
+        }
+    except Exception as e:
+        logger.error(f"Error applying update: {e}")
+        return {
+            "success": False,
+            "message": f"Erro inesperado: {str(e)[:100]}",
+        }
