@@ -580,6 +580,16 @@ class UpdateScreen(ScreenBase):
             self._apply_thread.start()
             ctx.logger.info("UI ACTION: thread iniciada")
 
+        elif action == "select" and session.update_status == "done":
+            ctx.logger.info("UI ACTION: usuário pressionou A na tela de sucesso")
+            ctx.logger.info("UI ACTION: retornando ao menu")
+            session.update_status = ""
+            session.update_data = {}
+            self._check_started = False
+            services.go_back("menu", "back_from_update_done")
+            session.menu_index = 4
+            ctx.logger.info("=" * 80)
+
         elif action == "select":
             ctx.logger.debug(f"UI ACTION: select pressionado, mas update_status é '{session.update_status}' (ignorado)")
 

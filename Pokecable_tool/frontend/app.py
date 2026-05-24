@@ -2547,7 +2547,8 @@ def draw_update_screen(screen, fonts, update_status, update_data, language):
         detail_text = ""
     elif update_status == "done":
         status_text = t(language, "update_done")
-        detail_text = ""
+        detail_text = t(language, "update_press_a_restart")
+        show_update_btn = True
 
     y_offset = panel.y + 20
     text(screen, small_f, status_text, panel.x + 20, y_offset, TEXT, panel.w - 40)
