@@ -508,64 +508,111 @@ class UpdateScreen(ScreenBase):
         self._apply_thread = None
 
     def on_enter(self, ctx, session, state, services):
+        ctx.logger.info("=" * 80)
+        ctx.logger.info("UI SCREEN: UpdateScreen entered")
+        ctx.logger.info(f"UI SCREEN: current update_status: '{session.update_status}'")
+
         if not session.update_status or session.update_status == "":
+            ctx.logger.info("UI SCREEN: iniciando verificação de atualização em background")
             session.update_status = "checking"
             session.update_data = {}
             self._check_thread = threading.Thread(
                 target=self._background_check,
-                args=(state, ctx),
+                args=(session, ctx),
                 daemon=True,
             )
+            ctx.logger.debug("UI SCREEN: thread criada")
             self._check_thread.start()
+            ctx.logger.info("UI SCREEN: thread iniciada")
+        else:
+            ctx.logger.info(f"UI SCREEN: reutilizando status anterior: {session.update_status}")
 
-    def _background_check(self, state, ctx):
+    def _background_check(self, session, ctx):
         from r36s_pokecable_core import check_for_update
         try:
+            ctx.logger.info("UI BACKGROUND: iniciando check_for_update()")
             result = check_for_update()
-            ctx.logger.info(f"Update check result: {result}")
-            if result.get("error"):
-                state.session.update_status = "error"
-                state.session.update_data = result
-            elif result.get("up_to_date"):
-                state.session.update_status = "up_to_date"
-                state.session.update_data = result
-            else:
-                state.session.update_status = "available"
-                state.session.update_data = result
-        except Exception as e:
-            ctx.logger.error(f"Error checking for update: {e}")
-            state.session.update_status = "error"
-            state.session.update_data = {"error": str(e)[:100]}
 
-    def _background_apply(self, state, ctx):
+            ctx.logger.info(f"UI BACKGROUND: resultado recebido:")
+            ctx.logger.info(f"  - current: {result.get('current')}")
+            ctx.logger.info(f"  - latest: {result.get('latest')}")
+            ctx.logger.info(f"  - up_to_date: {result.get('up_to_date')}")
+            ctx.logger.info(f"  - error: {result.get('error')}")
+
+            if result.get("error"):
+                ctx.logger.warning(f"UI BACKGROUND: erro na verificação: {result.get('error')}")
+                session.update_status = "error"
+                session.update_data = result
+            elif result.get("up_to_date"):
+                ctx.logger.info("UI BACKGROUND: sistema está atualizado")
+                session.update_status = "up_to_date"
+                session.update_data = result
+            else:
+                ctx.logger.info(f"UI BACKGROUND: nova versão disponível: {result.get('latest')}")
+                session.update_status = "available"
+                session.update_data = result
+
+            ctx.logger.info(f"UI BACKGROUND: estado alterado para '{session.update_status}'")
+
+        except Exception as e:
+            ctx.logger.error(f"UI BACKGROUND: exceção não capturada: {e}")
+            import traceback
+            ctx.logger.error(f"UI BACKGROUND: traceback:\n{traceback.format_exc()}")
+            session.update_status = "error"
+            session.update_data = {"error": str(e)[:100]}
+
+    def _background_apply(self, session, ctx):
         from r36s_pokecable_core import apply_update
         try:
+            ctx.logger.info("UI BACKGROUND: iniciando apply_update()")
             result = apply_update()
-            ctx.logger.info(f"Update apply result: {result}")
+
+            ctx.logger.info(f"UI BACKGROUND: resultado do update:")
+            ctx.logger.info(f"  - success: {result.get('success')}")
+            ctx.logger.info(f"  - message: {result.get('message')}")
+
             if result.get("success"):
-                state.session.update_status = "done"
+                ctx.logger.info("UI BACKGROUND: update aplicado com sucesso")
+                session.update_status = "done"
             else:
-                state.session.update_status = "error"
-            state.session.update_data = result
+                ctx.logger.error(f"UI BACKGROUND: falha no update: {result.get('message')}")
+                session.update_status = "error"
+
+            session.update_data = result
+            ctx.logger.info(f"UI BACKGROUND: estado alterado para '{session.update_status}'")
+
         except Exception as e:
-            ctx.logger.error(f"Error applying update: {e}")
-            state.session.update_status = "error"
-            state.session.update_data = {"error": str(e)[:100]}
+            ctx.logger.error(f"UI BACKGROUND: exceção não capturada: {e}")
+            import traceback
+            ctx.logger.error(f"UI BACKGROUND: traceback:\n{traceback.format_exc()}")
+            session.update_status = "error"
+            session.update_data = {"error": str(e)[:100]}
 
     def handle_action(self, action, ctx, session, state, services):
         if action == "back":
+            ctx.logger.info("UI ACTION: usuário pressionou BACK")
+            ctx.logger.info(f"UI ACTION: retornando ao menu (update_status era: {session.update_status})")
             session.update_status = ""
             session.update_data = {}
             services.go_back("menu", "back_from_update")
             session.menu_index = 4
+            ctx.logger.info("=" * 80)
+
         elif action == "select" and session.update_status == "available":
+            ctx.logger.info("UI ACTION: usuário pressionou A (confirmar update)")
+            ctx.logger.info("UI ACTION: iniciando aplicação de atualização em background")
             session.update_status = "updating"
             self._apply_thread = threading.Thread(
                 target=self._background_apply,
-                args=(state, ctx),
+                args=(session, ctx),
                 daemon=True,
             )
+            ctx.logger.debug("UI ACTION: thread criada")
             self._apply_thread.start()
+            ctx.logger.info("UI ACTION: thread iniciada")
+
+        elif action == "select":
+            ctx.logger.debug(f"UI ACTION: select pressionado, mas update_status é '{session.update_status}' (ignorado)")
 
     def render(self, ctx, session, state, services):
         ctx.draw.draw_update_screen(ctx.screen, ctx.fonts, session.update_status, session.update_data, state.language)

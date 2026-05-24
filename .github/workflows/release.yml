@@ -14,15 +14,46 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
       - name: Extract version from commit message
         id: ver
         run: |
           MSG="${{ github.event.head_commit.message }}"
           VERSION=$(echo "$MSG" | sed -E 's/^up vers[aã]o[[:space:]]*//' | head -1 | tr -d '[:space:]')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
+
+      - name: Create Pokecable_tool ZIP
+        run: |
+          VERSION=${{ steps.ver.outputs.version }}
+          ZIP_NAME="PokeCable_Room-${VERSION}.zip"
+          echo "Creating ZIP: $ZIP_NAME"
+          cd Pokecable_tool
+          zip -r "../$ZIP_NAME" . -x ".git*" ".pytest_cache*" "__pycache__*" "*.pyc" ".cache*" "logs/*" "*.egg-info*"
+          cd ..
+          ls -lh "$ZIP_NAME"
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.version }}
           name: PokeCable v${{ steps.ver.outputs.version }}
+          files: ${{ env.ZIP_NAME }}
           generate_release_notes: true
+          body: |
+            ## PokeCable Room v${{ steps.ver.outputs.version }}
+
+            **O que está incluído:**
+            - Código completo da aplicação Pokecable_tool
+            - Todos os parsers (Gen1, Gen2, Gen3, Gen4)
+            - Frontend UI (pygame)
+            - Scripts de teste
+
+            **Como usar no R36S:**
+            1. Faça download do arquivo ZIP
+            2. Extraia para `C:\Users\[seu_usuário]\Downloads\`
+            3. Copie a pasta `Pokecable_tool` para o R36S
+
+            **Estrutura:**
+            - `Pokecable_tool/` - aplicação completa pronta para rodar

@@ -1795,26 +1795,57 @@ def check_for_update() -> Dict[str, Any]:
     except ImportError:
         APP_VERSION = "1.0.0"
 
+    logger.info("=" * 80)
+    logger.info("UPDATE CHECK: iniciando verificação de atualização")
+    logger.info(f"UPDATE CHECK: versão atual: {APP_VERSION}")
+
     try:
         url = "https://api.github.com/repos/angelojbgama/PokeCable_Room/releases/latest"
+        logger.info(f"UPDATE CHECK: consultando URL: {url}")
+
         req = urllib.request.Request(
             url,
             headers={"User-Agent": "PokeCable-R36S/1.0", "Accept": "application/vnd.github.v3+json"},
         )
+        logger.debug("UPDATE CHECK: request headers configurados")
+
         with urllib.request.urlopen(req, timeout=8) as response:
-            data = json.loads(response.read().decode("utf-8"))
+            logger.info(f"UPDATE CHECK: resposta recebida (status {response.status})")
+
+            response_data = response.read().decode("utf-8")
+            logger.debug(f"UPDATE CHECK: body da resposta: {response_data[:300]}...")
+
+            data = json.loads(response_data)
             latest_version = data.get("tag_name", "").lstrip("v")
             release_url = data.get("html_url", "")
 
-            return {
+            logger.info(f"UPDATE CHECK: versão remota: {latest_version}")
+            logger.info(f"UPDATE CHECK: URL da release: {release_url}")
+
+            is_up_to_date = APP_VERSION >= latest_version
+            logger.info(f"UPDATE CHECK: comparação: {APP_VERSION} >= {latest_version} = {is_up_to_date}")
+
+            result = {
                 "current": APP_VERSION,
                 "latest": latest_version,
-                "up_to_date": APP_VERSION >= latest_version,
+                "up_to_date": is_up_to_date,
                 "release_url": release_url,
                 "error": None,
             }
+
+            if is_up_to_date:
+                logger.info("UPDATE CHECK: ✓ Sistema está atualizado")
+            else:
+                logger.info(f"UPDATE CHECK: ⚠ Nova versão disponível: {latest_version}")
+
+            logger.info("UPDATE CHECK: verificação concluída com sucesso")
+            logger.info("=" * 80)
+
+            return result
+
     except urllib.error.URLError as e:
-        logger.error(f"URL error checking for updates: {e}")
+        logger.error(f"UPDATE CHECK: ✗ Erro de conexão (URLError): {e}")
+        logger.error(f"UPDATE CHECK: tipo de erro: {type(e).__name__}")
         return {
             "error": f"Erro de conexão: {str(e)[:100]}",
             "current": APP_VERSION,
@@ -1823,7 +1854,10 @@ def check_for_update() -> Dict[str, Any]:
             "release_url": None,
         }
     except Exception as e:
-        logger.error(f"Error checking for updates: {e}")
+        logger.error(f"UPDATE CHECK: ✗ Erro inesperado: {e}")
+        logger.error(f"UPDATE CHECK: tipo: {type(e).__name__}, trace: {e.__traceback__}")
+        import traceback
+        logger.error(f"UPDATE CHECK: traceback completo:\n{traceback.format_exc()}")
         return {
             "error": f"Erro ao verificar: {str(e)[:100]}",
             "current": APP_VERSION,
@@ -1837,7 +1871,14 @@ def apply_update() -> Dict[str, Any]:
     """Apply update using git pull. Returns success status and message."""
     import subprocess
 
+    logger.info("=" * 80)
+    logger.info("UPDATE APPLY: iniciando aplicação de atualização")
+    logger.info(f"UPDATE APPLY: diretório de trabalho: {Path(__file__).parent}")
+
     try:
+        logger.info("UPDATE APPLY: executando 'git pull origin main'...")
+        logger.info("UPDATE APPLY: timeout configurado para 60 segundos")
+
         result = subprocess.run(
             ["git", "pull", "origin", "main"],
             cwd=str(Path(__file__).parent),
@@ -1845,28 +1886,52 @@ def apply_update() -> Dict[str, Any]:
             text=True,
             timeout=60,
         )
+
+        logger.info(f"UPDATE APPLY: comando finalizado com returncode={result.returncode}")
+        logger.debug(f"UPDATE APPLY: stdout: {result.stdout[:500]}")
+        logger.debug(f"UPDATE APPLY: stderr: {result.stderr[:500]}")
+
         if result.returncode == 0:
+            logger.info("UPDATE APPLY: ✓ Git pull executado com sucesso")
+            logger.info("UPDATE APPLY: ⚠ Usuário deve reiniciar o aplicativo para aplicar mudanças")
+            logger.info("=" * 80)
             return {
                 "success": True,
                 "message": "Atualização aplicada com sucesso. Reinicie o aplicativo.",
             }
         else:
+            logger.error(f"UPDATE APPLY: ✗ Git pull falhou (returncode={result.returncode})")
+            logger.error(f"UPDATE APPLY: erro: {result.stderr[:200]}")
+            logger.info("=" * 80)
             return {
                 "success": False,
                 "message": f"Erro ao atualizar: {result.stderr[:200]}",
             }
+
     except FileNotFoundError:
+        logger.error("UPDATE APPLY: ✗ Git não encontrado no sistema")
+        logger.error("UPDATE APPLY: verifique se git está instalado e no PATH")
+        logger.info("=" * 80)
         return {
             "success": False,
             "message": "Git não disponível. Faça download manualmente no GitHub.",
         }
+
     except subprocess.TimeoutExpired:
+        logger.error("UPDATE APPLY: ✗ Timeout ao executar git pull (>60s)")
+        logger.error("UPDATE APPLY: a conexão ou repositório pode estar lento")
+        logger.info("=" * 80)
         return {
             "success": False,
             "message": "Timeout ao atualizar (>60s). Tente manualmente.",
         }
+
     except Exception as e:
-        logger.error(f"Error applying update: {e}")
+        logger.error(f"UPDATE APPLY: ✗ Erro inesperado: {e}")
+        logger.error(f"UPDATE APPLY: tipo: {type(e).__name__}")
+        import traceback
+        logger.error(f"UPDATE APPLY: traceback completo:\n{traceback.format_exc()}")
+        logger.info("=" * 80)
         return {
             "success": False,
             "message": f"Erro inesperado: {str(e)[:100]}",
