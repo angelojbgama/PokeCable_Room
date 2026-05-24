@@ -15,6 +15,7 @@ from parsers.gen1 import Gen1Parser  # noqa: E402
 from parsers.gen2 import Gen2Parser  # noqa: E402
 from parsers.gen3 import Gen3Parser  # noqa: E402
 from parsers.gen4 import Gen4Parser  # noqa: E402
+from save_curation import get_gen4_save_audit, get_curated_gen4_saves  # noqa: E402
 from .report import BatteryReport  # noqa: E402
 
 TEST_SAVES_ROOT = REPO_ROOT.parent / "roms" / "test-saves"
@@ -33,6 +34,9 @@ def discover_saves() -> dict[int, list[Path]]:
     out: dict[int, list[Path]] = {1: [], 2: [], 3: [], 4: []}
     for gen, folder in GEN_DIRS.items():
         if not folder.exists():
+            continue
+        if gen == 4:
+            out[gen].extend(get_curated_gen4_saves())
             continue
         for sav in sorted(path for path in folder.iterdir() if path.is_file() and path.suffix.lower() == ".sav"):
             out[gen].append(sav)
@@ -54,13 +58,19 @@ def run() -> tuple[BatteryReport, dict[int, list[Path]]]:
     report = BatteryReport(name="A: saves inventory")
     saves = discover_saves()
     valid: dict[int, list[Path]] = {1: [], 2: [], 3: [], 4: []}
+    gen4_audit = {record.path: record for record in get_gen4_save_audit()}
     for gen, paths in saves.items():
         for p in paths:
             ok, msg = try_load(gen, p)
             label = f"gen{gen}: {p.name}"
             if ok:
                 report.add_pass()
-                report.note(f"OK  {label} ({msg})")
+                if gen == 4:
+                    record = gen4_audit.get(p)
+                    suffix = f"; {record.notes}" if record else ""
+                    report.note(f"OK  {label} ({msg}{suffix})")
+                else:
+                    report.note(f"OK  {label} ({msg})")
                 valid[gen].append(p)
             else:
                 report.add_fail(f"{label} — {msg}")

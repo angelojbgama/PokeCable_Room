@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pokecable_save import SaveError, SaveModel, _ensure_backend_import_path, load_save
+from save_curation import filter_dev_test_save_corpus
 
 DEBUG = os.getenv("POKECABLE_DEBUG", "0").lower() in ("1", "true", "yes")
 logger = logging.getLogger("r36s_pokecable_core")
@@ -435,6 +436,7 @@ class PokecableState:
         seen = set()
         search_dirs = self._default_save_dirs()
         patterns = ["*.sav", "*.srm", "*.SAV", "*.SRM"]
+        discovered: List[Path] = []
         for search_dir in search_dirs:
             if not search_dir.exists():
                 continue
@@ -446,9 +448,10 @@ class PokecableState:
                                 key = str(save_file.resolve())
                                 if key not in seen:
                                     seen.add(key)
-                                    self.saves.append(save_file)
+                                    discovered.append(save_file)
             except (PermissionError, OSError) as exc:
                 logger.debug(f"Cannot access {search_dir}: {exc}")
+        self.saves = filter_dev_test_save_corpus(discovered)
         self.saves.sort()
         logger.info("Found %s save file(s) in %s search dir(s)", len(self.saves), len(search_dirs))
         return self.saves

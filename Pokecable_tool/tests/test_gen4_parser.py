@@ -23,10 +23,10 @@ from data.moves import default_move_pp  # noqa: E402
 from data.species import SPECIES_NAMES_BY_NATIONAL  # noqa: E402
 from evolutions.engine import preview_trade_evolution  # noqa: E402
 from pokecable_save import load_save  # noqa: E402
+from save_curation import GEN4_SAVE_DIR, get_curated_gen4_saves, get_gen4_save_audit  # noqa: E402
 
 
 TEST_SAVE = REPO_ROOT.parent / "roms" / "test-saves" / "gen 4" / "Pokemon - Platinum Version (USA).sav"
-GEN4_SAVE_DIR = REPO_ROOT.parent / "roms" / "test-saves" / "gen 4"
 SOULSILVER_SAVE = GEN4_SAVE_DIR / "Pokemon_SoulSilver8gyn.sav"
 GEN3_SAVE = REPO_ROOT.parent / "roms" / "test-saves" / "gen 3" / "Pokémon - Emerald Version.sav"
 
@@ -115,7 +115,7 @@ def test_platinum_giratina_genderless_and_griseous_orb_item():
 
 @pytest.mark.skipif(not GEN4_SAVE_DIR.exists(), reason="pasta de saves Gen4 nao disponivel")
 def test_all_gen4_saves_export_clean_item_move_and_pp_data(tmp_path: Path):
-    saves = sorted(path for path in GEN4_SAVE_DIR.iterdir() if path.is_file() and path.suffix.lower() == ".sav")
+    saves = get_curated_gen4_saves()
     assert saves
 
     for save_path in saves:
@@ -151,6 +151,15 @@ def test_all_gen4_saves_export_clean_item_move_and_pp_data(tmp_path: Path):
         save_model = load_save(work)
         assert save_model.generation == 4
         assert save_model.party
+
+
+@pytest.mark.skipif(not GEN4_SAVE_DIR.exists(), reason="pasta de saves Gen4 nao disponivel")
+def test_gen4_curated_corpus_marks_residue_without_rejecting_functional_saves():
+    audit = {record.path.name: record for record in get_gen4_save_audit()}
+    assert audit
+    assert all(record.approved_for_analysis for record in audit.values())
+    assert any(record.has_box_residue for record in audit.values())
+    assert "Pokemon - Platinum Version (USA).sav" in audit
 
 
 def _canonical_gen3_for_gen4() -> CanonicalPokemon:
@@ -266,3 +275,54 @@ def test_gen4_move_pp_uses_historical_generation_4_values():
     assert default_move_pp(74, 4) == 40  # Growth changed in later generations.
     assert default_move_pp(141, 4) == 15  # Leech Life changed in later generations.
     assert default_move_pp(200, 4) == 15  # Outrage changed in later generations.
+
+
+@pytest.mark.skipif(
+    not (TEST_SAVE.exists() and SOULSILVER_SAVE.exists()),
+    reason="both Platinum and SoulSilver saves required"
+)
+def test_gen4_same_generation_roundtrip_between_saves(tmp_path: Path):
+    src_work = tmp_path / TEST_SAVE.name
+    tgt_work = tmp_path / SOULSILVER_SAVE.name
+    shutil.copy2(TEST_SAVE, src_work)
+    shutil.copy2(SOULSILVER_SAVE, tgt_work)
+
+    src_parser = Gen4Parser()
+    src_parser.load(src_work)
+
+    canonical = _first_valid_party_canonical(src_parser)
+    assert canonical is not None, "No valid party Pokémon in source save"
+
+    tgt_parser = Gen4Parser()
+    tgt_parser.load(tgt_work)
+    tgt_parser.import_canonical("party:0", canonical)
+
+    tgt_party = tgt_parser.list_party()
+    assert tgt_party
+    tgt_summary = tgt_party[0]
+
+    assert tgt_summary.species_name == canonical.species_name
+    assert tgt_summary.nickname == canonical.nickname
+    assert tgt_summary.level == canonical.level
+    assert tgt_summary.national_dex_id == canonical.species_national_id
+
+    exported = tgt_parser.export_canonical("party:0")
+    assert exported.species_name == canonical.species_name
+    assert exported.nickname == canonical.nickname
+    assert exported.level == canonical.level
+    assert exported.species_national_id == canonical.species_national_id
+    assert len(exported.moves) == len(canonical.moves)
+    for i, (src_move, tgt_move) in enumerate(zip(canonical.moves, exported.moves)):
+        assert src_move.move_id == tgt_move.move_id, f"Move {i} mismatch"
+        assert src_move.pp == tgt_move.pp, f"Move {i} PP mismatch"
+
+
+def _first_valid_party_canonical(parser: Gen4Parser):
+    for summary in parser.list_party():
+        try:
+            canonical = parser.export_canonical(summary.location)
+            if not canonical.metadata.get("is_egg"):
+                return canonical
+        except Exception:
+            continue
+    return None

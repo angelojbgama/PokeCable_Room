@@ -22,6 +22,7 @@ from data.moves import default_move_pp, move_exists, move_name  # noqa: E402
 from data.species import SPECIES_NAMES_BY_NATIONAL, national_to_native, species_exists_in_generation  # noqa: E402
 from parsers.gen4 import Gen4Parser  # noqa: E402
 from pokecable_save import load_save  # noqa: E402
+from save_curation import GEN4_SAVE_DIR, get_curated_gen4_saves  # noqa: E402
 
 
 GENS = (1, 2, 3, 4)
@@ -44,7 +45,6 @@ SAVE_BY_GEN = {
     3: REPO_ROOT.parent / "roms" / "test-saves" / "gen 3" / "Pokémon - Emerald Version.sav",
     4: REPO_ROOT.parent / "roms" / "test-saves" / "gen 4" / "Pokemon - Platinum Version (USA).sav",
 }
-GEN4_SAVE_DIR = REPO_ROOT.parent / "roms" / "test-saves" / "gen 4"
 
 
 class _TargetParserStub:
@@ -306,7 +306,7 @@ def test_save_model_payload_writes_all_cross_generation_routes(tmp_path: Path):
 
 @pytest.mark.skipif(not GEN4_SAVE_DIR.exists(), reason="pasta de saves Gen4 nao disponivel")
 def test_gen4_real_saves_do_not_show_unknown_item_or_move_fallbacks():
-    saves = sorted(path for path in GEN4_SAVE_DIR.iterdir() if path.is_file() and path.suffix.lower() == ".sav")
+    saves = get_curated_gen4_saves()
     assert saves
     failures: list[tuple[str, str, str, int | None, str]] = []
 
