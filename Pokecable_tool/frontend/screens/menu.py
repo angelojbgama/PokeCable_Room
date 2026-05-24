@@ -530,34 +530,21 @@ class UpdateScreen(ScreenBase):
     def _background_check(self, session, ctx):
         from r36s_pokecable_core import check_for_update
         try:
-            ctx.logger.info("UI BACKGROUND: iniciando check_for_update()")
+            # Executa verificação
             result = check_for_update()
 
-            ctx.logger.info(f"UI BACKGROUND: resultado recebido:")
-            ctx.logger.info(f"  - current: {result.get('current')}")
-            ctx.logger.info(f"  - latest: {result.get('latest')}")
-            ctx.logger.info(f"  - up_to_date: {result.get('up_to_date')}")
-            ctx.logger.info(f"  - error: {result.get('error')}")
-
+            # Atualiza estado baseado no resultado
             if result.get("error"):
-                ctx.logger.warning(f"UI BACKGROUND: erro na verificação: {result.get('error')}")
                 session.update_status = "error"
                 session.update_data = result
             elif result.get("up_to_date"):
-                ctx.logger.info("UI BACKGROUND: sistema está atualizado")
                 session.update_status = "up_to_date"
                 session.update_data = result
             else:
-                ctx.logger.info(f"UI BACKGROUND: nova versão disponível: {result.get('latest')}")
                 session.update_status = "available"
                 session.update_data = result
 
-            ctx.logger.info(f"UI BACKGROUND: estado alterado para '{session.update_status}'")
-
         except Exception as e:
-            ctx.logger.error(f"UI BACKGROUND: exceção não capturada: {e}")
-            import traceback
-            ctx.logger.error(f"UI BACKGROUND: traceback:\n{traceback.format_exc()}")
             session.update_status = "error"
             session.update_data = {"error": str(e)[:100]}
 
