@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(python3 *)",
-      "Bash(timeout 5 bash Pokecable_tool/pokecable.sh)"
-    ]
-  }
-}
