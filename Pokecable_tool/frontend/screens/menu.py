@@ -12,9 +12,9 @@ class MenuScreen(ScreenBase):
 
     def handle_action(self, action, ctx, session, state, services):
         if action == "up":
-            session.menu_index = (session.menu_index - 1) % 6
+            session.menu_index = (session.menu_index - 1) % 7
         elif action == "down":
-            session.menu_index = (session.menu_index + 1) % 6
+            session.menu_index = (session.menu_index + 1) % 7
         elif action == "select":
             if session.menu_index == 0:
                 services.reset_flow_state(state)
@@ -42,6 +42,12 @@ class MenuScreen(ScreenBase):
                 services.switch_screen("update_check", "menu_update")
                 session.menu_index = 0
             elif session.menu_index == 5:
+                ctx.logger.info("Menu select: extras")
+                services.reset_flow_state(state)
+                state.find_saves()
+                services.switch_screen("extras_select_save", "menu_extras")
+                session.menu_index = 0
+            elif session.menu_index == 6:
                 ctx.logger.info("Menu select: exit")
                 session.running = False
         elif action == "back":
@@ -583,3 +589,164 @@ class UpdateScreen(ScreenBase):
             self._check_thread.start()
 
         ctx.draw.draw_update_screen(ctx.screen, ctx.fonts, session.update_status, session.update_data, state.language)
+
+
+class ExtrasSelectSaveScreen(ScreenBase):
+    screen_id = "extras_select_save"
+
+    def __init__(self):
+        super().__init__()
+        self._scan_thread = None
+        self._scan_started = False
+
+    def handle_action(self, action, ctx, session, state, services):
+        if action == "up":
+            session.menu_index = (session.menu_index - 1) % len(state.saves)
+        elif action == "down":
+            session.menu_index = (session.menu_index + 1) % len(state.saves)
+        elif action == "select":
+            if state.saves and session.menu_index < len(state.saves):
+                save_path = state.saves[session.menu_index]
+                session.extras_save_path = save_path
+                services.switch_screen("extras_category", "extras_select_save")
+                session.menu_index = 0
+        elif action == "back":
+            services.go_back("menu", "back_from_extras")
+            session.menu_index = 5
+
+    def render(self, ctx, session, state, services):
+        if not self._scan_started:
+            self._scan_started = True
+            self._scan_thread = threading.Thread(target=self._scan_saves, args=(state,), daemon=True)
+            self._scan_thread.start()
+        ctx.draw.draw_extras_select_save(ctx.screen, ctx.fonts, state.saves, session.menu_index, state.language)
+
+    def _scan_saves(self, state):
+        state.find_saves()
+
+
+class ExtrasCategoryScreen(ScreenBase):
+    screen_id = "extras_category"
+
+    def __init__(self):
+        super().__init__()
+        self._categories = []
+        self._loaded = False
+
+    def handle_action(self, action, ctx, session, state, services):
+        if action == "up":
+            session.menu_index = (session.menu_index - 1) % len(self._categories)
+        elif action == "down":
+            session.menu_index = (session.menu_index + 1) % len(self._categories)
+        elif action == "select":
+            if self._categories and session.menu_index < len(self._categories):
+                category = self._categories[session.menu_index]
+                session.extras_category = category
+                services.switch_screen("extras_events", "extras_category")
+                session.menu_index = 0
+        elif action == "back":
+            services.go_back("extras_select_save", "back_from_category")
+            session.menu_index = 0
+
+    def render(self, ctx, session, state, services):
+        from r36s_pokecable_core import get_available_events
+
+        if not self._loaded:
+            self._loaded = True
+            save_path = session.extras_save_path
+            result = get_available_events(save_path)
+            if result.get("success"):
+                events = result.get("events", [])
+                game_id = result.get("game_id", "")
+                self._categories = []
+                has_ticket = any(e["category"] == "ticket" for e in events)
+                has_ereader = any(e["category"] == "ereader" for e in events)
+                if has_ticket:
+                    self._categories.append("tickets")
+                if has_ereader:
+                    self._categories.append("ereader")
+                session.extras_events = events
+
+        ctx.draw.draw_extras_category(ctx.screen, ctx.fonts, self._categories, session.menu_index, state.language)
+
+
+class ExtrasEventsScreen(ScreenBase):
+    screen_id = "extras_events"
+
+    def handle_action(self, action, ctx, session, state, services):
+        events = [e for e in session.extras_events if e["category"] == "ticket"]
+        if action == "up":
+            session.extras_event_index = (session.extras_event_index - 1) % len(events)
+        elif action == "down":
+            session.extras_event_index = (session.extras_event_index + 1) % len(events)
+        elif action == "select":
+            if events and session.extras_event_index < len(events):
+                from r36s_pokecable_core import apply_event_to_save
+
+                event = events[session.extras_event_index]
+                result = apply_event_to_save(session.extras_save_path, event["id"])
+                session.extras_result = result
+                services.switch_screen("extras_result", "extras_apply")
+        elif action == "back":
+            services.go_back("extras_category", "back_from_events")
+            session.menu_index = 0
+
+    def render(self, ctx, session, state, services):
+        events = [e for e in session.extras_events if e["category"] == "ticket"]
+        ctx.draw.draw_extras_events(ctx.screen, ctx.fonts, events, session.extras_event_index, state.language)
+
+
+class ExtrasEreaderScreen(ScreenBase):
+    screen_id = "extras_ereader"
+
+    def __init__(self):
+        super().__init__()
+        self._slots_loaded = False
+
+    def handle_action(self, action, ctx, session, state, services):
+        from pokecable_runtime.events.ereader_battles import list_ereader_battles
+
+        battles = list_ereader_battles()
+        if action == "up":
+            session.extras_ereader_index = (session.extras_ereader_index - 1) % len(battles)
+        elif action == "down":
+            session.extras_ereader_index = (session.extras_ereader_index + 1) % len(battles)
+        elif action == "select":
+            from r36s_pokecable_core import apply_ereader_to_save
+
+            if battles and session.extras_ereader_index < len(battles):
+                battle = battles[session.extras_ereader_index]
+                result = apply_ereader_to_save(session.extras_save_path, 0, battle["id"])
+                session.extras_result = result
+                services.switch_screen("extras_result", "extras_apply")
+        elif action == "back":
+            services.go_back("extras_category", "back_from_ereader")
+            session.menu_index = 0
+
+    def render(self, ctx, session, state, services):
+        from r36s_pokecable_core import get_ereader_slots
+        from pokecable_runtime.events.ereader_battles import list_ereader_battles
+
+        if not self._slots_loaded:
+            self._slots_loaded = True
+            slots_result = get_ereader_slots(session.extras_save_path)
+            if slots_result.get("success"):
+                session.extras_ereader_slots = slots_result.get("slots", [])
+
+        battles = list_ereader_battles()
+        ctx.draw.draw_extras_ereader(ctx.screen, ctx.fonts, session.extras_ereader_slots, battles, session.extras_ereader_index, state.language)
+
+
+class ExtrasResultScreen(ScreenBase):
+    screen_id = "extras_result"
+
+    def handle_action(self, action, ctx, session, state, services):
+        if action == "select" or action == "back":
+            if session.extras_category == "ereader":
+                services.go_back("extras_ereader", "back_from_result")
+            else:
+                services.go_back("extras_events", "back_from_result")
+            session.menu_index = 0
+
+    def render(self, ctx, session, state, services):
+        ctx.draw.draw_extras_result(ctx.screen, ctx.fonts, session.extras_result, state.language)

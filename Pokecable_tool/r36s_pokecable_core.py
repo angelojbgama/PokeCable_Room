@@ -1887,3 +1887,128 @@ def apply_update() -> Dict[str, Any]:
             "success": False,
             "message": f"Error: {str(e)[:100]}",
         }
+
+
+def get_available_events(save_path: str) -> dict:
+    """Carrega save, detecta jogo, retorna lista de eventos disponíveis."""
+    from pokecable_runtime.events.catalog import get_events_for_game
+
+    try:
+        save = load_save(save_path)
+        if not save:
+            return {"success": False, "events": []}
+
+        game_id = _get_game_id_from_save(save)
+        if not game_id:
+            return {"success": False, "events": []}
+
+        events = get_events_for_game(game_id)
+        return {"success": True, "events": events, "game_id": game_id}
+
+    except Exception as e:
+        logger.error(f"Error loading events: {e}")
+        return {"success": False, "events": []}
+
+
+def apply_event_to_save(save_path: str, event_id: str) -> dict:
+    """Backup → parser → apply_event → recalculate_checksums → save."""
+    from pokecable_runtime.events.applicator import apply_event
+
+    try:
+        backup_path = _create_backup(save_path)
+
+        save = load_save(save_path)
+        if not save:
+            return {"success": False, "message": "Could not load save"}
+
+        result = apply_event(save, event_id)
+        if not result.get("success"):
+            return result
+
+        save.write_to_disk()
+        return {
+            "success": True,
+            "message": result.get("message", "extras_applied"),
+            "backup": backup_path,
+        }
+
+    except Exception as e:
+        logger.error(f"Error applying event: {e}")
+        return {"success": False, "message": str(e)[:100]}
+
+
+def get_ereader_slots(save_path: str) -> dict:
+    """Retorna os 5 slots e-Reader atuais do save (nome, pokémon)."""
+    import struct
+
+    try:
+        save = load_save(save_path)
+        if not save:
+            return {"success": False, "slots": []}
+
+        game_id = _get_game_id_from_save(save)
+        if game_id not in ["pokemon_ruby", "pokemon_sapphire"]:
+            return {"success": False, "slots": [], "message": "e-Reader not available for this game"}
+
+        data = save._require_data()
+
+        slots = []
+        for slot_idx in range(5):
+            offset = 0x3030 + (slot_idx * 40)
+            name_bytes = data[offset : offset + 7]
+            name = name_bytes.split(b"\x00")[0].decode("ascii", errors="replace")
+
+            mons = []
+            for mon_idx in range(6):
+                base_offset = offset + 0x1C + (mon_idx * 3)
+                species = struct.unpack("<H", data[base_offset : base_offset + 2])[0]
+                level = data[base_offset + 2]
+                if species > 0:
+                    mons.append({"species": species, "level": level})
+
+            slots.append({
+                "slot": slot_idx,
+                "name": name if name else f"[Empty]",
+                "mons_count": len(mons),
+                "mons": mons,
+            })
+
+        return {"success": True, "slots": slots}
+
+    except Exception as e:
+        logger.error(f"Error reading e-Reader slots: {e}")
+        return {"success": False, "slots": []}
+
+
+def apply_ereader_to_save(save_path: str, slot: int, battle_id: str) -> dict:
+    """Backup → parser → apply_ereader_battle → recalculate → save."""
+    from pokecable_runtime.events.applicator import apply_ereader_battle
+
+    try:
+        backup_path = _create_backup(save_path)
+
+        save = load_save(save_path)
+        if not save:
+            return {"success": False, "message": "Could not load save"}
+
+        result = apply_ereader_battle(save, slot, battle_id)
+        if not result.get("success"):
+            return result
+
+        save.write_to_disk()
+        return {
+            "success": True,
+            "message": result.get("message", "extras_applied"),
+            "backup": backup_path,
+        }
+
+    except Exception as e:
+        logger.error(f"Error applying e-Reader battle: {e}")
+        return {"success": False, "message": str(e)[:100]}
+
+
+def _get_game_id_from_save(save) -> Optional[str]:
+    """Mapeia SaveModel para game_id."""
+    if hasattr(save, "game"):
+        return save.game
+    return None

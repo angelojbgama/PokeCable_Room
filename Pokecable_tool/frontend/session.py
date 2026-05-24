@@ -99,6 +99,13 @@ class UiSessionState:
     infos_scroll: int = 0
     update_status: str = ""
     update_data: dict[str, Any] = field(default_factory=dict)
+    extras_save_path: str = ""
+    extras_events: list[dict[str, Any]] = field(default_factory=list)
+    extras_event_index: int = 0
+    extras_category: str = ""
+    extras_result: dict[str, Any] = field(default_factory=dict)
+    extras_ereader_slots: list[dict[str, Any]] = field(default_factory=list)
+    extras_ereader_index: int = 0
 
     def reset_info_modal(self) -> None:
         self.info_modal_data = default_info_modal()

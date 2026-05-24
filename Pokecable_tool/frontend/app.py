@@ -937,6 +937,7 @@ def draw_menu(screen, fonts, selected, language):
         t(language, "menu_config"),
         t(language, "menu_infos"),
         t(language, "menu_update"),
+        t(language, "menu_extras"),
         t(language, "menu_exit"),
     ]
     list_panel = layout.left_panel
@@ -2575,6 +2576,148 @@ def draw_update_screen(screen, fonts, update_status, update_data, language):
         draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_back"))])
 
 
+def draw_extras_select_save(screen, fonts, saves, selected, language):
+    """List of saves for Extras functionality."""
+    _, _, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, t(language, "extras_select_save"))
+
+    list_panel = layout.left_panel
+    rect(screen, PANEL, list_panel, 0)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
+
+    if not saves:
+        text(screen, small_f, t(language, "no_saves"), list_panel.x + 20, list_panel.y + 20, MUTED)
+    else:
+        for idx, save_path in enumerate(saves):
+            from pathlib import Path
+            save_name = Path(save_path).name
+            y = list_panel.y + 14 + idx * 48
+            row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
+            color = SCREEN if idx == selected else TEXT
+            draw_selectable_list_item(screen, row, idx == selected)
+            text(screen, small_f, save_name, row.x + 9, row.y + 9, color, row.w - 18)
+
+    info_panel = right_info_panel(layout)
+    rect(screen, PANEL_2, info_panel, 0)
+    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
+
+
+def draw_extras_category(screen, fonts, categories, selected, language):
+    """Choose between Event Tickets or e-Reader Battles."""
+    _, _, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, t(language, "menu_extras"))
+
+    list_panel = layout.left_panel
+    rect(screen, PANEL, list_panel, 0)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
+
+    category_labels = {
+        "tickets": t(language, "extras_tickets"),
+        "ereader": t(language, "extras_ereader"),
+    }
+
+    for idx, cat in enumerate(categories):
+        label = category_labels.get(cat, cat)
+        y = list_panel.y + 14 + idx * 48
+        row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
+        color = SCREEN if idx == selected else TEXT
+        draw_selectable_list_item(screen, row, idx == selected)
+        text(screen, small_f, label, row.x + 9, row.y + 9, color, row.w - 18)
+
+    info_panel = right_info_panel(layout)
+    rect(screen, PANEL_2, info_panel, 0)
+    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
+
+
+def draw_extras_events(screen, fonts, events, selected, language):
+    """List of event tickets available for the selected game."""
+    _, _, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, t(language, "extras_tickets"))
+
+    list_panel = layout.left_panel
+    rect(screen, PANEL, list_panel, 0)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
+
+    if not events:
+        text(screen, small_f, t(language, "extras_no_events"), list_panel.x + 20, list_panel.y + 20, MUTED)
+    else:
+        for idx, event in enumerate(events):
+            event_name = t(language, event["name_key"])
+            y = list_panel.y + 14 + idx * 48
+            row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
+            color = SCREEN if idx == selected else TEXT
+            draw_selectable_list_item(screen, row, idx == selected)
+            text(screen, small_f, event_name, row.x + 9, row.y + 9, color, row.w - 18)
+
+    info_panel = right_info_panel(layout)
+    rect(screen, PANEL_2, info_panel, 0)
+    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "extras_apply")), ("B", t(language, "btn_back"))])
+
+
+def draw_extras_ereader(screen, fonts, slots, battles, selected, language):
+    """Show e-Reader slots and available battles to inject."""
+    _, _, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, t(language, "extras_ereader"))
+
+    list_panel = layout.left_panel
+    rect(screen, PANEL, list_panel, 0)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
+
+    y_offset = list_panel.y + 14
+    for idx, battle in enumerate(battles):
+        battle_name = battle["name"]
+        y = y_offset + idx * 48
+        row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
+        color = SCREEN if idx == selected else TEXT
+        draw_selectable_list_item(screen, row, idx == selected)
+        text(screen, small_f, battle_name, row.x + 9, row.y + 9, color, row.w - 18)
+
+    info_panel = right_info_panel(layout)
+    rect(screen, PANEL_2, info_panel, 0)
+    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
+
+    if slots:
+        slot_y = info_panel.y + 20
+        text(screen, tiny_f, t(language, "ereader_slot", slot="0"), info_panel.x + 20, slot_y, TEXT)
+        if slots[0]["name"] != "[Empty]":
+            text(screen, tiny_f, f"{slots[0]['name']}", info_panel.x + 20, slot_y + 18, MUTED)
+
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "extras_apply")), ("B", t(language, "btn_back"))])
+
+
+def draw_extras_result(screen, fonts, result, language):
+    """Show success or error message from event/battle injection."""
+    _, _, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, t(language, "menu_extras"))
+
+    panel = layout.left_panel
+    rect(screen, PANEL, panel, 0)
+    pygame.draw.rect(screen, BORDER, panel, 2, border_radius=0)
+
+    if result.get("success"):
+        status_text = t(language, result.get("message", "extras_applied"))
+        status_color = SCREEN
+    else:
+        msg = result.get("message", "extras_no_events")
+        status_text = t(language, msg) if msg in ["extras_already_active", "extras_no_space", "extras_no_events"] else msg
+        status_color = (255, 100, 100)
+
+    y_offset = panel.y + 40
+    text(screen, small_f, status_text, panel.x + 20, y_offset, status_color, panel.w - 40)
+
+    if result.get("backup"):
+        backup_y = y_offset + 50
+        text(screen, tiny_f, f"Backup: {result['backup'][:40]}", panel.x + 20, backup_y, MUTED, panel.w - 40)
+
+    info_panel = right_info_panel(layout)
+    rect(screen, PANEL_2, info_panel, 0)
+    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
+    draw_footer_actions(screen, tiny_f, [("A/B", t(language, "btn_ok"))])
+
+
 def reset_flow_state(state):
     state.selected_save = None
     state.selected_pokemon = None
@@ -2678,6 +2821,11 @@ def main(initial_screen=None):
         draw_trading=draw_trading,
         draw_trade_result=draw_trade_result,
         draw_update_screen=draw_update_screen,
+        draw_extras_select_save=draw_extras_select_save,
+        draw_extras_category=draw_extras_category,
+        draw_extras_events=draw_extras_events,
+        draw_extras_ereader=draw_extras_ereader,
+        draw_extras_result=draw_extras_result,
         next_theme=next_theme,
         KEYBOARD_GRID_W=KEYBOARD_GRID_W,
     )
