@@ -506,26 +506,7 @@ class UpdateScreen(ScreenBase):
         super().__init__()
         self._check_thread = None
         self._apply_thread = None
-
-    def on_enter(self, ctx, session, state, services):
-        ctx.logger.info("=" * 80)
-        ctx.logger.info("UI SCREEN: UpdateScreen entered")
-        ctx.logger.info(f"UI SCREEN: current update_status: '{session.update_status}'")
-
-        if not session.update_status or session.update_status == "":
-            ctx.logger.info("UI SCREEN: iniciando verificação de atualização em background")
-            session.update_status = "checking"
-            session.update_data = {}
-            self._check_thread = threading.Thread(
-                target=self._background_check,
-                args=(session, ctx),
-                daemon=True,
-            )
-            ctx.logger.debug("UI SCREEN: thread criada")
-            self._check_thread.start()
-            ctx.logger.info("UI SCREEN: thread iniciada")
-        else:
-            ctx.logger.info(f"UI SCREEN: reutilizando status anterior: {session.update_status}")
+        self._check_started = False
 
     def _background_check(self, session, ctx):
         from r36s_pokecable_core import check_for_update
@@ -581,6 +562,7 @@ class UpdateScreen(ScreenBase):
             ctx.logger.info(f"UI ACTION: retornando ao menu (update_status era: {session.update_status})")
             session.update_status = ""
             session.update_data = {}
+            self._check_started = False
             services.go_back("menu", "back_from_update")
             session.menu_index = 4
             ctx.logger.info("=" * 80)
@@ -602,4 +584,16 @@ class UpdateScreen(ScreenBase):
             ctx.logger.debug(f"UI ACTION: select pressionado, mas update_status é '{session.update_status}' (ignorado)")
 
     def render(self, ctx, session, state, services):
+        # Iniciar verificação na primeira renderização
+        if not self._check_started and not session.update_status:
+            self._check_started = True
+            session.update_status = "checking"
+            session.update_data = {}
+            self._check_thread = threading.Thread(
+                target=self._background_check,
+                args=(session, ctx),
+                daemon=True,
+            )
+            self._check_thread.start()
+
         ctx.draw.draw_update_screen(ctx.screen, ctx.fonts, session.update_status, session.update_data, state.language)
