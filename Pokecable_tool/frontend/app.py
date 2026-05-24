@@ -30,6 +30,15 @@ from pokecable_logging import configure_logging
 from pokecable_save import SaveError, _ensure_backend_import_path
 from frontend.fonts import font, gender_font, title_font
 from frontend.i18n import TYPE_LABELS, TYPE_LABELS_BY_LANG, screen_title, t, translate_literal
+
+def tr(language, key, **kwargs):
+    value = t(language, key, **kwargs)
+    if "{" in value:
+        try:
+            return value.format(**kwargs)
+        except (KeyError, IndexError, ValueError):
+            return value
+    return value
 from frontend.item_sprites import draw_item_sprite
 from frontend.input import (
     ACTION_DEBOUNCE,
@@ -1657,7 +1666,7 @@ def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_i
         prefix_text = ""
         prefix_w = 0
         if int(option.get("move_id") or 0) > 0 and learn_level > 0:
-            prefix_text = f"Nv.{learn_level}"
+            prefix_text = f"{t(language, 'level_move_prefix')}{learn_level}"
             prefix_w = tiny_f.size(prefix_text)[0] + 6
             text(screen, tiny_f, prefix_text, row.x + 10, row.y + 9, color)
         name_x = row.x + 10 + prefix_w
@@ -2054,13 +2063,13 @@ def draw_evolution_animation(screen, fonts, evolution, sprite_loader, frame, fin
     source_name = source["species_name"]
     target_name = target["species_name"]
     if cycle < 0.25:
-        msg = f"{source_name} esta evoluindo!" if language == "pt" else f"{source_name} is evolving!" if language == "en" else f"{source_name} esta evolucionando!"
+        msg = tr(language, "evolution_evolving", name=source_name)
     elif cycle < 0.85:
         # texto pisca durante a fase de silhouette
-        evolving_msg = f"{source_name} esta evoluindo!" if language == "pt" else f"{source_name} is evolving!" if language == "en" else f"{source_name} esta evolucionando!"
+        evolving_msg = tr(language, "evolution_evolving", name=source_name)
         msg = "???" if int(frame / 6) % 2 == 0 else evolving_msg
     else:
-        msg = f"{source_name} evoluiu em {target_name}!" if language == "pt" else f"{source_name} evolved into {target_name}!" if language == "en" else f"{source_name} evoluciono a {target_name}!"
+        msg = tr(language, "evolution_evolved", name=source_name, target=target_name)
     wrap_text(screen, tiny_f, msg, pygame.Rect(textbox.x + 8, textbox.y + 7, textbox.w - 16, textbox.h - 10), (12, 18, 32), line_gap=2, max_lines=2)
 
 
@@ -2532,7 +2541,7 @@ def draw_update_screen(screen, fonts, update_status, update_data, language):
         detail_text = ""
     elif update_status == "error":
         status_text = t(language, "update_error")
-        detail_text = update_data.get("error", "Unknown error")[:100]
+        detail_text = (update_data.get("error") or t(language, "error_unknown"))[:100]
     elif update_status == "up_to_date":
         status_text = t(language, "update_up_to_date")
         current = update_data.get("current", "?")
