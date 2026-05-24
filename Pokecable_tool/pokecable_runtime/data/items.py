@@ -10,7 +10,28 @@ from data.item_catalog import (
     ItemCatalogEntry,
 )
 
+try:
+    from .gen4_static import GEN4_ITEM_DATA
+except Exception:
+    GEN4_ITEM_DATA = {}
+
 ItemData = ItemCatalogEntry
+GEN4_MAX_ITEM_ID = 600
+GEN4_DISPLAY_NAME_OVERRIDES: dict[int, tuple[str, str]] = {
+    112: ("Griseous Orb", "held_item"),
+    221: ("King's Rock", "held_item"),
+    226: ("Deep Sea Tooth", "held_item"),
+    227: ("Deep Sea Scale", "held_item"),
+    233: ("Metal Coat", "held_item"),
+    235: ("Dragon Scale", "held_item"),
+    252: ("Up-Grade", "held_item"),
+    321: ("Protector", "held_item"),
+    322: ("Electirizer", "held_item"),
+    323: ("Magmarizer", "held_item"),
+    324: ("Dubious Disc", "held_item"),
+    325: ("Reaper Cloth", "held_item"),
+}
+GEN4_UNUSED_ITEM_IDS = set(range(113, 135))
 
 DISPLAY_NAME_OVERRIDES: dict[str, str] = {
     "MASTER BALL": "Master Ball",
@@ -113,13 +134,6 @@ def _fallback_display_name(name: str) -> str:
     return name
 
 
-ITEM_IDS_BY_GENERATION_AND_NAME: dict[tuple[int, str], int] = {
-    ((entry.generation, DISPLAY_NAME_OVERRIDES.get(entry.name, _fallback_display_name(entry.name)).lower())): entry.item_id
-    for items in ITEMS_BY_GENERATION.values()
-    for entry in items.values()
-}
-
-
 def _normalized_entry(entry: ItemData) -> ItemData:
     return ItemData(
         item_id=entry.item_id,
@@ -130,15 +144,62 @@ def _normalized_entry(entry: ItemData) -> ItemData:
     )
 
 
+def _gen4_entry(item_id: int) -> ItemData | None:
+    item_id = int(item_id)
+    if item_id in GEN4_DISPLAY_NAME_OVERRIDES:
+        name, category = GEN4_DISPLAY_NAME_OVERRIDES[item_id]
+        return ItemData(item_id=item_id, name=name, generation=4, category=category)
+    if item_id in GEN4_UNUSED_ITEM_IDS:
+        return ItemData(item_id=item_id, name=f"Unused Item #{item_id}", generation=4, category="unused")
+    data = GEN4_ITEM_DATA.get(item_id) or {}
+    name = data.get("name")
+    if name:
+        return ItemData(
+            item_id=item_id,
+            name=str(name),
+            generation=4,
+            category=str(data.get("category") or "item"),
+        )
+    if 328 <= item_id <= 419:
+        return ItemData(item_id=item_id, name=f"TM{item_id - 327:02d}", generation=4, category="tm")
+    if 420 <= item_id <= 427:
+        return ItemData(item_id=item_id, name=f"HM{item_id - 419:02d}", generation=4, category="hm")
+    return None
+
+
+def _name_index_entries() -> list[ItemData]:
+    entries = [
+        _normalized_entry(entry)
+        for items in ITEMS_BY_GENERATION.values()
+        for entry in items.values()
+    ]
+    for item_id in sorted(set(GEN4_ITEM_DATA) | set(GEN4_DISPLAY_NAME_OVERRIDES)):
+        entry = _gen4_entry(int(item_id))
+        if entry is not None:
+            entries.append(entry)
+    return entries
+
+
+ITEM_IDS_BY_GENERATION_AND_NAME: dict[tuple[int, str], int] = {
+    (entry.generation, entry.name.lower()): entry.item_id
+    for entry in _name_index_entries()
+}
+
+
 def item_exists(item_id: int | None, generation: int) -> bool:
     if item_id in {None, 0}:
         return True
+    if int(generation) == 4:
+        entry = _gen4_entry(int(item_id))
+        return entry is not None and entry.category != "unused"
     return int(item_id) in ITEMS_BY_GENERATION.get(int(generation), {})
 
 
 def item_data(item_id: int | None, generation: int) -> ItemData | None:
     if item_id in {None, 0}:
         return None
+    if int(generation) == 4:
+        return _gen4_entry(int(item_id))
     entry = ITEMS_BY_GENERATION.get(int(generation), {}).get(int(item_id))
     return _normalized_entry(entry) if entry else None
 
@@ -154,6 +215,12 @@ def item_category(item_id: int | None, generation: int) -> str | None:
 
 
 def generation_items(generation: int) -> dict[int, ItemData]:
+    if int(generation) == 4:
+        return {
+            item_id: entry
+            for item_id in range(1, GEN4_MAX_ITEM_ID + 1)
+            if (entry := _gen4_entry(item_id)) is not None
+        }
     return {item_id: _normalized_entry(entry) for item_id, entry in ITEMS_BY_GENERATION.get(int(generation), {}).items()}
 
 

@@ -131,4 +131,26 @@ def run() -> BatteryReport:
         else:
             report.add_pass()
 
+    # Gen 3 -> Gen 2 -> Gen 3: PID exacto nao volta, mas a forma precisa permanecer identica.
+    for pid in [0x00000000, 0x03030303, 0xAAAAAAAA, 0x12345678]:
+        src = _g3_canonical_with_pid(pid)
+        expected_form = src.metadata["unown_form"]
+
+        mid_g2 = _load_target_g2()
+        g3_to_g2 = g3g2.convert(src, mid_g2, "party:0", policy="auto_retrocompat")
+        mid_g2.import_canonical("party:0", g3_to_g2.canonical_after)
+        mid_canonical = mid_g2.export_canonical("party:0")
+
+        final_g3 = _load_target_g3()
+        g2_to_g3 = g2g3.convert(mid_canonical, final_g3, "party:0", policy="auto_retrocompat")
+        final_g3.import_canonical("party:0", g2_to_g3.canonical_after)
+        final_summary = final_g3.list_party()[0]
+        final_form = getattr(final_summary, "unown_form", None)
+
+        label = f"G3→G2→G3 PID={pid:#010x} expect_form={expected_form}"
+        if expected_form != final_form:
+            report.add_fail(f"{label} :: final_form={final_form!r}")
+        else:
+            report.add_pass()
+
     return report

@@ -15,6 +15,7 @@ logger = logging.getLogger("r36s_pokecable_ui")
 POKEMON_SPRITE_ASSET_DIR = ASSETS_DIR / "pokemon_sprites"
 SPRITE_CACHE_VERSION = "pixel-v1"
 SPRITE_LOADING_MAX_SECONDS = float(os.getenv("POKECABLE_SPRITE_LOADING_MAX_SECONDS", "3"))
+UNOWN_FORM_NAMES = tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ") + ("!", "?")
 
 
 def pokemon_sprite_slug(name):
@@ -53,6 +54,49 @@ def sprite_form_slug(form):
     return value.strip("-")
 
 
+def _safe_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _first_present(*values):
+    for value in values:
+        if value not in (None, ""):
+            return value
+    return ""
+
+
+def _payload_national_dex_id(pokemon, raw, canonical):
+    species_block = canonical.get("species", {}) if isinstance(canonical, dict) else {}
+    for value in (
+        (pokemon or {}).get("national_dex_id") if isinstance(pokemon, dict) else None,
+        raw.get("national_dex_id") if isinstance(raw, dict) else None,
+        canonical.get("species_national_id") if isinstance(canonical, dict) else None,
+        species_block.get("national_dex_id") if isinstance(species_block, dict) else None,
+    ):
+        national_id = _safe_int(value)
+        if national_id > 0:
+            return national_id
+    return 0
+
+
+def _unown_form_name(value):
+    if value in (None, ""):
+        return ""
+    if isinstance(value, int):
+        return UNOWN_FORM_NAMES[value] if 0 <= value < len(UNOWN_FORM_NAMES) else ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    if text.isdigit():
+        index = int(text)
+        return UNOWN_FORM_NAMES[index] if 0 <= index < len(UNOWN_FORM_NAMES) else ""
+    upper = text.upper()
+    return upper if upper in UNOWN_FORM_NAMES else text
+
+
 def pokemon_sprite_variant(pokemon):
     raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
     metadata = (pokemon or {}).get("metadata", {}) if isinstance(pokemon, dict) else {}
@@ -67,18 +111,31 @@ def pokemon_sprite_variant(pokemon):
         or (canonical.get("is_shiny") if isinstance(canonical, dict) else False)
         or (canonical_metadata.get("is_shiny") if isinstance(canonical_metadata, dict) else False)
     )
-    form = (
-        (pokemon or {}).get("unown_form")
-        or (pokemon or {}).get("form")
-        or (metadata.get("unown_form") if isinstance(metadata, dict) else "")
-        or (metadata.get("form") if isinstance(metadata, dict) else "")
-        or (raw.get("unown_form") if isinstance(raw, dict) else "")
-        or (raw.get("form") if isinstance(raw, dict) else "")
-        or (raw_metadata.get("unown_form") if isinstance(raw_metadata, dict) else "")
-        or (raw_metadata.get("form") if isinstance(raw_metadata, dict) else "")
-        or (canonical_metadata.get("unown_form") if isinstance(canonical_metadata, dict) else "")
-        or (canonical_metadata.get("form") if isinstance(canonical_metadata, dict) else "")
-    )
+    national_dex_id = _payload_national_dex_id(pokemon, raw, canonical)
+    species_name = str((pokemon or {}).get("species_name") or canonical.get("species_name") or "").strip().lower()
+    if national_dex_id == 201 or species_name == "unown":
+        form = _unown_form_name(
+            _first_present(
+                (pokemon or {}).get("unown_form"),
+                metadata.get("unown_form") if isinstance(metadata, dict) else "",
+                raw.get("unown_form") if isinstance(raw, dict) else "",
+                raw_metadata.get("unown_form") if isinstance(raw_metadata, dict) else "",
+                canonical_metadata.get("unown_form") if isinstance(canonical_metadata, dict) else "",
+                (pokemon or {}).get("form"),
+                metadata.get("form") if isinstance(metadata, dict) else "",
+                raw.get("form") if isinstance(raw, dict) else "",
+                raw_metadata.get("form") if isinstance(raw_metadata, dict) else "",
+                canonical_metadata.get("form") if isinstance(canonical_metadata, dict) else "",
+            )
+        )
+    else:
+        form = (
+            (pokemon or {}).get("form")
+            or (metadata.get("form") if isinstance(metadata, dict) else "")
+            or (raw.get("form") if isinstance(raw, dict) else "")
+            or (raw_metadata.get("form") if isinstance(raw_metadata, dict) else "")
+            or (canonical_metadata.get("form") if isinstance(canonical_metadata, dict) else "")
+        )
     return "shiny" if is_shiny else "normal", sprite_form_slug(form)
 
 

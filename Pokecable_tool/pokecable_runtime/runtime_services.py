@@ -24,7 +24,7 @@ from data.species import SPECIES_NAMES_BY_NATIONAL, native_to_national  # noqa: 
 from evolutions import preview_trade_evolution  # noqa: E402
 from canonical import CanonicalPokemon  # noqa: E402
 from converters import get_converter  # noqa: E402
-from parsers import Gen1Parser, Gen2Parser, Gen3Parser  # noqa: E402
+from parsers import Gen1Parser, Gen2Parser, Gen3Parser, Gen4Parser  # noqa: E402
 
 
 def _as_int(value: Any, default: int = 0) -> int:
@@ -206,7 +206,7 @@ def _build_target_parser(payload: dict[str, Any], target_generation: int):
     save_blob = str(payload.get("target_save_bytes_base64") or "").strip()
     if not save_blob:
         return None
-    parser_cls = {1: Gen1Parser, 2: Gen2Parser, 3: Gen3Parser}.get(int(target_generation))
+    parser_cls = {1: Gen1Parser, 2: Gen2Parser, 3: Gen3Parser, 4: Gen4Parser}.get(int(target_generation))
     if parser_cls is None:
         return None
     suffix = str(payload.get("target_save_suffix") or ".sav")
@@ -223,7 +223,7 @@ def _build_source_parser(payload: dict[str, Any], source_generation: int):
     save_blob = str(payload.get("source_save_bytes_base64") or "").strip()
     if not save_blob:
         return None
-    parser_cls = {1: Gen1Parser, 2: Gen2Parser, 3: Gen3Parser}.get(int(source_generation))
+    parser_cls = {1: Gen1Parser, 2: Gen2Parser, 3: Gen3Parser, 4: Gen4Parser}.get(int(source_generation))
     if parser_cls is None:
         return None
     suffix = str(payload.get("source_save_suffix") or ".sav")

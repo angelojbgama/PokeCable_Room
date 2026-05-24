@@ -9,6 +9,7 @@ from data.species import national_to_native, species_exists_in_generation
 
 from .matrix import (
     FORWARD_TRANSFER_TO_GEN3,
+    FORWARD_TRANSFER_TO_GEN4,
     LEGACY_DOWNCONVERT_EXPERIMENTAL,
     SAME_GENERATION,
     TIME_CAPSULE_GEN1_GEN2,
@@ -86,6 +87,7 @@ def _apply_species_rules(report: CompatibilityReport, canonical: CanonicalPokemo
         1: "gen1_internal",
         2: "national_dex",
         3: "gen3_internal",
+        4: "gen4_native",
     }[report.target_generation]
 
 
@@ -109,15 +111,15 @@ def _apply_move_rules(report: CompatibilityReport, canonical: CanonicalPokemon, 
         original_move_count += 1
         if move_exists(move.move_id, report.target_generation):
             continue
-        
+
         removed = {
-            "move_id": move.move_id, 
+            "move_id": move.move_id,
             "name": move.name or move_name(move.move_id) or f"Move #{move.move_id}",
             "valid_replacements": valid_replacements,
             "target_game": str(target_game or ""),
             "pokemon_level": int(canonical.level or 0),
         }
-        
+
         if policy in {"strict", "safe_default"}:
             report.compatible = False
             report.blocking_reasons.append(f"Move {removed['name']} nao existe na Gen {report.target_generation}.")
@@ -173,10 +175,14 @@ def _apply_generation_field_rules(report: CompatibilityReport, canonical: Canoni
         if canonical.nature:
             report.removed_fields.append("nature")
             _add_unique(report.data_loss, "nature")
-        if canonical.source_generation == 3 and int(canonical.trainer_id) > 0xFFFF:
+        if canonical.source_generation in {3, 4} and int(canonical.trainer_id) > 0xFFFF:
             report.removed_fields.append("trainer_id_high_bits")
             _add_unique(report.data_loss, "trainer_id_high_bits")
-            report.transformations.append("Trainer ID Gen 3 sera reduzido para 16 bits no destino.")
+            report.transformations.append(f"Trainer ID Gen {canonical.source_generation} sera reduzido para 16 bits no destino.")
+        if canonical.source_generation in {3, 4}:
+            report.transformations.append(
+                f"PID/personality da Gen {canonical.source_generation} nao existe no formato nativo da Gen 1/2; somente derivados representaveis no destino podem ser preservados."
+            )
         for metadata_field in ("gender", "sex", "form"):
             if metadata_field not in canonical.metadata:
                 continue
@@ -216,6 +222,18 @@ def _apply_generation_field_rules(report: CompatibilityReport, canonical: Canoni
             )
         report.transformations.append("DVs (0-15) serao escaladas para IVs (0-31) via DV*2 (max 30/31).")
         report.transformations.append("Stat Experience (0-65535) sera convertida em EVs (0-252) via floor(StatExp/256).")
+    elif report.target_generation == 4 and canonical.source_generation in {1, 2, 3}:
+        if canonical.source_generation in {1, 2}:
+            if not canonical.ability:
+                report.transformations.append("Ability Gen 4 sera gerada deterministicamente a partir do PID.")
+            if not canonical.nature:
+                report.transformations.append("Nature Gen 4 sera gerada deterministicamente a partir do PID.")
+            if canonical.source_generation == 1:
+                report.transformations.append("Genero Gen 4 sera derivado do PID (Gen 1 nao armazenava genero).")
+            report.transformations.append("DVs (0-15) serao escaladas para IVs (0-31) via DV*2.")
+            report.transformations.append("Stat Experience (0-65535) sera convertida em EVs (0-252) via floor(StatExp/256).")
+        elif canonical.source_generation == 3:
+            report.transformations.append("PID/personality, nature e ability da Gen 3 serao preservados na Gen 4 quando presentes.")
 
 
 def _apply_mode_rules(report: CompatibilityReport, canonical: CanonicalPokemon) -> None:
@@ -231,8 +249,13 @@ def _apply_mode_rules(report: CompatibilityReport, canonical: CanonicalPokemon) 
             "Transfer para Gen 3: Nature/Ability/Gender serao recriados a partir do PID; "
             "EVs limitadas a 252/stat; IVs derivadas das DVs (DV*2)."
         )
+    elif report.mode == FORWARD_TRANSFER_TO_GEN4:
+        report.warnings.append(
+            "Transfer para Gen 4: dados modernos serao gravados em formato PK4; "
+            "DVs/Stat Exp antigos serao convertidos quando a origem for Gen 1/2."
+        )
     elif report.mode == LEGACY_DOWNCONVERT_EXPERIMENTAL:
-        report.warnings.append("Downconvert de Gen 3 para Gen 1/2 e experimental e pode perder dados modernos.")
+        report.warnings.append("Downconvert para geracoes antigas e experimental e pode perder dados modernos.")
         if canonical.held_item is not None and report.target_generation == 1 and "held_item" not in report.data_loss:
             _add_unique(report.data_loss, "held_item")
 

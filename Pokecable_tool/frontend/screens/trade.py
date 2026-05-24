@@ -257,35 +257,166 @@ def _rebuild_removed_moves_for_preview(removed_moves, pokemon, target_generation
     return rebuilt
 
 
-def _apply_moves_display(pokemon, resolved_moves, move_names):
+def _replacement_move_name(move_names, old_id, new_id):
+    names = move_names or {}
+    return names.get(old_id) or names.get(str(old_id)) or f"Move #{new_id}"
+
+
+def _default_move_pp(move_id, generation):
+    try:
+        _ensure_backend_import_path()
+        from data.moves import default_move_pp  # type: ignore
+
+        return int(default_move_pp(int(move_id), int(generation or 0)) or 0)
+    except Exception:
+        return 0
+
+
+def _updated_move_detail(move_detail, old_id, new_id, new_name, generation):
+    detail = dict(move_detail or {})
+    detail["move_id"] = int(new_id)
+    detail["name"] = new_name
+    detail["source_generation"] = _as_int(generation or detail.get("source_generation")) or None
+    max_pp = _default_move_pp(new_id, generation)
+    if max_pp > 0:
+        detail["pp"] = max_pp
+        detail["max_pp"] = max_pp
+    else:
+        detail.pop("pp", None)
+        detail.pop("max_pp", None)
+    detail["pp_ups"] = 0
+    metadata = detail.get("metadata")
+    if isinstance(metadata, dict):
+        metadata = dict(metadata)
+        metadata["replaced_move_id"] = int(old_id)
+        detail["metadata"] = metadata
+    return detail
+
+
+def _move_index(moves, move_id):
+    for idx, current in enumerate(moves or []):
+        if _as_int(current) == int(move_id):
+            return idx
+    return -1
+
+
+def _apply_move_choice_to_lists(moves, names, details, old_id, new_id, new_name, generation):
+    moves = list(moves or [])
+    names = list(names or [])
+    details = [dict(item) if isinstance(item, dict) else item for item in list(details or [])]
+    idx = _move_index(moves, old_id)
+    if idx < 0:
+        return False, moves, names, details
+    if new_id > 0:
+        moves[idx] = int(new_id)
+        while len(names) < len(moves):
+            names.append("")
+        names[idx] = new_name
+        if idx < len(details) and isinstance(details[idx], dict):
+            details[idx] = _updated_move_detail(details[idx], old_id, new_id, new_name, generation)
+    else:
+        moves.pop(idx)
+        if idx < len(names):
+            names.pop(idx)
+        if idx < len(details):
+            details.pop(idx)
+    return True, moves, names, details
+
+
+def _apply_move_choice_to_canonical(canonical_moves, old_id, new_id, new_name, generation):
+    moves = [dict(item) for item in list(canonical_moves or []) if isinstance(item, dict)]
+    idx = _move_index([item.get("move_id") for item in moves], old_id)
+    if idx < 0:
+        return False, moves
+    if new_id > 0:
+        moves[idx] = _updated_move_detail(moves[idx], old_id, new_id, new_name, generation)
+    else:
+        moves.pop(idx)
+    return True, moves
+
+
+def _primary_move_source(pokemon):
+    summary = pokemon.get("summary") if isinstance(pokemon.get("summary"), dict) else {}
+    raw = pokemon.get("raw") if isinstance(pokemon.get("raw"), dict) else {}
+    canonical = pokemon.get("canonical") if isinstance(pokemon.get("canonical"), dict) else {}
+    canonical_moves = canonical.get("moves") if isinstance(canonical.get("moves"), list) else []
+    if pokemon.get("moves"):
+        return list(pokemon.get("moves") or []), list(pokemon.get("move_names") or []), list(pokemon.get("move_details") or [])
+    if summary.get("moves"):
+        return list(summary.get("moves") or []), list(summary.get("move_names") or []), list(summary.get("move_details") or [])
+    if raw.get("moves"):
+        return list(raw.get("moves") or []), list(raw.get("move_names") or []), list(raw.get("move_details") or [])
+    if canonical_moves:
+        return (
+            [item.get("move_id") for item in canonical_moves if isinstance(item, dict) and _as_int(item.get("move_id")) > 0],
+            [item.get("name") for item in canonical_moves if isinstance(item, dict) and _as_int(item.get("move_id")) > 0],
+            [dict(item) for item in canonical_moves if isinstance(item, dict) and _as_int(item.get("move_id")) > 0],
+        )
+    return [], [], []
+
+
+def _apply_moves_display(pokemon, resolved_moves, move_names, target_generation=0):
     """Cria cópia do pokemon com moves substituídos para exibição (não afeta dados do backend)."""
     pokemon = dict(pokemon or {})
     if not pokemon:
         return pokemon
-    moves = list(pokemon.get("moves") or [])
-    names = list(pokemon.get("move_names") or [])
-    details = list(pokemon.get("move_details") or [])
+    summary = dict(pokemon.get("summary") or {}) if isinstance(pokemon.get("summary"), dict) else {}
+    raw = dict(pokemon.get("raw") or {}) if isinstance(pokemon.get("raw"), dict) else {}
+    canonical = dict(pokemon.get("canonical") or {}) if isinstance(pokemon.get("canonical"), dict) else {}
+    generation = _as_int(target_generation) or _pokemon_generation(pokemon)
+
+    top_moves = list(pokemon.get("moves") or [])
+    top_names = list(pokemon.get("move_names") or [])
+    top_details = list(pokemon.get("move_details") or [])
+    summary_moves = list(summary.get("moves") or [])
+    summary_names = list(summary.get("move_names") or [])
+    summary_details = list(summary.get("move_details") or [])
+    raw_moves = list(raw.get("moves") or [])
+    raw_names = list(raw.get("move_names") or [])
+    raw_details = list(raw.get("move_details") or [])
+    canonical_moves = list(canonical.get("moves") or []) if isinstance(canonical.get("moves"), list) else []
+
     for old_id_raw, new_id_raw in (resolved_moves or {}).items():
         old_id = int(old_id_raw)
         new_id = int(new_id_raw) if new_id_raw else 0
-        try:
-            idx = moves.index(old_id)
-            if new_id > 0:
-                moves[idx] = new_id
-                new_name = (move_names or {}).get(old_id) or (move_names or {}).get(str(old_id)) or f"Move #{new_id}"
-                if idx < len(names):
-                    names[idx] = new_name
-            else:
-                moves.pop(idx)
-                if idx < len(names):
-                    names.pop(idx)
-                if idx < len(details):
-                    details.pop(idx)
-        except (ValueError, TypeError):
-            pass
-    pokemon["moves"] = moves
-    pokemon["move_names"] = names
-    pokemon["move_details"] = details
+        new_name = _replacement_move_name(move_names, old_id, new_id) if new_id > 0 else ""
+        _, top_moves, top_names, top_details = _apply_move_choice_to_lists(
+            top_moves, top_names, top_details, old_id, new_id, new_name, generation
+        )
+        _, summary_moves, summary_names, summary_details = _apply_move_choice_to_lists(
+            summary_moves, summary_names, summary_details, old_id, new_id, new_name, generation
+        )
+        _, raw_moves, raw_names, raw_details = _apply_move_choice_to_lists(
+            raw_moves, raw_names, raw_details, old_id, new_id, new_name, generation
+        )
+        _, canonical_moves = _apply_move_choice_to_canonical(canonical_moves, old_id, new_id, new_name, generation)
+
+    if not top_moves:
+        top_moves, top_names, top_details = _primary_move_source(
+            {
+                "summary": {"moves": summary_moves, "move_names": summary_names, "move_details": summary_details},
+                "raw": {"moves": raw_moves, "move_names": raw_names, "move_details": raw_details},
+                "canonical": {"moves": canonical_moves},
+            }
+        )
+    pokemon["moves"] = top_moves
+    pokemon["move_names"] = top_names
+    pokemon["move_details"] = top_details
+    if summary:
+        summary["moves"] = summary_moves
+        summary["move_names"] = summary_names
+        if summary_details:
+            summary["move_details"] = summary_details
+        pokemon["summary"] = summary
+    if raw:
+        raw["moves"] = raw_moves
+        raw["move_names"] = raw_names
+        if raw_details:
+            raw["move_details"] = raw_details
+        pokemon["raw"] = raw
+    if canonical:
+        canonical["moves"] = canonical_moves
+        pokemon["canonical"] = canonical
     return pokemon
 
 
@@ -428,6 +559,8 @@ class SelfTradeConfirmScreen(ScreenBase):
     def render(self, ctx, session, state, services):
         decisions = session.self_trade_decisions or {}
         ctx_data = session.self_trade_context if isinstance(session.self_trade_context, dict) else {}
+        preflight_to_a = ctx_data.get("preflight_to_a") if isinstance(ctx_data.get("preflight_to_a"), dict) else {}
+        preflight_to_b = ctx_data.get("preflight_to_b") if isinstance(ctx_data.get("preflight_to_b"), dict) else {}
 
         pokemon_a = dict(session.self_trade_pokemon_a or {})
         payload_b = ctx_data.get("payload_b") or {}
@@ -460,6 +593,7 @@ class SelfTradeConfirmScreen(ScreenBase):
             pokemon_b,
             decisions.get("resolved_moves_to_a"),
             decisions.get("resolved_moves_names_to_a"),
+            target_generation=_as_int(preflight_to_a.get("target_generation")),
         )
 
         # Aplica moves resolvidos à esquerda (pokemon_a, vai para save B)
@@ -467,6 +601,7 @@ class SelfTradeConfirmScreen(ScreenBase):
             pokemon_a,
             decisions.get("resolved_moves_to_b"),
             decisions.get("resolved_moves_names_to_b"),
+            target_generation=_as_int(preflight_to_b.get("target_generation")),
         )
 
         if session.self_trade_save_a is not None:
@@ -624,6 +759,7 @@ class ResolveMovesScreen(ScreenBase):
                 session.resolved_moves_choices,
                 resolved_name_overrides,
             ),
+            target_generation=target_generation,
         )
         return pokemon, moves
 

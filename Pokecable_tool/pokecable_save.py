@@ -37,8 +37,9 @@ def _ensure_backend_import_path() -> None:
 
 _ensure_backend_import_path()
 
-from data.moves import default_move_pp  # noqa: E402
+from data.moves import default_move_pp, move_name  # noqa: E402
 from data.gender_rates import gender_from_gen2_attack_dv, gender_from_gen3_personality  # noqa: E402
+from data.unown_forms import gen2_unown_form_from_dvs, gen3_unown_form  # noqa: E402
 
 
 def _resolve_national_dex_id(generation: int, species_id: int, pokemon: Dict[str, Any]) -> int:
@@ -529,6 +530,7 @@ def parse_gen3_pokemon(raw: bytes) -> Dict[str, Any]:
     growth = growth_index * 12
     attacks = attacks_index * 12
     species_id = read_u16(secure, growth)
+    national_dex_id = _resolve_national_dex_id(3, species_id, {})
     moves = []
     for offset in range(4):
         move_id = read_u16(secure, attacks + offset * 2)
@@ -553,7 +555,8 @@ def parse_gen3_pokemon(raw: bytes) -> Dict[str, Any]:
         "is_shiny": False if is_egg else _gen3_is_shiny(personality, trainer_id),
         "experience": read_u32(secure, growth + 4),
         "personality": personality,
-        "gender": None if is_egg else gender_from_gen3_personality(_resolve_national_dex_id(3, species_id, {}), personality),
+        "gender": None if is_egg else gender_from_gen3_personality(national_dex_id, personality),
+        "unown_form": None if is_egg or national_dex_id != 201 else gen3_unown_form(species_id, personality),
     }
 
 
@@ -571,6 +574,7 @@ def parse_gen3_box_pokemon(raw: bytes) -> Dict[str, Any]:
     growth = growth_index * 12
     attacks = attacks_index * 12
     species_id = read_u16(secure, growth)
+    national_dex_id = _resolve_national_dex_id(3, species_id, {})
     moves = []
     for offset in range(4):
         move_id = read_u16(secure, attacks + offset * 2)
@@ -596,7 +600,8 @@ def parse_gen3_box_pokemon(raw: bytes) -> Dict[str, Any]:
         "is_shiny": False if is_egg else _gen3_is_shiny(personality, trainer_id),
         "experience": experience,
         "personality": personality,
-        "gender": None if is_egg else gender_from_gen3_personality(_resolve_national_dex_id(3, species_id, {}), personality),
+        "gender": None if is_egg else gender_from_gen3_personality(national_dex_id, personality),
+        "unown_form": None if is_egg or national_dex_id != 201 else gen3_unown_form(species_id, personality),
     }
 
 
@@ -652,6 +657,7 @@ class SaveModel:
     boxes: List[Dict[str, Any]] = field(default_factory=list)
     box_names: List[str] = field(default_factory=list)
     current_box: int = 0
+    _backend_parser: Any = field(default=None, init=False, repr=False)
 
     @property
     def name(self) -> str:
@@ -673,6 +679,8 @@ class SaveModel:
                     return ((data[0x2009] << 8) | data[0x200A]) & 0xFFFF
             elif self.generation == 3:
                 return self._gen3_trainer_id()
+            elif self.generation == 4 and self._backend_parser is not None and hasattr(self._backend_parser, "_trainer_id"):
+                return int(self._backend_parser._trainer_id()) & 0xFFFF
         except Exception:
             return 0
         return 0
@@ -714,9 +722,120 @@ class SaveModel:
                     return data[offset] & 0xFF
             elif self.generation == 3:
                 return self._gen3_badges_mask()
+            elif self.generation == 4:
+                return 0
         except Exception:
             return 0
         return 0
+
+    def _load_gen4_backend_parser(self) -> Any:
+        _ensure_backend_import_path()
+        from parsers import Gen4Parser  # type: ignore
+
+        with tempfile.TemporaryDirectory(prefix="pokecable_gen4_") as tmpdir:
+            tmp_path = Path(tmpdir) / f"work{self.path.suffix or '.sav'}"
+            tmp_path.write_bytes(bytes(self.bytes))
+            parser = Gen4Parser()
+            parser.load(tmp_path)
+            return parser
+
+    def _summary_to_local_pokemon(
+        self,
+        summary: Any,
+        *,
+        source: str,
+        generation: int,
+        game: str,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        summary_payload = payload.get("summary") if isinstance(payload, dict) and isinstance(payload.get("summary"), dict) else {}
+        canonical_payload = payload.get("canonical") if isinstance(payload, dict) and isinstance(payload.get("canonical"), dict) else {}
+        held_item_payload = canonical_payload.get("held_item") if isinstance(canonical_payload.get("held_item"), dict) else {}
+        canonical_metadata = canonical_payload.get("metadata") if isinstance(canonical_payload.get("metadata"), dict) else {}
+        move_details = canonical_payload.get("moves") if isinstance(canonical_payload.get("moves"), list) else []
+        moves = list(summary_payload.get("moves") or (payload.get("moves") if isinstance(payload, dict) else []) or [])
+        experience = None
+        for value in (
+            payload.get("experience") if isinstance(payload, dict) else None,
+            summary_payload.get("experience"),
+            canonical_payload.get("experience"),
+        ):
+            if value not in (None, ""):
+                try:
+                    experience = int(value)
+                except (TypeError, ValueError):
+                    experience = None
+                break
+        experience_progress = {}
+        for value in (
+            payload.get("experience_progress") if isinstance(payload, dict) else None,
+            summary_payload.get("experience_progress"),
+            canonical_metadata.get("experience_progress"),
+        ):
+            if isinstance(value, dict) and value:
+                experience_progress = dict(value)
+                break
+        if not experience_progress and experience is not None:
+            experience_progress = _experience_progress_for_payload(int(summary.national_dex_id or 0), experience)
+        unown_form = (
+            getattr(summary, "unown_form", None)
+            or canonical_metadata.get("unown_form")
+        )
+        pokemon = {
+            "location": str(summary.location),
+            "source": source,
+            "generation": generation,
+            "game": game,
+            "source_generation": generation,
+            "source_game": game,
+            "species_id": int(summary.species_id),
+            "species_name": str(summary.species_name),
+            "national_dex_id": int(summary.national_dex_id or 0),
+            "types": [],
+            "level": int(summary.level),
+            "experience": experience,
+            "experience_progress": experience_progress,
+            "nickname": str(summary.nickname or summary.species_name),
+            "ot_name": str(summary.ot_name or ""),
+            "trainer_id": int(summary.trainer_id or 0),
+            "held_item_id": summary.held_item_id,
+            "held_item_name": summary.held_item_name,
+            "held_item_category": held_item_payload.get("category"),
+            "moves": moves,
+            "move_details": [dict(move) for move in move_details if isinstance(move, dict)],
+            "gender": summary.gender,
+            "unown_form": unown_form,
+            "is_egg": False,
+            "display_summary": str(summary.display_summary),
+            "canonical": canonical_payload if canonical_payload else None,
+        }
+        return pokemon
+
+    def _refresh_gen4(self) -> None:
+        parser = self._load_gen4_backend_parser()
+        self._backend_parser = parser
+        self.party = [
+            self._summary_to_local_pokemon(
+                summary,
+                source="party",
+                generation=4,
+                game=self.game,
+                payload=parser.export_pokemon(summary.location).to_dict(),
+            )
+            for summary in parser.list_party()
+        ]
+        self.boxes = [
+            self._summary_to_local_pokemon(
+                summary,
+                source="boxes",
+                generation=4,
+                game=self.game,
+                payload=parser.export_pokemon(summary.location).to_dict(),
+            )
+            for summary in parser.list_boxes()
+        ]
+        self.box_names = [parser._box_name(index) for index in range(18)] if hasattr(parser, "_box_name") else [f"Box {index + 1}" for index in range(18)]
+        self.current_box = 0
 
     def _gen3_badges_mask(self) -> int:
         """Read badges from Gen3 SaveBlock1 event flags. Returns 8-bit mask."""
@@ -778,6 +897,8 @@ class SaveModel:
         elif self.generation == 3:
             self.party = self._parse_gen3_party()
             self.boxes = self._parse_gen3_boxes()
+        elif self.generation == 4:
+            self._refresh_gen4()
         else:
             raise SaveError(f"Geração não suportada: {self.generation}")
         logger.info(
@@ -811,15 +932,56 @@ class SaveModel:
 
     def _pokemon_move_entries(self, pokemon: Dict[str, Any]) -> List[Dict[str, Any]]:
         details = pokemon.get("move_details")
+        move_names = pokemon.get("move_names") if isinstance(pokemon.get("move_names"), list) else []
         if isinstance(details, list) and details:
-            return [dict(move) for move in details if isinstance(move, dict) and move.get("move_id")]
+            entries: List[Dict[str, Any]] = []
+            for index, move in enumerate(details):
+                if not isinstance(move, dict) or not move.get("move_id"):
+                    continue
+                entry = dict(move)
+                move_id = int(entry.get("move_id") or 0)
+                pp_ups = int(entry.get("pp_ups") or 0)
+                default_pp = default_move_pp(move_id, self.generation, pp_ups)
+                fallback_name = move_names[index] if index < len(move_names) else None
+                entry.setdefault("name", fallback_name or move_name(move_id) or f"Move #{move_id}")
+                entry.setdefault("max_pp", default_pp)
+                entry.setdefault("pp", default_pp)
+                entry.setdefault("pp_ups", pp_ups)
+                entry.setdefault("source_generation", self.generation)
+                entries.append(entry)
+            return entries
         return [
-            {"move_id": int(move_id), "source_generation": self.generation}
+            {
+                "move_id": int(move_id),
+                "name": move_name(int(move_id)) or f"Move #{int(move_id)}",
+                "pp": default_move_pp(int(move_id), self.generation),
+                "max_pp": default_move_pp(int(move_id), self.generation),
+                "pp_ups": 0,
+                "source_generation": self.generation,
+            }
             for move_id in (pokemon.get("moves") or [])
             if int(move_id or 0)
         ]
 
     def export_payload(self, location: str) -> Dict[str, Any]:
+        if self.generation == 4:
+            if self._backend_parser is None:
+                self._refresh_gen4()
+            payload = self._backend_parser.export_pokemon(location).to_dict()
+            payload.setdefault("generation", 4)
+            payload.setdefault("game", self.game)
+            payload.setdefault("source_generation", 4)
+            payload.setdefault("source_game", self.game)
+            payload.setdefault("target_generation", 4)
+            payload.setdefault("metadata", {})
+            payload["metadata"].setdefault("source", "r36s-local-save")
+            payload["metadata"].setdefault("location", location)
+            canonical = payload.get("canonical") if isinstance(payload.get("canonical"), dict) else {}
+            canonical_metadata = canonical.get("metadata") if isinstance(canonical.get("metadata"), dict) else {}
+            if canonical_metadata.get("unown_form"):
+                payload.setdefault("unown_form", canonical_metadata.get("unown_form"))
+                payload["metadata"].setdefault("unown_form", canonical_metadata.get("unown_form"))
+            return payload
         parsed = parse_location(location)
         pokemon = self.pokemon_by_location(location)
         if not pokemon:
@@ -885,6 +1047,7 @@ class SaveModel:
             raw_format,
             len(raw),
         )
+        unown_form = pokemon.get("unown_form")
         return {
             "payload_version": 2,
             "generation": self.generation,
@@ -900,6 +1063,7 @@ class SaveModel:
             "experience_progress": experience_progress,
             "nickname": pokemon.get("nickname", pokemon.get("species_name", "")),
             "gender": pokemon.get("gender"),
+            "unown_form": unown_form,
             "ot_name": pokemon.get("ot_name", ""),
             "trainer_id": pokemon.get("trainer_id", 0),
             "held_item_id": pokemon.get("held_item_id"),
@@ -919,6 +1083,7 @@ class SaveModel:
                 "experience_progress": experience_progress,
                 "nickname": pokemon.get("nickname", pokemon.get("species_name", "")),
                 "gender": pokemon.get("gender"),
+                "unown_form": unown_form,
                 "held_item_id": pokemon.get("held_item_id"),
                 "held_item_name": pokemon.get("held_item_name"),
                 "held_item_category": pokemon.get("held_item_category"),
@@ -958,6 +1123,7 @@ class SaveModel:
                     "is_shiny": is_shiny,
                     "is_egg": bool(pokemon.get("is_egg")),
                     "gender": pokemon.get("gender"),
+                    "unown_form": unown_form,
                     "source_species_id": species_id,
                     "source_species_id_space": "gen1_internal" if self.generation == 1 else ("national_dex" if self.generation == 2 else "gen3_internal"),
                     "experience_progress": experience_progress,
@@ -971,7 +1137,7 @@ class SaveModel:
             },
             "raw": {"format": raw_format, "data_base64": raw_b64},
             "compatibility_report": preflight_report(True, self.generation),
-            "metadata": {"format": raw_format, "source": "r36s-local-save", "location": location, "is_shiny": is_shiny, "gender": pokemon.get("gender")},
+            "metadata": {"format": raw_format, "source": "r36s-local-save", "location": location, "is_shiny": is_shiny, "gender": pokemon.get("gender"), "unown_form": unown_form},
         }
 
     def _count_total_pokemon(self) -> int:
@@ -1374,6 +1540,44 @@ class SaveModel:
         resolved_moves: Optional[Dict[int, int]] = None,
         item_relocation_choice: Optional[str] = None,
     ) -> Dict[str, Any]:
+        if self.generation == 4:
+            try:
+                _ensure_backend_import_path()
+                from parsers.base import PokemonPayload  # type: ignore
+            except Exception as exc:
+                raise SaveError(f"Backend Gen4 indisponivel localmente: {exc}") from exc
+            if self._backend_parser is None:
+                self._refresh_gen4()
+            parser = self._backend_parser
+            payload_generation = int(payload.get("generation") or payload.get("source_generation") or 0)
+            if payload_generation == 4:
+                parser.import_pokemon(location, PokemonPayload.from_dict(payload))
+            else:
+                canonical_payload = payload.get("canonical") if isinstance(payload.get("canonical"), dict) else None
+                if not canonical_payload:
+                    raise SaveError("Payload cross-generation sem canonical para Gen 4.")
+                try:
+                    from canonical import CanonicalPokemon  # type: ignore
+                    canonical = CanonicalPokemon.from_dict(canonical_payload)
+                    parser.import_canonical(location, canonical)
+                except Exception as exc:
+                    raise SaveError(f"Falha ao aplicar Pokemon na Gen 4: {exc}") from exc
+            if trade_evolution and trade_evolution.get("evolved") and not cancel_trade_evolution:
+                try:
+                    parser.set_species_id(location, int(trade_evolution.get("target_species_id") or 0))
+                    if trade_evolution.get("consumed_item_id"):
+                        parser.clear_held_item(location)
+                except Exception as exc:
+                    raise SaveError(f"Falha aplicando trade evolution Gen 4: {exc}") from exc
+            with tempfile.TemporaryDirectory(prefix="pokecable_gen4_save_") as tmpdir:
+                tmp_path = Path(tmpdir) / f"save{self.path.suffix or '.sav'}"
+                parser.save(tmp_path)
+                self.bytes = bytearray(tmp_path.read_bytes())
+            self.refresh()
+            result = self.pokemon_by_location(location) or {}
+            if trade_evolution:
+                result["trade_evolution"] = trade_evolution
+            return result
         parsed = parse_location(location)
         payload_generation = int(payload.get("generation", 0))
         canonical_payload = payload.get("canonical") if isinstance(payload.get("canonical"), dict) else None
@@ -1387,7 +1591,7 @@ class SaveModel:
                 _ensure_backend_import_path()
                 from canonical import CanonicalPokemon
                 from converters import get_converter
-                from parsers import Gen1Parser, Gen2Parser, Gen3Parser
+                from parsers import Gen1Parser, Gen2Parser, Gen3Parser, Gen4Parser
             except Exception as exc:
                 raise SaveError(f"Conversores cross-generation indisponiveis localmente: {exc}") from exc
             try:
@@ -1400,7 +1604,7 @@ class SaveModel:
                     raise SaveError(
                         f"Pokemon National Dex #{national_id} nao existe na Gen 1 e nao pode ser transferido para esse save."
                     )
-            parser = {1: Gen1Parser, 2: Gen2Parser, 3: Gen3Parser}.get(self.generation)
+            parser = {1: Gen1Parser, 2: Gen2Parser, 3: Gen3Parser, 4: Gen4Parser}.get(self.generation)
             if parser is None:
                 raise SaveError("Geração de destino não suportada para conversão.")
             # Pre-evoluir o canonical (se houver trade evolution) antes do converter escrever.
@@ -1732,6 +1936,7 @@ class SaveModel:
             nickname = decode_gbc_text(nick)
             is_egg = species_entry == 0xFD
             species_name = "Egg" if is_egg else safe_species_name(species_id, nickname)
+            unown_form = None if is_egg or species_id != 201 else gen2_unown_form_from_dvs(mon[0x15] >> 4, mon[0x15] & 0x0F, mon[0x16] >> 4, mon[0x16] & 0x0F)
             move_details = []
             for offset, move_id in enumerate(mon[0x02:0x06]):
                 if move_id:
@@ -1768,6 +1973,7 @@ class SaveModel:
                 "is_egg": is_egg,
                 "is_shiny": False if is_egg else _legacy_shiny_from_mon(mon, 0x15),
                 "gender": None if is_egg else gender_from_gen2_attack_dv(species_id, mon[0x15] >> 4),
+                "unown_form": unown_form,
             }
             pokemon["display_summary"] = normalize_pokemon_display(pokemon)
             party.append(pokemon)
@@ -1790,6 +1996,7 @@ class SaveModel:
                 nickname = decode_gbc_text(nick)
                 species_name = safe_species_name(species_id, nickname)
                 experience = (mon[0x08] << 16) | (mon[0x09] << 8) | mon[0x0A]
+                unown_form = None if species_id != 201 else gen2_unown_form_from_dvs(mon[0x15] >> 4, mon[0x15] & 0x0F, mon[0x16] >> 4, mon[0x16] & 0x0F)
                 move_details = []
                 for offset, move_id in enumerate(mon[0x02:0x06]):
                     if move_id:
@@ -1825,6 +2032,7 @@ class SaveModel:
                     "is_egg": False,
                     "is_shiny": _legacy_shiny_from_mon(mon, 0x15),
                     "gender": gender_from_gen2_attack_dv(species_id, mon[0x15] >> 4),
+                    "unown_form": unown_form,
                     "box_index": box_index,
                     "slot_index": slot_index,
                     "box_name": self.box_names[box_index],
@@ -1888,6 +2096,7 @@ class SaveModel:
                 "is_shiny": details["is_shiny"],
                 "gender": details.get("gender"),
                 "personality": details.get("personality"),
+                "unown_form": details.get("unown_form"),
             }
             pokemon["display_summary"] = normalize_pokemon_display(pokemon)
             party.append(pokemon)
@@ -1956,6 +2165,7 @@ class SaveModel:
                     "is_shiny": details["is_shiny"],
                     "gender": details.get("gender"),
                     "personality": details.get("personality"),
+                    "unown_form": details.get("unown_form"),
                     "box_index": box_index,
                     "slot_index": slot_index,
                     "box_name": box_name,
@@ -2384,5 +2594,29 @@ def load_save(path: Path) -> SaveModel:
         logger.info("Detected save: path=%s generation=3 game=%s label=%s", path, save.game, save.label)
         return save
 
+    try:
+        _ensure_backend_import_path()
+        from parsers import Gen4Parser  # type: ignore
+
+        parser = Gen4Parser()
+        if parser.detect(path):
+            parser.load(path)
+            game = parser.get_game_id() or "pokemon_platinum"
+            label = "Gen 4 Save"
+            save = SaveModel(
+                path=path,
+                bytes=bytearray(data),
+                generation=4,
+                game=game,
+                label=label,
+                layout={"name": "gen4_runtime_bridge"},
+                player_name=parser.get_player_name() or "Player",
+            )
+            save.refresh()
+            logger.info("Detected save: path=%s generation=4 game=%s label=%s", path, save.game, save.label)
+            return save
+    except Exception as exc:
+        logger.debug("Gen4 detect/load failed for %s: %s", path, exc)
+
     logger.error("Unsupported save: %s", path)
-    raise SaveError("Save não suportado. Use um .sav/.srm válido de Gen 1, Gen 2 ou Gen 3.")
+    raise SaveError("Save não suportado. Use um .sav/.srm válido de Gen 1, Gen 2, Gen 3 ou Gen 4.")

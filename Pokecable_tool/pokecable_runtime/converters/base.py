@@ -235,14 +235,14 @@ class BaseConverter:
                 return
             converted.species.target_species_id = target_species_id
             converted.species.target_species_id_space = report.normalized_species.get("target_species_id_space")
-        
+
         removed_move_entries = {
             int(move["move_id"]): move
             for move in report.removed_moves
             if move.get("move_id") is not None
         }
         removed_move_ids = set(removed_move_entries)
-        
+
         if removed_move_ids:
             replacement_choices: dict[int, int] = {}
             for removed_id, removed_entry in removed_move_entries.items():
@@ -291,7 +291,7 @@ class BaseConverter:
                     # Se replacement_id == 0, o move e simplesmente removido
                 elif move_exists(m_id, self.target_generation):
                     new_moves.append(move)
-            
+
             converted.moves = new_moves
 
             should_apply_fallback = any("Pound sera aplicado" in item for item in report.transformations)
@@ -326,10 +326,16 @@ class BaseConverter:
 def get_converter(source_generation: int, target_generation: int) -> BaseConverter:
     from .gen1_to_gen2 import Gen1ToGen2Converter
     from .gen1_to_gen3 import Gen1ToGen3Converter
+    from .gen1_to_gen4 import Gen1ToGen4Converter
     from .gen2_to_gen1 import Gen2ToGen1Converter
     from .gen2_to_gen3 import Gen2ToGen3Converter
+    from .gen2_to_gen4 import Gen2ToGen4Converter
     from .gen3_to_gen1 import Gen3ToGen1Converter
     from .gen3_to_gen2 import Gen3ToGen2Converter
+    from .gen3_to_gen4 import Gen3ToGen4Converter
+    from .gen4_to_gen1 import Gen4ToGen1Converter
+    from .gen4_to_gen2 import Gen4ToGen2Converter
+    from .gen4_to_gen3 import Gen4ToGen3Converter
 
     converters: dict[tuple[int, int], type[BaseConverter]] = {
         (1, 2): Gen1ToGen2Converter,
@@ -338,5 +344,11 @@ def get_converter(source_generation: int, target_generation: int) -> BaseConvert
         (2, 3): Gen2ToGen3Converter,
         (3, 2): Gen3ToGen2Converter,
         (3, 1): Gen3ToGen1Converter,
+        (1, 4): Gen1ToGen4Converter,
+        (2, 4): Gen2ToGen4Converter,
+        (3, 4): Gen3ToGen4Converter,
+        (4, 1): Gen4ToGen1Converter,
+        (4, 2): Gen4ToGen2Converter,
+        (4, 3): Gen4ToGen3Converter,
     }
     return converters[(int(source_generation), int(target_generation))]()

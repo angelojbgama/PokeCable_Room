@@ -13,34 +13,48 @@ for _p in (str(REPO_ROOT), str(RUNTIME)):
 from parsers.gen1 import Gen1Parser  # noqa: E402
 from parsers.gen2 import Gen2Parser  # noqa: E402
 from parsers.gen3 import Gen3Parser  # noqa: E402
+from parsers.gen4 import Gen4Parser  # noqa: E402
 from converters.gen1_to_gen2 import Gen1ToGen2Converter  # noqa: E402
 from converters.gen1_to_gen3 import Gen1ToGen3Converter  # noqa: E402
+from converters.gen1_to_gen4 import Gen1ToGen4Converter  # noqa: E402
 from converters.gen2_to_gen1 import Gen2ToGen1Converter  # noqa: E402
 from converters.gen2_to_gen3 import Gen2ToGen3Converter  # noqa: E402
+from converters.gen2_to_gen4 import Gen2ToGen4Converter  # noqa: E402
 from converters.gen3_to_gen1 import Gen3ToGen1Converter  # noqa: E402
 from converters.gen3_to_gen2 import Gen3ToGen2Converter  # noqa: E402
-from data.items import equivalent_item_id  # noqa: E402
+from converters.gen3_to_gen4 import Gen3ToGen4Converter  # noqa: E402
+from converters.gen4_to_gen1 import Gen4ToGen1Converter  # noqa: E402
+from converters.gen4_to_gen2 import Gen4ToGen2Converter  # noqa: E402
+from converters.gen4_to_gen3 import Gen4ToGen3Converter  # noqa: E402
+from data.items import equivalent_item_id, item_exists  # noqa: E402
 from data.species import species_exists_in_generation  # noqa: E402
 
 from .report import BatteryReport  # noqa: E402
 
-PARSER_BY_GEN = {1: Gen1Parser, 2: Gen2Parser, 3: Gen3Parser}
+PARSER_BY_GEN = {1: Gen1Parser, 2: Gen2Parser, 3: Gen3Parser, 4: Gen4Parser}
 CONVERTERS = {
     (1, 2): Gen1ToGen2Converter,
     (1, 3): Gen1ToGen3Converter,
+    (1, 4): Gen1ToGen4Converter,
     (2, 1): Gen2ToGen1Converter,
     (2, 3): Gen2ToGen3Converter,
+    (2, 4): Gen2ToGen4Converter,
     (3, 1): Gen3ToGen1Converter,
     (3, 2): Gen3ToGen2Converter,
+    (3, 4): Gen3ToGen4Converter,
+    (4, 1): Gen4ToGen1Converter,
+    (4, 2): Gen4ToGen2Converter,
+    (4, 3): Gen4ToGen3Converter,
 }
 
 TARGET_SAVES = {
     1: "Pokémon - Red Version.sav",
     2: "Pokémon - Crystal Version.sav",
     3: "Pokémon - Emerald Version.sav",
+    4: "Pokemon - Platinum Version (USA).sav",
 }
 TEST_SAVES_ROOT = REPO_ROOT.parent / "roms" / "test-saves"
-GEN_DIR = {1: "gen 1", 2: "gen 2", 3: "gen 3"}
+GEN_DIR = {1: "gen 1", 2: "gen 2", 3: "gen 3", 4: "gen 4"}
 
 
 def _fresh(gen: int, path: Path):
@@ -51,6 +65,16 @@ def _fresh(gen: int, path: Path):
 
 def _target_path(gen: int) -> Path:
     return TEST_SAVES_ROOT / GEN_DIR[gen] / TARGET_SAVES[gen]
+
+
+def _first_transferable_canonical(parser, target_gen: int):
+    for summary in parser.list_party():
+        canonical = parser.export_canonical(summary.location)
+        if canonical.metadata.get("is_egg"):
+            continue
+        if species_exists_in_generation(canonical.species_national_id, target_gen):
+            return canonical
+    return None
 
 
 def _verify(report: BatteryReport, label: str, src_can, tgt_summary, target_gen: int, source_held_item: int | None) -> None:
@@ -90,7 +114,11 @@ def _verify(report: BatteryReport, label: str, src_can, tgt_summary, target_gen:
     else:
         expected_item = 0
         if source_held_item:
-            expected_item = equivalent_item_id(source_held_item, int(src_can.source_generation), target_gen) or 0
+            mapped_item = equivalent_item_id(source_held_item, int(src_can.source_generation), target_gen)
+            if mapped_item:
+                expected_item = mapped_item
+            elif int(src_can.source_generation) == int(target_gen) and item_exists(source_held_item, target_gen):
+                expected_item = source_held_item
         actual_item = getattr(tgt_summary, "held_item_id", None) or 0
         if expected_item != actual_item:
             report.add_fail(f"{label}: held_item mismatch expected={expected_item} actual={actual_item}")
@@ -111,9 +139,11 @@ def run(valid_saves: dict[int, list[Path]]) -> BatteryReport:
             label = f"{src_gen}→{tgt_gen} :: {src_path.name}"
             try:
                 src_parser = _fresh(src_gen, src_path)
-                src_can = src_parser.export_canonical("party:0")
+                src_can = _first_transferable_canonical(src_parser, tgt_gen)
             except Exception as exc:
                 report.add_fail(f"{label}: export_canonical raised {type(exc).__name__}: {exc}")
+                continue
+            if src_can is None:
                 continue
             if not species_exists_in_generation(src_can.species_national_id, tgt_gen):
                 continue  # legitimately incompatible, skip

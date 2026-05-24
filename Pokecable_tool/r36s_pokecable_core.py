@@ -406,14 +406,22 @@ class PokecableState:
     def enrich_pokemon(self, save: SaveModel, pokemon_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not pokemon_list:
             return []
-        response = self._runtime_post(
-            "/runtime/enrich-pokemon",
-            {
-                "generation": save.generation,
-                "game": save.game,
-                "pokemon": pokemon_list,
-            },
-        )
+        payload = {
+            "generation": save.generation,
+            "game": save.game,
+            "pokemon": pokemon_list,
+        }
+        try:
+            response = self._runtime_post("/runtime/enrich-pokemon", payload)
+        except SaveError as exc:
+            logger.warning("Remote Pokemon enrichment unavailable, using local runtime data: %s", exc)
+            try:
+                _ensure_backend_import_path()
+                from runtime_services import enrich_pokemon_payload  # type: ignore
+
+                response = enrich_pokemon_payload(payload)
+            except Exception as local_exc:
+                raise SaveError(f"Falha ao enriquecer Pokemon localmente: {local_exc}") from local_exc
         enriched = response.get("pokemon")
         if not isinstance(enriched, list) or len(enriched) != len(pokemon_list):
             raise SaveError("API retornou enriquecimento de Pokemon invalido.")
@@ -564,6 +572,7 @@ class PokecableState:
                     "is_shiny": is_shiny,
                     "level": pokemon.get("level", 0),
                     "experience": pokemon.get("experience"),
+                    "experience_progress": pokemon.get("experience_progress"),
                     "nickname": pokemon.get("nickname", ""),
                     "gender": pokemon.get("gender") or metadata.get("gender") or canonical_metadata.get("gender"),
                     "location": pokemon.get("location", "party:0"),

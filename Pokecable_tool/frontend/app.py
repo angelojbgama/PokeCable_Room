@@ -323,14 +323,206 @@ def move_labels(pokemon):
     return labels
 
 
+def _pokemon_generation_for_moves(pokemon):
+    if not isinstance(pokemon, dict):
+        return 0
+    raw = pokemon.get("raw") if isinstance(pokemon.get("raw"), dict) else {}
+    summary = pokemon.get("summary") if isinstance(pokemon.get("summary"), dict) else {}
+    canonical = pokemon.get("canonical") if isinstance(pokemon.get("canonical"), dict) else {}
+    for value in (
+        pokemon.get("generation"),
+        pokemon.get("source_generation"),
+        summary.get("generation"),
+        summary.get("source_generation"),
+        raw.get("generation"),
+        canonical.get("source_generation"),
+    ):
+        try:
+            generation = int(value or 0)
+        except (TypeError, ValueError):
+            generation = 0
+        if generation > 0:
+            return generation
+    return 0
+
+
+def _canonical_move_ids_and_names(canonical_moves):
+    moves = []
+    names = []
+    for move in (canonical_moves or [])[:4]:
+        if not isinstance(move, dict):
+            continue
+        try:
+            move_id = int(move.get("move_id") or 0)
+        except (TypeError, ValueError):
+            move_id = 0
+        if move_id <= 0:
+            continue
+        moves.append(move_id)
+        names.append(move.get("name") or "")
+    return moves, names
+
+
+def _safe_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _dict_value(value):
+    return value if isinstance(value, dict) else {}
+
+
+def _experience_progress_tuple(progress):
+    if not isinstance(progress, dict):
+        return None
+    if "fill_ratio" not in progress and "next_level_experience" not in progress:
+        return None
+    try:
+        filled = max(0.0, min(1.0, float(progress.get("fill_ratio") or 0.0)))
+        current_xp = int(progress.get("experience") or 0)
+        next_xp = int(progress.get("next_level_experience") or current_xp)
+        return filled, current_xp, next_xp
+    except Exception:
+        return None
+
+
+def _pokemon_experience_sources(pokemon):
+    pokemon = _dict_value(pokemon)
+    raw = _dict_value(pokemon.get("raw"))
+    summary = _dict_value(pokemon.get("summary"))
+    canonical = _dict_value(pokemon.get("canonical"))
+    raw_canonical = _dict_value(raw.get("canonical"))
+    raw_summary = _dict_value(raw.get("summary"))
+    canonical_species = _dict_value(canonical.get("species"))
+    raw_canonical_species = _dict_value(raw_canonical.get("species"))
+    canonical_metadata = _dict_value(canonical.get("metadata"))
+    raw_canonical_metadata = _dict_value(raw_canonical.get("metadata"))
+    return {
+        "pokemon": pokemon,
+        "raw": raw,
+        "summary": summary,
+        "raw_summary": raw_summary,
+        "canonical": canonical,
+        "raw_canonical": raw_canonical,
+        "canonical_species": canonical_species,
+        "raw_canonical_species": raw_canonical_species,
+        "canonical_metadata": canonical_metadata,
+        "raw_canonical_metadata": raw_canonical_metadata,
+    }
+
+
+def _resolve_experience_progress(pokemon):
+    sources = _pokemon_experience_sources(pokemon)
+    for progress in (
+        sources["pokemon"].get("experience_progress"),
+        sources["summary"].get("experience_progress"),
+        sources["raw"].get("experience_progress"),
+        sources["raw_summary"].get("experience_progress"),
+        sources["canonical_metadata"].get("experience_progress"),
+        sources["raw_canonical_metadata"].get("experience_progress"),
+    ):
+        parsed = _experience_progress_tuple(progress)
+        if parsed is not None:
+            return dict(progress), parsed
+
+    national_dex_id = _safe_int(
+        sources["pokemon"].get("national_dex_id")
+        or sources["summary"].get("national_dex_id")
+        or sources["raw"].get("national_dex_id")
+        or sources["raw_summary"].get("national_dex_id")
+        or sources["canonical"].get("species_national_id")
+        or sources["raw_canonical"].get("species_national_id")
+        or sources["canonical_species"].get("national_dex_id")
+        or sources["raw_canonical_species"].get("national_dex_id")
+    )
+    experience = None
+    for source in (
+        sources["pokemon"],
+        sources["summary"],
+        sources["raw"],
+        sources["raw_summary"],
+        sources["canonical"],
+        sources["raw_canonical"],
+    ):
+        if source.get("experience") not in (None, ""):
+            experience = source.get("experience")
+            break
+    if experience is None:
+        return {}, (0.0, 0, 0)
+
+    try:
+        _ensure_backend_import_path()
+        from data.growth_rates import experience_progress_for_species  # type: ignore
+
+        if national_dex_id <= 0:
+            generation = _safe_int(
+                sources["pokemon"].get("generation")
+                or sources["pokemon"].get("source_generation")
+                or sources["summary"].get("generation")
+                or sources["summary"].get("source_generation")
+                or sources["raw"].get("generation")
+                or sources["raw"].get("source_generation")
+                or sources["canonical"].get("source_generation")
+                or sources["raw_canonical"].get("source_generation")
+            )
+            internal_species_id = _safe_int(
+                sources["pokemon"].get("species_id")
+                or sources["summary"].get("species_id")
+                or sources["raw"].get("species_id")
+                or sources["raw_summary"].get("species_id")
+                or sources["canonical_species"].get("source_species_id")
+                or sources["raw_canonical_species"].get("source_species_id")
+            )
+            if generation and internal_species_id:
+                try:
+                    from data.species import native_to_national  # type: ignore
+
+                    national_dex_id = int(native_to_national(generation, internal_species_id) or 0)
+                except Exception:
+                    national_dex_id = 0
+        if national_dex_id <= 0:
+            return {}, (0.0, 0, 0)
+        progress = dict(experience_progress_for_species(national_dex_id, int(experience)))
+        parsed = _experience_progress_tuple(progress)
+        return progress, parsed or (0.0, 0, 0)
+    except Exception:
+        return {}, (0.0, 0, 0)
+
+
+def enrich_pokemon_experience_for_display(pokemon):
+    if not isinstance(pokemon, dict):
+        return pokemon
+    progress, parsed = _resolve_experience_progress(pokemon)
+    if not progress:
+        return pokemon
+    enriched = dict(pokemon)
+    enriched["experience_progress"] = progress
+    if enriched.get("experience") in (None, ""):
+        enriched["experience"] = parsed[1]
+    return enriched
+
+
 def move_display_entries(pokemon):
     raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
+    summary = (pokemon or {}).get("summary", {}) if isinstance(pokemon, dict) else {}
     canonical = (pokemon or {}).get("canonical", {}) if isinstance(pokemon, dict) else {}
-    moves = (pokemon or {}).get("moves") or raw.get("moves") or []
-    names = (pokemon or {}).get("move_names") or raw.get("move_names") or []
+    summary = summary if isinstance(summary, dict) else {}
+    raw = raw if isinstance(raw, dict) else {}
+    canonical = canonical if isinstance(canonical, dict) else {}
     canonical_moves = (canonical.get("moves") if isinstance(canonical, dict) else []) or []
+    moves = (pokemon or {}).get("moves") or summary.get("moves") or raw.get("moves") or []
+    names = (pokemon or {}).get("move_names") or summary.get("move_names") or raw.get("move_names") or []
+    if not moves and canonical_moves:
+        moves, names = _canonical_move_ids_and_names(canonical_moves)
     raw_move_details = raw.get("move_details") if isinstance(raw, dict) else []
+    summary_move_details = summary.get("move_details") if isinstance(summary, dict) else []
     top_move_details = (pokemon or {}).get("move_details") if isinstance(pokemon, dict) else []
+    raw_move_details = raw_move_details if isinstance(raw_move_details, list) else []
+    summary_move_details = summary_move_details if isinstance(summary_move_details, list) else []
+    top_move_details = top_move_details if isinstance(top_move_details, list) else []
+    generation = _pokemon_generation_for_moves(pokemon)
     entries = []
     for idx, move_id in enumerate(moves[:4]):
         if not move_id:
@@ -346,6 +538,8 @@ def move_display_entries(pokemon):
             move_detail = canonical_moves[idx]
         if not move_detail and idx < len(top_move_details) and isinstance(top_move_details[idx], dict):
             move_detail = top_move_details[idx]
+        if not move_detail and idx < len(summary_move_details) and isinstance(summary_move_details[idx], dict):
+            move_detail = summary_move_details[idx]
         if not move_detail and idx < len(raw_move_details) and isinstance(raw_move_details[idx], dict):
             move_detail = raw_move_details[idx]
         if isinstance(move_detail, dict):
@@ -355,7 +549,10 @@ def move_display_entries(pokemon):
             _ensure_backend_import_path()
             from data.moves import move_base_pp  # type: ignore
 
-            base_pp = move_base_pp(move_id) or 0
+            try:
+                base_pp = move_base_pp(move_id, generation) or 0
+            except TypeError:
+                base_pp = move_base_pp(move_id) or 0
         except Exception:
             base_pp = 0
         if max_pp is None or int(max_pp or 0) <= 0:
@@ -367,73 +564,8 @@ def move_display_entries(pokemon):
 
 
 def pokemon_xp_bar(pokemon):
-    raw = (pokemon or {}).get("raw", {}) if isinstance(pokemon, dict) else {}
-    raw = raw if isinstance(raw, dict) else {}
-    summary = (pokemon or {}).get("summary", {}) if isinstance(pokemon, dict) else {}
-    summary = summary if isinstance(summary, dict) else {}
-    canonical = (pokemon or {}).get("canonical", {}) if isinstance(pokemon, dict) else {}
-    canonical = canonical if isinstance(canonical, dict) else {}
-    canonical_species = canonical.get("species", {}) if isinstance(canonical.get("species"), dict) else {}
-    canonical_metadata = canonical.get("metadata", {}) if isinstance(canonical.get("metadata"), dict) else {}
-    for progress in (
-        (pokemon or {}).get("experience_progress") if isinstance(pokemon, dict) else None,
-        raw.get("experience_progress") if isinstance(raw, dict) else None,
-        summary.get("experience_progress") if isinstance(summary, dict) else None,
-        canonical_metadata.get("experience_progress") if isinstance(canonical_metadata, dict) else None,
-    ):
-        if not isinstance(progress, dict):
-            continue
-        try:
-            filled = max(0.0, min(1.0, float(progress.get("fill_ratio") or 0.0)))
-            current_xp = int(progress.get("experience") or 0)
-            next_xp = int(progress.get("next_level_experience") or current_xp)
-            return filled, current_xp, next_xp
-        except Exception:
-            continue
-
-    national_dex_id = int(
-        (pokemon or {}).get("national_dex_id")
-        or raw.get("national_dex_id")
-        or canonical.get("species_national_id")
-        or canonical_species.get("national_dex_id")
-        or 0
-    )
-    experience = None
-    for source in (canonical, pokemon or {}, raw, summary):
-        if isinstance(source, dict) and source.get("experience") not in (None, ""):
-            experience = source.get("experience")
-            break
-    if experience is None:
-        return 0.0, 0, 0
-    try:
-        _ensure_backend_import_path()
-        from data.growth_rates import experience_progress_for_species  # type: ignore
-
-        if national_dex_id <= 0:
-            generation = int((pokemon or {}).get("generation") or raw.get("generation") or (canonical.get("source_generation") if isinstance(canonical, dict) else 0) or 0)
-            internal_species_id = int(
-                (pokemon or {}).get("species_id")
-                or raw.get("species_id")
-                or summary.get("species_id")
-                or canonical_species.get("source_species_id")
-                or 0
-            )
-            if generation and internal_species_id:
-                try:
-                    from data.species import native_to_national  # type: ignore
-                    national_dex_id = int(native_to_national(generation, internal_species_id) or 0)
-                except Exception:
-                    national_dex_id = 0
-        if national_dex_id <= 0:
-            return 0.0, 0, 0
-        progress = experience_progress_for_species(national_dex_id, int(experience))
-        return (
-            max(0.0, min(1.0, float(progress.get("fill_ratio") or 0.0))),
-            int(progress.get("experience") or 0),
-            int(progress.get("next_level_experience") or progress.get("experience") or 0),
-        )
-    except Exception:
-        return 0.0, 0, 0
+    _, parsed = _resolve_experience_progress(pokemon)
+    return parsed
 
 
 def is_move_number_label(value):
@@ -644,6 +776,7 @@ def right_visor_rect(panel):
 def draw_pokemon_detail_component(screen, fonts, panel_area, pokemon, display_name, sprite, loading, language="pt", visor_tint=None):
     """Componente modular: visor digital + box informativo com item e ataques."""
     _, _, small_f, tiny_f = fonts
+    pokemon = enrich_pokemon_experience_for_display(pokemon)
 
     side_pad = 12
     visor_height = 100
@@ -1408,13 +1541,10 @@ def draw_deposit_confirm(screen, fonts, pokemon, sprite_loader, language="pt"):
     pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=0)
     pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=0)
 
-    visor_rect = right_visor_rect(left_panel)
-    draw_digital_visor(screen, visor_rect, 1.0)
-    pygame.draw.rect(screen, BORDER, visor_rect, 2, border_radius=0)
-
     name = pokemon_display_name(pokemon)
     msg = t(language, "deposit_question", name=name)
-    wrap_text(screen, body_f, msg, pygame.Rect(visor_rect.x + 10, visor_rect.y + 10, visor_rect.w - 20, 50), (0, 0, 0), max_lines=2)
+    text_area = pygame.Rect(left_panel.x + 18, left_panel.y + 22, left_panel.w - 36, 68)
+    wrap_text(screen, body_f, msg, text_area, TEXT, line_gap=2)
 
     level = (pokemon or {}).get("level")
     details = []
@@ -1422,8 +1552,14 @@ def draw_deposit_confirm(screen, fonts, pokemon, sprite_loader, language="pt"):
         details.append(t(language, "level_short", level=level))
     details.append(t(language, "deposit_help"))
     details.append(t(language, "backup_help"))
-    for i, detail in enumerate(details):
-        wrap_text(screen, tiny_f, detail, pygame.Rect(visor_rect.x + 10, visor_rect.y + 66 + i * 14, visor_rect.w - 20, 13), (0, 0, 0), max_lines=1)
+    details_area = pygame.Rect(left_panel.x + 18, text_area.bottom + 12, left_panel.w - 36, left_panel.h - (text_area.bottom - left_panel.y) - 30)
+    detail_y = details_area.y
+    for index, detail in enumerate(details):
+        font_obj = small_f if index == 0 and level else tiny_f
+        color = TEXT if index == 0 and level else MUTED
+        line_area = pygame.Rect(details_area.x, detail_y, details_area.w, details_area.bottom - detail_y)
+        next_y = wrap_text(screen, font_obj, detail, line_area, color, line_gap=2)
+        detail_y = next_y + 8
 
     entry = _build_sprite_entry(pokemon)
     sprite_loader.request_for(entry)

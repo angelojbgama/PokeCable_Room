@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from data.items import ITEM_IDS_BY_GENERATION_AND_NAME
-from data.species import GEN1_INTERNAL_TO_NATIONAL, GEN3_INTERNAL_TO_NATIONAL, NATIONAL_TO_GEN2_ID
+from data.species import GEN1_INTERNAL_TO_NATIONAL, GEN3_INTERNAL_TO_NATIONAL, NATIONAL_TO_GEN2_ID, NATIONAL_TO_GEN4_ID
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +43,10 @@ SIMPLE_TRADE_EVOLUTION_RULES: tuple[TradeEvolutionRule, ...] = (
     TradeEvolutionRule(3, 67, 68, "Machoke", "Machamp"),
     TradeEvolutionRule(3, 75, 76, "Graveler", "Golem"),
     TradeEvolutionRule(3, 93, 94, "Haunter", "Gengar"),
+    TradeEvolutionRule(4, 64, 65, "Kadabra", "Alakazam"),
+    TradeEvolutionRule(4, 67, 68, "Machoke", "Machamp"),
+    TradeEvolutionRule(4, 75, 76, "Graveler", "Golem"),
+    TradeEvolutionRule(4, 93, 94, "Haunter", "Gengar"),
 )
 
 
@@ -65,6 +69,19 @@ ITEM_TRADE_EVOLUTION_RULES: tuple[TradeEvolutionRule, ...] = (
     TradeEvolutionRule(3, 137, 233, "Porygon", "Porygon2", _item_id(3, "Up-Grade"), "Up-Grade"),
     TradeEvolutionRule(3, 373, 374, "Clamperl", "Huntail", _item_id(3, "Deep Sea Tooth"), "Deep Sea Tooth"),
     TradeEvolutionRule(3, 373, 375, "Clamperl", "Gorebyss", _item_id(3, "Deep Sea Scale"), "Deep Sea Scale"),
+    TradeEvolutionRule(4, 61, 186, "Poliwhirl", "Politoed", 221, "King's Rock"),
+    TradeEvolutionRule(4, 79, 199, "Slowpoke", "Slowking", 221, "King's Rock"),
+    TradeEvolutionRule(4, 95, 208, "Onix", "Steelix", 233, "Metal Coat"),
+    TradeEvolutionRule(4, 123, 212, "Scyther", "Scizor", 233, "Metal Coat"),
+    TradeEvolutionRule(4, 117, 230, "Seadra", "Kingdra", 235, "Dragon Scale"),
+    TradeEvolutionRule(4, 137, 233, "Porygon", "Porygon2", 252, "Up-Grade"),
+    TradeEvolutionRule(4, 366, 367, "Clamperl", "Huntail", 226, "Deep Sea Tooth"),
+    TradeEvolutionRule(4, 366, 368, "Clamperl", "Gorebyss", 227, "Deep Sea Scale"),
+    TradeEvolutionRule(4, 112, 464, "Rhydon", "Rhyperior", 321, "Protector"),
+    TradeEvolutionRule(4, 125, 466, "Electabuzz", "Electivire", 322, "Electirizer"),
+    TradeEvolutionRule(4, 126, 467, "Magmar", "Magmortar", 323, "Magmarizer"),
+    TradeEvolutionRule(4, 233, 474, "Porygon2", "Porygon-Z", 324, "Dubious Disc"),
+    TradeEvolutionRule(4, 356, 477, "Dusclops", "Dusknoir", 325, "Reaper Cloth"),
 )
 
 
@@ -85,4 +102,6 @@ def species_exists_in_native_generation(generation: int, species_id: int) -> boo
         return species_id in NATIONAL_TO_GEN2_ID
     if generation == 3:
         return species_id in GEN3_INTERNAL_TO_NATIONAL
+    if generation == 4:
+        return species_id in NATIONAL_TO_GEN4_ID
     return False

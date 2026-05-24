@@ -392,5 +392,11 @@ BASE_STATS: dict[int, dict[str, Any]] = {
     386: {'stats': {'hp': 50, 'atk': 150, 'def': 50, 'spa': 150, 'spd': 50, 'spe': 150}, 'types': ['psychic']},
 }
 
+try:
+    from .gen4_static import GEN4_BASE_STATS
+except Exception:
+    GEN4_BASE_STATS = {}
+BASE_STATS.update(GEN4_BASE_STATS)
+
 def get_base_stats(national_dex_id: int) -> dict[str, Any] | None:
     return BASE_STATS.get(int(national_dex_id))

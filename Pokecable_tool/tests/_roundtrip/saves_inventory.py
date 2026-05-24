@@ -14,6 +14,7 @@ for _p in (str(REPO_ROOT), str(RUNTIME)):
 from parsers.gen1 import Gen1Parser  # noqa: E402
 from parsers.gen2 import Gen2Parser  # noqa: E402
 from parsers.gen3 import Gen3Parser  # noqa: E402
+from parsers.gen4 import Gen4Parser  # noqa: E402
 from .report import BatteryReport  # noqa: E402
 
 TEST_SAVES_ROOT = REPO_ROOT.parent / "roms" / "test-saves"
@@ -22,17 +23,18 @@ GEN_DIRS = {
     1: TEST_SAVES_ROOT / "gen 1",
     2: TEST_SAVES_ROOT / "gen 2",
     3: TEST_SAVES_ROOT / "gen 3",
+    4: TEST_SAVES_ROOT / "gen 4",
 }
 
-PARSER_BY_GEN = {1: Gen1Parser, 2: Gen2Parser, 3: Gen3Parser}
+PARSER_BY_GEN = {1: Gen1Parser, 2: Gen2Parser, 3: Gen3Parser, 4: Gen4Parser}
 
 
 def discover_saves() -> dict[int, list[Path]]:
-    out: dict[int, list[Path]] = {1: [], 2: [], 3: []}
+    out: dict[int, list[Path]] = {1: [], 2: [], 3: [], 4: []}
     for gen, folder in GEN_DIRS.items():
         if not folder.exists():
             continue
-        for sav in sorted(folder.glob("*.sav")):
+        for sav in sorted(path for path in folder.iterdir() if path.is_file() and path.suffix.lower() == ".sav"):
             out[gen].append(sav)
     return out
 
@@ -51,7 +53,7 @@ def try_load(gen: int, path: Path) -> tuple[bool, str]:
 def run() -> tuple[BatteryReport, dict[int, list[Path]]]:
     report = BatteryReport(name="A: saves inventory")
     saves = discover_saves()
-    valid: dict[int, list[Path]] = {1: [], 2: [], 3: []}
+    valid: dict[int, list[Path]] = {1: [], 2: [], 3: [], 4: []}
     for gen, paths in saves.items():
         for p in paths:
             ok, msg = try_load(gen, p)

@@ -811,6 +811,11 @@ try:
         LEVEL_UP_LEARNSETS as LEVEL_UP_LEARNSETS_GEN3,
         VERSION_GROUP_BY_GAME as VERSION_GROUP_BY_GAME_GEN3,
     )
+    from .learnsets_gen4 import (
+        HM_MOVES_BY_VERSION_GROUP as HM_MOVES_BY_VERSION_GROUP_GEN4,
+        LEVEL_UP_LEARNSETS as LEVEL_UP_LEARNSETS_GEN4,
+        VERSION_GROUP_BY_GAME as VERSION_GROUP_BY_GAME_GEN4,
+    )
 except Exception:
     HM_MOVES_BY_VERSION_GROUP = {}
     LEVEL_UP_LEARNSETS = {}
@@ -823,18 +828,56 @@ else:
         HM_MOVES_BY_VERSION_GROUP_GEN1,
         HM_MOVES_BY_VERSION_GROUP_GEN2,
         HM_MOVES_BY_VERSION_GROUP_GEN3,
+        HM_MOVES_BY_VERSION_GROUP_GEN4,
     ):
         HM_MOVES_BY_VERSION_GROUP.update(value)
-    for value in (LEVEL_UP_LEARNSETS_GEN1, LEVEL_UP_LEARNSETS_GEN2, LEVEL_UP_LEARNSETS_GEN3):
+    for value in (LEVEL_UP_LEARNSETS_GEN1, LEVEL_UP_LEARNSETS_GEN2, LEVEL_UP_LEARNSETS_GEN3, LEVEL_UP_LEARNSETS_GEN4):
         LEVEL_UP_LEARNSETS.update(value)
-    for value in (VERSION_GROUP_BY_GAME_GEN1, VERSION_GROUP_BY_GAME_GEN2, VERSION_GROUP_BY_GAME_GEN3):
+    for value in (VERSION_GROUP_BY_GAME_GEN1, VERSION_GROUP_BY_GAME_GEN2, VERSION_GROUP_BY_GAME_GEN3, VERSION_GROUP_BY_GAME_GEN4):
         VERSION_GROUP_BY_GAME.update(value)
+
+
+VERSION_GROUP_GENERATION = {
+    "red-blue": 1,
+    "yellow": 1,
+    "gold-silver": 2,
+    "crystal": 2,
+    "ruby-sapphire": 3,
+    "emerald": 3,
+    "firered-leafgreen": 3,
+    "diamond-pearl": 4,
+    "platinum": 4,
+    "heartgold-soulsilver": 4,
+}
+
+
+def _populate_flat_learnsets_from_level_up() -> None:
+    grouped: dict[tuple[int, int], set[int]] = {}
+    for (version_group, national_dex_id), entries in LEVEL_UP_LEARNSETS.items():
+        generation = VERSION_GROUP_GENERATION.get(str(version_group))
+        if generation is None:
+            continue
+        key = (generation, int(national_dex_id))
+        grouped.setdefault(key, set()).update(
+            int(entry.get("move_id") or 0)
+            for entry in entries
+            if int(entry.get("move_id") or 0) > 0
+        )
+
+    for key, move_ids in grouped.items():
+        if key in LEARNSETS:
+            continue
+        LEARNSETS[key] = sorted(move_ids)
+
+
+_populate_flat_learnsets_from_level_up()
 
 
 DEFAULT_VERSION_GROUP_BY_GENERATION = {
     1: "red-blue",
     2: "crystal",
     3: "emerald",
+    4: "platinum",
 }
 
 
@@ -882,8 +925,8 @@ def get_level_up_replacements(
 
     level = _normalized_level(pokemon_level)
     entries = get_level_up_learnset(game, national_dex_id, generation=generation)
+    hm_move_ids = set(HM_MOVES_BY_VERSION_GROUP.get(version_group_for_game(game, generation), ()))
     if not entries and generation:
-        hm_move_ids = set(HM_MOVES_BY_VERSION_GROUP.get(version_group_for_game(game, generation), ()))
         return [
             {
                 "move_id": move_id,
@@ -902,6 +945,8 @@ def get_level_up_replacements(
             continue
         move_id = int(entry.get("move_id") or 0)
         if move_id <= 0:
+            continue
+        if move_id in hm_move_ids:
             continue
         enriched = dict(entry)
         enriched["name"] = enriched.get("name") or move_name(move_id) or f"Move #{move_id}"

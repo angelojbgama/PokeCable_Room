@@ -27,12 +27,20 @@ GEN3_SPECIES_GROWTH_RATE_IDS: tuple[int, ...] = (
     1, 1, 1,
 )
 
+try:
+    from .gen4_static import GEN4_GROWTH_RATE_IDS_BY_NATIONAL
+except Exception:
+    GEN4_GROWTH_RATE_IDS_BY_NATIONAL = {}
+
 
 def growth_rate_id_for_national(national_dex_id: int) -> int | None:
     national_dex_id = int(national_dex_id)
-    if national_dex_id < 1 or national_dex_id >= len(GEN3_SPECIES_GROWTH_RATE_IDS):
+    if national_dex_id < 1:
         return None
-    value = GEN3_SPECIES_GROWTH_RATE_IDS[national_dex_id]
+    if national_dex_id < len(GEN3_SPECIES_GROWTH_RATE_IDS):
+        value = GEN3_SPECIES_GROWTH_RATE_IDS[national_dex_id]
+        return value or None
+    value = GEN4_GROWTH_RATE_IDS_BY_NATIONAL.get(national_dex_id)
     return value or None
 
 

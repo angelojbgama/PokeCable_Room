@@ -4,6 +4,7 @@ from __future__ import annotations
 SAME_GENERATION = "same_generation"
 TIME_CAPSULE_GEN1_GEN2 = "time_capsule_gen1_gen2"
 FORWARD_TRANSFER_TO_GEN3 = "forward_transfer_to_gen3"
+FORWARD_TRANSFER_TO_GEN4 = "forward_transfer_to_gen4"
 LEGACY_DOWNCONVERT_EXPERIMENTAL = "legacy_downconvert_experimental"
 UNSUPPORTED = "unsupported"
 
@@ -12,12 +13,19 @@ TRADE_MODE_MATRIX: dict[tuple[int, int], str] = {
     (1, 1): SAME_GENERATION,
     (2, 2): SAME_GENERATION,
     (3, 3): SAME_GENERATION,
+    (4, 4): SAME_GENERATION,
     (1, 2): TIME_CAPSULE_GEN1_GEN2,
     (2, 1): TIME_CAPSULE_GEN1_GEN2,
     (1, 3): FORWARD_TRANSFER_TO_GEN3,
     (2, 3): FORWARD_TRANSFER_TO_GEN3,
+    (1, 4): FORWARD_TRANSFER_TO_GEN4,
+    (2, 4): FORWARD_TRANSFER_TO_GEN4,
+    (3, 4): FORWARD_TRANSFER_TO_GEN4,
     (3, 1): LEGACY_DOWNCONVERT_EXPERIMENTAL,
     (3, 2): LEGACY_DOWNCONVERT_EXPERIMENTAL,
+    (4, 1): LEGACY_DOWNCONVERT_EXPERIMENTAL,
+    (4, 2): LEGACY_DOWNCONVERT_EXPERIMENTAL,
+    (4, 3): LEGACY_DOWNCONVERT_EXPERIMENTAL,
 }
 
 

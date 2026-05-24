@@ -2,12 +2,19 @@ from __future__ import annotations
 
 GENDER_RATES_BY_NATIONAL_DEX: list[int | None] = [None, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 8, 8, 8, 0, 0, 0, 6, 6, 6, 6, 6, 6, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 2, 4, 4, 4, 2, 2, 2, 2, 2, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, -1, -1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, -1, -1, 4, 4, 4, 4, 0, 0, 4, 4, 4, 4, 4, 8, 4, 8, 4, 4, 4, 4, -1, -1, 4, 4, 8, 2, 2, 4, 0, 4, 4, 4, -1, 1, 1, 1, 1, -1, 1, 1, 1, 1, 1, 1, -1, -1, -1, 4, 4, 4, -1, -1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 6, 6, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 4, 4, 4, -1, 4, 4, 4, 4, 4, 4, 4, 6, 6, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 6, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, -1, 4, 4, 0, 0, 8, 2, 2, 8, 8, -1, -1, -1, 4, 4, 4, -1, -1, -1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, -1, 4, 4, 4, 2, 2, 6, 4, 6, 6, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 0, 8, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, -1, -1, 4, 4, 4, 4, -1, -1, 1, 1, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 1, 6, 4, 4, 4, -1, -1, -1, -1, -1, -1, 8, 0, -1, -1, -1, -1, -1]
 
+try:
+    from .gen4_static import GEN4_GENDER_RATES_BY_NATIONAL
+except Exception:
+    GEN4_GENDER_RATES_BY_NATIONAL = {}
+
 
 def gender_rate_for_species(national_dex_id: int | None) -> int | None:
     dex_id = int(national_dex_id or 0)
-    if dex_id <= 0 or dex_id >= len(GENDER_RATES_BY_NATIONAL_DEX):
+    if dex_id <= 0:
         return None
-    return GENDER_RATES_BY_NATIONAL_DEX[dex_id]
+    if dex_id < len(GENDER_RATES_BY_NATIONAL_DEX):
+        return GENDER_RATES_BY_NATIONAL_DEX[dex_id]
+    return GEN4_GENDER_RATES_BY_NATIONAL.get(dex_id)
 
 
 def gender_from_gen2_attack_dv(national_dex_id: int | None, attack_dv: int) -> str | None:
