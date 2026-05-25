@@ -2563,12 +2563,21 @@ def draw_update_screen(screen, fonts, update_status, update_data, language):
     detail_text = ""
     show_update_btn = False
 
+    def update_error_detail(data):
+        if not isinstance(data, dict):
+            return t(language, "error_unknown")
+        for key in ("error", "message", "stderr", "stdout"):
+            value = str(data.get(key) or "").strip()
+            if value:
+                return value[:100]
+        return t(language, "error_unknown")
+
     if update_status == "checking" or update_status == "":
         status_text = t(language, "update_checking")
         detail_text = ""
     elif update_status == "error":
         status_text = t(language, "update_error")
-        detail_text = (update_data.get("error") or t(language, "error_unknown"))[:100]
+        detail_text = update_error_detail(update_data)
     elif update_status == "up_to_date":
         status_text = t(language, "update_up_to_date")
         current = update_data.get("current", "?")
