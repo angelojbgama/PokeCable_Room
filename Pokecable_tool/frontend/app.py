@@ -40,15 +40,15 @@ def tr(language, key, **kwargs):
             return value
     return value
 from frontend.item_sprites import draw_item_sprite
+from frontend import input as input_module
 from frontend.input import (
     ACTION_DEBOUNCE,
     AXIS_THRESHOLD,
     AXIS_X,
     AXIS_Y,
-    JOY_BUTTON_SELECT,
-    JOY_BUTTON_START,
     JOY_MAP,
     QUIT_COMBO_WINDOW,
+    apply_detected_profile,
     debounce_action,
     event_to_action,
     translate_joy_button,
@@ -2891,6 +2891,16 @@ def main(initial_screen=None):
             joy.get_numhats(),
         )
     logger.info("Boot timing: joystick enumeration %.3fs (count=%s)", time.perf_counter() - joystick_enum_start, len(joysticks))
+
+    device_override = os.getenv("POKECABLE_DEVICE", "").strip().lower() or None
+    applied = apply_detected_profile(
+        [joy.get_name() for joy in joysticks],
+        override=device_override,
+    )
+    if applied:
+        logger.info("Input profile applied: %s", applied)
+    else:
+        logger.info("Using default input profile (R36S)")
 
     pygame.mouse.set_visible(False)
     display_start = time.perf_counter()

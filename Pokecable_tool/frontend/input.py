@@ -24,6 +24,48 @@ JOY_MAP = {
     "right": {11},
 }
 
+_PROFILE_RG35XX_KNULLI = {
+    "joy_map": {
+        "select": {3},
+        "back": {4},
+        "x": {6},
+        "y": {5},
+        "up": set(),
+        "down": set(),
+        "left": set(),
+        "right": set(),
+    },
+    "start": 10,
+    "select_btn": 9,
+}
+
+_DEVICE_PROFILES = {
+    "deeplay": _PROFILE_RG35XX_KNULLI,
+    "rg35xx_knulli": _PROFILE_RG35XX_KNULLI,
+}
+
+
+def apply_detected_profile(joystick_names, override=None):
+    global JOY_BUTTON_START, JOY_BUTTON_SELECT
+    key = override
+    if not key:
+        for name in joystick_names:
+            name_lower = name.lower()
+            for profile_key in _DEVICE_PROFILES:
+                if profile_key in name_lower:
+                    key = profile_key
+                    break
+            if key:
+                break
+    if not key or key not in _DEVICE_PROFILES:
+        return None
+    profile = _DEVICE_PROFILES[key]
+    JOY_MAP.clear()
+    JOY_MAP.update({k: set(v) for k, v in profile["joy_map"].items()})
+    JOY_BUTTON_START = profile["start"]
+    JOY_BUTTON_SELECT = profile["select_btn"]
+    return key
+
 
 def translate_joy_button(button_id):
     for action, ids in JOY_MAP.items():
