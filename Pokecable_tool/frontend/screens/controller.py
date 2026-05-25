@@ -12,6 +12,11 @@ from frontend.screens.menu import (
     SelfSelectSaveAScreen,
     SelfSelectSaveBScreen,
     UpdateScreen,
+    ExtrasSelectSaveScreen,
+    ExtrasCategoryScreen,
+    ExtrasEventsScreen,
+    ExtrasEreaderScreen,
+    ExtrasResultScreen,
 )
 from frontend.screens.selection import (
     EnterLanEndpointScreen,
@@ -177,6 +182,11 @@ def register_default_screens(controller):
         DepositConfirmScreen(),
         TradingScreen(),
         TradeResultScreen(),
+        ExtrasSelectSaveScreen(),
+        ExtrasCategoryScreen(),
+        ExtrasEventsScreen(),
+        ExtrasEreaderScreen(),
+        ExtrasResultScreen(),
     ):
         controller.register(screen)
     return controller

@@ -944,12 +944,22 @@ def draw_menu(screen, fonts, selected, language):
     rect(screen, PANEL, list_panel, 0)
     pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
 
-    for idx, item in enumerate(items):
-        y = list_panel.y + 14 + idx * 48
+    visible = 6
+    row_h = 48
+    scroll_offset = list_scroll_offset("menu", selected, len(items), visible)
+    first = max(0, int(scroll_offset) - 1)
+    last = min(len(items), int(scroll_offset) + visible + 2)
+    previous_clip = screen.get_clip()
+    screen.set_clip(list_panel.inflate(-8, -8))
+    for idx in range(first, last):
+        item = items[idx]
+        y = list_panel.y + 14 + int((idx - scroll_offset) * row_h)
         row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
         color = SCREEN if idx == selected else TEXT
         draw_selectable_list_item(screen, row, idx == selected)
         text(screen, small_f, item, row.x + 9, row.y + 9, color, row.w - 18)
+    screen.set_clip(previous_clip)
+    LIST_SCROLLBAR.draw(screen, scroll_offset, len(items), visible)
 
     info_panel = right_info_panel(layout)
     rect(screen, PANEL_2, info_panel, 0)
@@ -2603,7 +2613,7 @@ def draw_extras_select_save(screen, fonts, saves, selected, language):
     draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
 
 
-def draw_extras_category(screen, fonts, categories, selected, language):
+def draw_extras_category(screen, fonts, categories, selected, language, error_message=None):
     """Choose between Event Tickets or e-Reader Battles."""
     _, _, small_f, tiny_f = fonts
     layout = draw_pokedex_shell(screen, t(language, "menu_extras"))
@@ -2612,18 +2622,33 @@ def draw_extras_category(screen, fonts, categories, selected, language):
     rect(screen, PANEL, list_panel, 0)
     pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
 
-    category_labels = {
-        "tickets": t(language, "extras_tickets"),
-        "ereader": t(language, "extras_ereader"),
-    }
+    if error_message:
+        text(screen, small_f, error_message, list_panel.x + 20, list_panel.y + 80, ACCENT, list_panel.w - 40)
+    elif not categories:
+        text(screen, small_f, t(language, "extras_loading"), list_panel.x + 20, list_panel.y + 80, MUTED, list_panel.w - 40)
+    else:
+        category_labels = {
+            "tickets": t(language, "extras_tickets"),
+            "ereader": t(language, "extras_ereader"),
+        }
 
-    for idx, cat in enumerate(categories):
-        label = category_labels.get(cat, cat)
-        y = list_panel.y + 14 + idx * 48
-        row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
-        color = SCREEN if idx == selected else TEXT
-        draw_selectable_list_item(screen, row, idx == selected)
-        text(screen, small_f, label, row.x + 9, row.y + 9, color, row.w - 18)
+        visible = 6
+        row_h = 48
+        scroll_offset = list_scroll_offset("extras_category", selected, len(categories), visible)
+        first = max(0, int(scroll_offset) - 1)
+        last = min(len(categories), int(scroll_offset) + visible + 2)
+        previous_clip = screen.get_clip()
+        screen.set_clip(list_panel.inflate(-8, -8))
+        for idx in range(first, last):
+            cat = categories[idx]
+            label = category_labels.get(cat, cat)
+            y = list_panel.y + 14 + int((idx - scroll_offset) * row_h)
+            row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
+            color = SCREEN if idx == selected else TEXT
+            draw_selectable_list_item(screen, row, idx == selected)
+            text(screen, small_f, label, row.x + 9, row.y + 9, color, row.w - 18)
+        screen.set_clip(previous_clip)
+        LIST_SCROLLBAR.draw(screen, scroll_offset, len(categories), visible)
 
     info_panel = right_info_panel(layout)
     rect(screen, PANEL_2, info_panel, 0)
@@ -2631,8 +2656,9 @@ def draw_extras_category(screen, fonts, categories, selected, language):
     draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
 
 
-def draw_extras_events(screen, fonts, events, selected, language):
+def draw_extras_events(screen, fonts, events, selected, language, scroll=0.0, applied_ids=None):
     """List of event tickets available for the selected game."""
+    applied_ids = applied_ids or set()
     _, _, small_f, tiny_f = fonts
     layout = draw_pokedex_shell(screen, t(language, "extras_tickets"))
 
@@ -2643,21 +2669,42 @@ def draw_extras_events(screen, fonts, events, selected, language):
     if not events:
         text(screen, small_f, t(language, "extras_no_events"), list_panel.x + 20, list_panel.y + 20, MUTED)
     else:
-        for idx, event in enumerate(events):
+        visible = 6
+        row_h = 48
+        scroll_offset = list_scroll_offset("extras_events", selected, len(events), visible)
+        first = max(0, int(scroll_offset) - 1)
+        last = min(len(events), int(scroll_offset) + visible + 2)
+        previous_clip = screen.get_clip()
+        screen.set_clip(list_panel.inflate(-8, -8))
+        for idx in range(first, last):
+            event = events[idx]
+            already_applied = event["id"] in applied_ids
             event_name = t(language, event["name_key"])
-            y = list_panel.y + 14 + idx * 48
+            label = f"✓ {event_name}" if already_applied else event_name
+            y = list_panel.y + 14 + int((idx - scroll_offset) * row_h)
             row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
-            color = SCREEN if idx == selected else TEXT
+            if already_applied:
+                color = MUTED
+            else:
+                color = SCREEN if idx == selected else TEXT
             draw_selectable_list_item(screen, row, idx == selected)
-            text(screen, small_f, event_name, row.x + 9, row.y + 9, color, row.w - 18)
+            text(screen, small_f, label, row.x + 9, row.y + 9, color, row.w - 18)
+        screen.set_clip(previous_clip)
+        LIST_SCROLLBAR.draw(screen, scroll_offset, len(events), visible)
 
     info_panel = right_info_panel(layout)
     rect(screen, PANEL_2, info_panel, 0)
     pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "extras_apply")), ("B", t(language, "btn_back"))])
+
+    selected_event = events[selected] if events and selected < len(events) else None
+    if selected_event and selected_event["id"] in applied_ids:
+        action_label = t(language, "extras_already_active")
+    else:
+        action_label = t(language, "extras_apply")
+    draw_footer_actions(screen, tiny_f, [("A", action_label), ("B", t(language, "btn_back"))])
 
 
-def draw_extras_ereader(screen, fonts, slots, battles, selected, language):
+def draw_extras_ereader(screen, fonts, slots, battles, selected, language, scroll=0.0, selected_slot=0):
     """Show e-Reader slots and available battles to inject."""
     _, _, small_f, tiny_f = fonts
     layout = draw_pokedex_shell(screen, t(language, "extras_ereader"))
@@ -2666,26 +2713,42 @@ def draw_extras_ereader(screen, fonts, slots, battles, selected, language):
     rect(screen, PANEL, list_panel, 0)
     pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
 
-    y_offset = list_panel.y + 14
-    for idx, battle in enumerate(battles):
+    visible = 6
+    row_h = 48
+    scroll_offset = list_scroll_offset("extras_ereader", selected, len(battles), visible)
+    first = max(0, int(scroll_offset) - 1)
+    last = min(len(battles), int(scroll_offset) + visible + 2)
+    previous_clip = screen.get_clip()
+    screen.set_clip(list_panel.inflate(-8, -8))
+    for idx in range(first, last):
+        battle = battles[idx]
         battle_name = battle["name"]
-        y = y_offset + idx * 48
+        y = list_panel.y + 14 + int((idx - scroll_offset) * row_h)
         row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
         color = SCREEN if idx == selected else TEXT
         draw_selectable_list_item(screen, row, idx == selected)
         text(screen, small_f, battle_name, row.x + 9, row.y + 9, color, row.w - 18)
+    screen.set_clip(previous_clip)
+    LIST_SCROLLBAR.draw(screen, scroll_offset, len(battles), visible)
 
     info_panel = right_info_panel(layout)
     rect(screen, PANEL_2, info_panel, 0)
     pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
 
     if slots:
-        slot_y = info_panel.y + 20
-        text(screen, tiny_f, t(language, "ereader_slot", slot="0"), info_panel.x + 20, slot_y, TEXT)
-        if slots[0]["name"] != "[Empty]":
-            text(screen, tiny_f, f"{slots[0]['name']}", info_panel.x + 20, slot_y + 18, MUTED)
+        slot_y = info_panel.y + 16
+        for idx, slot_info in enumerate(slots):
+            row = pygame.Rect(info_panel.x + 12, slot_y + idx * 28, info_panel.w - 24, 22)
+            if idx == selected_slot:
+                draw_selectable_list_item(screen, row, True)
+            label = t(language, "ereader_slot", slot=str(idx))
+            text(screen, tiny_f, label, row.x + 6, row.y + 4, SCREEN if idx == selected_slot else TEXT)
+            detail = slot_info.get("name") or "[Empty]"
+            if slot_info.get("battle_id"):
+                detail = f"{detail} ({slot_info['battle_id']})"
+            text(screen, tiny_f, detail, row.x + 64, row.y + 4, MUTED, row.w - 70)
 
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "extras_apply")), ("B", t(language, "btn_back"))])
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "extras_apply")), ("L/R", "Slot"), ("B", t(language, "btn_back"))])
 
 
 def draw_extras_result(screen, fonts, result, language):
@@ -2710,7 +2773,7 @@ def draw_extras_result(screen, fonts, result, language):
 
     if result.get("backup"):
         backup_y = y_offset + 50
-        text(screen, tiny_f, f"Backup: {result['backup'][:40]}", panel.x + 20, backup_y, MUTED, panel.w - 40)
+        text(screen, tiny_f, f"Backup: {str(result['backup'])[:40]}", panel.x + 20, backup_y, MUTED, panel.w - 40)
 
     info_panel = right_info_panel(layout)
     rect(screen, PANEL_2, info_panel, 0)

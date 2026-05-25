@@ -1,0 +1,176 @@
+{
+  "summary": {
+    "total_tests": 16,
+    "passed": 0,
+    "failed": 11,
+    "skipped": 5,
+    "by_generation": {
+      "gen1": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 3
+      },
+      "gen2": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 2
+      },
+      "gen3": {
+        "passed": 0,
+        "failed": 8,
+        "skipped": 0
+      },
+      "gen4": {
+        "passed": 0,
+        "failed": 2,
+        "skipped": 0
+      }
+    }
+  },
+  "results": [
+    {
+      "test": "gen1",
+      "save": "Pok\u00e9mon - Red Version.sav",
+      "generation": 1,
+      "event": null,
+      "status": "SKIPPED",
+      "message": "No events for this game",
+      "timestamp": "2026-05-24T21:52:32.758116"
+    },
+    {
+      "test": "gen1",
+      "save": "Pok\u00e9mon - Blue Version.sav",
+      "generation": 1,
+      "event": null,
+      "status": "SKIPPED",
+      "message": "No events for this game",
+      "timestamp": "2026-05-24T21:52:32.760898"
+    },
+    {
+      "test": "gen1",
+      "save": "Pok\u00e9mon - Yellow Version.sav",
+      "generation": 1,
+      "event": null,
+      "status": "SKIPPED",
+      "message": "No events for this game",
+      "timestamp": "2026-05-24T21:52:32.763686"
+    },
+    {
+      "test": "gen2",
+      "save": "Pok\u00e9mon - Gold Version.sav",
+      "generation": 2,
+      "event": null,
+      "status": "SKIPPED",
+      "message": "No events for this game",
+      "timestamp": "2026-05-24T21:52:32.766982"
+    },
+    {
+      "test": "gen2",
+      "save": "Pok\u00e9mon - Silver Version.sav",
+      "generation": 2,
+      "event": null,
+      "status": "SKIPPED",
+      "message": "No events for this game",
+      "timestamp": "2026-05-24T21:52:32.771223"
+    },
+    {
+      "test": "gen2_with_extras",
+      "save": "Pok\u00e9mon - Crystal Version.sav",
+      "generation": 2,
+      "event": "gen2_gsball",
+      "status": "FAILED",
+      "message": "Unexpected error: 'SaveModel' object has no attribute 'save'",
+      "timestamp": "2026-05-24T21:52:33.937058"
+    },
+    {
+      "test": "gen3_with_extras",
+      "save": "Pok\u00e9mon - Ruby Version.sav",
+      "generation": 3,
+      "event": "gen3_eon_ticket",
+      "status": "FAILED",
+      "message": "SaveError: Save Gen 3 incompleto/corrompido no slot ativo: faltam se\u00e7\u00f5es de PC (8, 9).",
+      "timestamp": "2026-05-24T21:52:33.998336"
+    },
+    {
+      "test": "gen3_ereader",
+      "save": "Pok\u00e9mon - Ruby Version.sav",
+      "generation": 3,
+      "event": "ereader",
+      "status": "FAILED",
+      "message": "SaveError: Save Gen 3 incompleto/corrompido no slot ativo: faltam se\u00e7\u00f5es de PC (8, 9).",
+      "timestamp": "2026-05-24T21:52:34.053878"
+    },
+    {
+      "test": "gen3_with_extras",
+      "save": "Pok\u00e9mon - Sapphire Version.sav",
+      "generation": 3,
+      "event": "gen3_eon_ticket",
+      "status": "FAILED",
+      "message": "Event application failed: int too big to convert",
+      "timestamp": "2026-05-24T21:52:34.627175"
+    },
+    {
+      "test": "gen3_ereader",
+      "save": "Pok\u00e9mon - Sapphire Version.sav",
+      "generation": 3,
+      "event": "ereader",
+      "status": "FAILED",
+      "message": "e-Reader application failed: Erro ao injetar batalha: bytearray index out of range",
+      "timestamp": "2026-05-24T21:52:35.272590"
+    },
+    {
+      "test": "gen3_with_extras",
+      "save": "Pok\u00e9mon - Emerald Version.sav",
+      "generation": 3,
+      "event": "gen3_eon_ticket",
+      "status": "FAILED",
+      "message": "Event application failed: int too big to convert",
+      "timestamp": "2026-05-24T21:52:36.934181"
+    },
+    {
+      "test": "gen3_with_extras",
+      "save": "Pok\u00e9mon - Emerald Version.sav",
+      "generation": 3,
+      "event": "gen3_old_sea_map",
+      "status": "FAILED",
+      "message": "Event application failed: int too big to convert",
+      "timestamp": "2026-05-24T21:52:38.466174"
+    },
+    {
+      "test": "gen3_with_extras",
+      "save": "Pok\u00e9mon - FireRed Version.sav",
+      "generation": 3,
+      "event": "gen3_aurora",
+      "status": "FAILED",
+      "message": "SaveError: Save Gen 3 incompleto/corrompido no slot ativo: faltam se\u00e7\u00f5es de PC (12).",
+      "timestamp": "2026-05-24T21:52:38.514864"
+    },
+    {
+      "test": "gen3_with_extras",
+      "save": "Pok\u00e9mon - LeafGreen Version.sav",
+      "generation": 3,
+      "event": "gen3_mystic",
+      "status": "FAILED",
+      "message": "Unexpected error: 'SaveModel' object has no attribute 'save'",
+      "timestamp": "2026-05-24T21:52:39.042034"
+    },
+    {
+      "test": "gen4_with_extras",
+      "save": "Pokemon - Platinum Version (USA).sav",
+      "generation": 4,
+      "event": "gen4_member_card",
+      "status": "FAILED",
+      "message": "Event application failed: Quantidade maxima excedida para Secret Key.",
+      "timestamp": "2026-05-24T21:52:40.943449"
+    },
+    {
+      "test": "gen4_with_extras",
+      "save": "Pokemon - Platinum Version (USA).sav",
+      "generation": 4,
+      "event": "gen4_oaks_letter",
+      "status": "FAILED",
+      "message": "Event application failed: Quantidade maxima excedida para Gracidea.",
+      "timestamp": "2026-05-24T21:52:42.915999"
+    }
+  ]
+}

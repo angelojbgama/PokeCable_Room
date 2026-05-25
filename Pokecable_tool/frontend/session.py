@@ -106,6 +106,10 @@ class UiSessionState:
     extras_result: dict[str, Any] = field(default_factory=dict)
     extras_ereader_slots: list[dict[str, Any]] = field(default_factory=list)
     extras_ereader_index: int = 0
+    extras_ereader_slot_index: int = 0
+    extras_events_scroll: float = 0.0
+    extras_ereader_scroll: float = 0.0
+    extras_applied_ids: set = field(default_factory=set)
 
     def reset_info_modal(self) -> None:
         self.info_modal_data = default_info_modal()

@@ -1325,7 +1325,7 @@ class Gen3Parser:
         for index in range(pocket.capacity):
             slot_offset = base + index * 4
             item_id = int.from_bytes(data[slot_offset : slot_offset + 2], "little")
-            quantity = int.from_bytes(data[slot_offset + 2 : slot_offset + 4], "little") ^ key
+            quantity = (int.from_bytes(data[slot_offset + 2 : slot_offset + 4], "little") ^ key) & 0xFFFF
             if item_id:
                 items.append((item_id, quantity))
         return items
@@ -1348,7 +1348,7 @@ class Gen3Parser:
             if index < len(items):
                 item_id, quantity = items[index]
                 data[slot_offset : slot_offset + 2] = int(item_id).to_bytes(2, "little")
-                data[slot_offset + 2 : slot_offset + 4] = (int(quantity) ^ key).to_bytes(2, "little")
+                data[slot_offset + 2 : slot_offset + 4] = ((int(quantity) ^ key) & 0xFFFF).to_bytes(2, "little")
             else:
                 data[slot_offset : slot_offset + 4] = b"\x00\x00\x00\x00"
         self._recalculate_section_checksum(SECTOR_ID_SAVEBLOCK1_START)

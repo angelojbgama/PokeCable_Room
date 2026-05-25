@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from frontend.i18n import screen_title
+from frontend.i18n import screen_title, t
 from frontend.screens.base import ScreenBase, show_info_modal
 
 
@@ -596,33 +596,83 @@ class ExtrasSelectSaveScreen(ScreenBase):
 
     def __init__(self):
         super().__init__()
-        self._scan_thread = None
-        self._scan_started = False
+        self._preload_thread = None
+        self._preload_done = False
+        self._preload_progress = 0.0
+
+    def _preload_saves_thread(self, state, ctx):
+        """Pré-carrega saves em background (análise rápida)."""
+        try:
+            ctx.logger.info("Pre-analyzing saves for Extras...")
+            total = len(state.saves)
+
+            if not state.saves:
+                self._preload_done = True
+                return
+
+            # Analisar todos os saves em paralelo
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {executor.submit(state.analyze_save, save): idx for idx, save in enumerate(state.saves)}
+                completed = 0
+
+                for future in as_completed(futures):
+                    try:
+                        future.result()
+                    except Exception as exc:
+                        save_idx = futures[future]
+                        ctx.logger.debug("Failed to pre-analyze %s: %s", state.saves[save_idx].name, exc)
+                    finally:
+                        completed += 1
+                        self._preload_progress = completed / total if total > 0 else 0
+
+            ctx.logger.info("Pre-analysis complete for Extras")
+            self._preload_done = True
+        except Exception as exc:
+            ctx.logger.error("Error during Extras preload: %s", exc)
+            self._preload_done = True
 
     def handle_action(self, action, ctx, session, state, services):
         if action == "up":
-            session.menu_index = (session.menu_index - 1) % len(state.saves)
+            session.menu_index = max(0, session.menu_index - 1)
         elif action == "down":
-            session.menu_index = (session.menu_index + 1) % len(state.saves)
+            max_idx = len(state.saves) - 1 if state.saves else 0
+            session.menu_index = min(max_idx, session.menu_index + 1)
         elif action == "select":
-            if state.saves and session.menu_index < len(state.saves):
+            if state.saves and 0 <= session.menu_index < len(state.saves):
                 save_path = state.saves[session.menu_index]
                 session.extras_save_path = save_path
-                services.switch_screen("extras_category", "extras_select_save")
                 session.menu_index = 0
+                services.switch_screen("extras_category", "extras_select_save")
         elif action == "back":
             services.go_back("menu", "back_from_extras")
             session.menu_index = 5
 
     def render(self, ctx, session, state, services):
-        if not self._scan_started:
-            self._scan_started = True
-            self._scan_thread = threading.Thread(target=self._scan_saves, args=(state,), daemon=True)
-            self._scan_thread.start()
-        ctx.draw.draw_extras_select_save(ctx.screen, ctx.fonts, state.saves, session.menu_index, state.language)
+        if self._preload_thread is None and state.saves:
+            self._preload_thread = threading.Thread(
+                target=self._preload_saves_thread,
+                args=(state, ctx),
+                daemon=True
+            )
+            self._preload_thread.start()
 
-    def _scan_saves(self, state):
-        state.find_saves()
+        progress = 1.0
+        if self._preload_thread is not None and not self._preload_done:
+            progress = self._preload_progress
+
+        if session.menu_index >= len(state.saves):
+            session.menu_index = max(0, len(state.saves) - 1)
+
+        ctx.draw.draw_select_save(
+            ctx.screen,
+            ctx.fonts,
+            session.menu_index,
+            state.saves,
+            title=screen_title(state.language, "extras_select_save"),
+            language=state.language,
+            state=state,
+            is_loading=progress
+        )
 
 
 class ExtrasCategoryScreen(ScreenBase):
@@ -631,9 +681,18 @@ class ExtrasCategoryScreen(ScreenBase):
     def __init__(self):
         super().__init__()
         self._categories = []
-        self._loaded = False
+        self._load_thread = None
+        self._load_started = False
+        self._error_message = None
+        self._last_loaded_save_path = None
 
     def handle_action(self, action, ctx, session, state, services):
+        if self._error_message:
+            if action in ("select", "back"):
+                services.go_back("extras_select_save", "back_from_category")
+                session.menu_index = 0
+            return
+
         if action == "up":
             session.menu_index = (session.menu_index - 1) % len(self._categories)
         elif action == "down":
@@ -649,25 +708,44 @@ class ExtrasCategoryScreen(ScreenBase):
             session.menu_index = 0
 
     def render(self, ctx, session, state, services):
-        from r36s_pokecable_core import get_available_events
+        # Reset if save path changed
+        if session.extras_save_path != self._last_loaded_save_path:
+            self._load_started = False
+            self._last_loaded_save_path = session.extras_save_path
 
-        if not self._loaded:
-            self._loaded = True
-            save_path = session.extras_save_path
-            result = get_available_events(save_path)
-            if result.get("success"):
-                events = result.get("events", [])
-                game_id = result.get("game_id", "")
-                self._categories = []
-                has_ticket = any(e["category"] == "ticket" for e in events)
-                has_ereader = any(e["category"] == "ereader" for e in events)
-                if has_ticket:
-                    self._categories.append("tickets")
-                if has_ereader:
-                    self._categories.append("ereader")
-                session.extras_events = events
+        if not self._load_started:
+            self._load_started = True
+            self._load_thread = threading.Thread(
+                target=self._load_events_bg,
+                args=(session, state),
+                daemon=True,
+            )
+            self._load_thread.start()
 
-        ctx.draw.draw_extras_category(ctx.screen, ctx.fonts, self._categories, session.menu_index, state.language)
+        ctx.draw.draw_extras_category(ctx.screen, ctx.fonts, self._categories, session.menu_index, state.language, self._error_message)
+
+    def _load_events_bg(self, session, state):
+        from r36s_pokecable_core import get_available_events, get_applied_events
+
+        save_path = session.extras_save_path
+        result = get_available_events(save_path)
+        if result.get("success"):
+            events = result.get("events", [])
+            has_ticket = any(e["category"] == "ticket" for e in events)
+            has_ereader = any(e["category"] == "ereader" for e in events)
+            self._categories = []
+            if has_ticket:
+                self._categories.append("tickets")
+            if has_ereader:
+                self._categories.append("ereader")
+            session.extras_events = events
+
+            applied_result = get_applied_events(save_path)
+            session.extras_applied_ids = applied_result.get("applied", set())
+
+            self._error_message = None
+        else:
+            self._error_message = t(state.language, "extras_load_error")
 
 
 class ExtrasEventsScreen(ScreenBase):
@@ -681,19 +759,27 @@ class ExtrasEventsScreen(ScreenBase):
             session.extras_event_index = (session.extras_event_index + 1) % len(events)
         elif action == "select":
             if events and session.extras_event_index < len(events):
-                from r36s_pokecable_core import apply_event_to_save
-
                 event = events[session.extras_event_index]
-                result = apply_event_to_save(session.extras_save_path, event["id"])
-                session.extras_result = result
-                services.switch_screen("extras_result", "extras_apply")
+
+                if event["id"] in session.extras_applied_ids:
+                    session.extras_result = {"success": False, "message": "extras_already_active"}
+                    services.switch_screen("extras_result", "extras_apply")
+                else:
+                    from r36s_pokecable_core import apply_event_to_save
+
+                    result = apply_event_to_save(session.extras_save_path, event["id"])
+                    session.extras_result = result
+                    services.switch_screen("extras_result", "extras_apply")
         elif action == "back":
             services.go_back("extras_category", "back_from_events")
             session.menu_index = 0
 
     def render(self, ctx, session, state, services):
         events = [e for e in session.extras_events if e["category"] == "ticket"]
-        ctx.draw.draw_extras_events(ctx.screen, ctx.fonts, events, session.extras_event_index, state.language)
+        # Ensure index is valid if event list changed
+        if session.extras_event_index >= len(events):
+            session.extras_event_index = max(0, len(events) - 1)
+        ctx.draw.draw_extras_events(ctx.screen, ctx.fonts, events, session.extras_event_index, state.language, applied_ids=session.extras_applied_ids)
 
 
 class ExtrasEreaderScreen(ScreenBase):
@@ -701,7 +787,9 @@ class ExtrasEreaderScreen(ScreenBase):
 
     def __init__(self):
         super().__init__()
-        self._slots_loaded = False
+        self._slots_load_thread = None
+        self._slots_load_started = False
+        self._last_loaded_save_path = None
 
     def handle_action(self, action, ctx, session, state, services):
         from pokecable_runtime.events.ereader_battles import list_ereader_battles
@@ -711,12 +799,17 @@ class ExtrasEreaderScreen(ScreenBase):
             session.extras_ereader_index = (session.extras_ereader_index - 1) % len(battles)
         elif action == "down":
             session.extras_ereader_index = (session.extras_ereader_index + 1) % len(battles)
+        elif action == "left" and session.extras_ereader_slots:
+            session.extras_ereader_slot_index = (session.extras_ereader_slot_index - 1) % len(session.extras_ereader_slots)
+        elif action == "right" and session.extras_ereader_slots:
+            session.extras_ereader_slot_index = (session.extras_ereader_slot_index + 1) % len(session.extras_ereader_slots)
         elif action == "select":
             from r36s_pokecable_core import apply_ereader_to_save
 
             if battles and session.extras_ereader_index < len(battles):
                 battle = battles[session.extras_ereader_index]
-                result = apply_ereader_to_save(session.extras_save_path, 0, battle["id"])
+                target_slot = session.extras_ereader_slot_index if session.extras_ereader_slots else 0
+                result = apply_ereader_to_save(session.extras_save_path, target_slot, battle["id"])
                 session.extras_result = result
                 services.switch_screen("extras_result", "extras_apply")
         elif action == "back":
@@ -724,17 +817,45 @@ class ExtrasEreaderScreen(ScreenBase):
             session.menu_index = 0
 
     def render(self, ctx, session, state, services):
-        from r36s_pokecable_core import get_ereader_slots
         from pokecable_runtime.events.ereader_battles import list_ereader_battles
 
-        if not self._slots_loaded:
-            self._slots_loaded = True
-            slots_result = get_ereader_slots(session.extras_save_path)
-            if slots_result.get("success"):
-                session.extras_ereader_slots = slots_result.get("slots", [])
+        # Reset if save path changed
+        if session.extras_save_path != self._last_loaded_save_path:
+            self._slots_load_started = False
+            self._last_loaded_save_path = session.extras_save_path
+
+        if not self._slots_load_started:
+            self._slots_load_started = True
+            self._slots_load_thread = threading.Thread(
+                target=self._load_slots_bg,
+                args=(session,),
+                daemon=True,
+            )
+            self._slots_load_thread.start()
 
         battles = list_ereader_battles()
-        ctx.draw.draw_extras_ereader(ctx.screen, ctx.fonts, session.extras_ereader_slots, battles, session.extras_ereader_index, state.language)
+        if session.extras_ereader_slots and session.extras_ereader_slot_index >= len(session.extras_ereader_slots):
+            session.extras_ereader_slot_index = max(0, len(session.extras_ereader_slots) - 1)
+        ctx.draw.draw_extras_ereader(
+            ctx.screen,
+            ctx.fonts,
+            session.extras_ereader_slots,
+            battles,
+            session.extras_ereader_index,
+            state.language,
+            selected_slot=session.extras_ereader_slot_index,
+        )
+
+    def _load_slots_bg(self, session):
+        from r36s_pokecable_core import get_ereader_slots
+
+        slots_result = get_ereader_slots(session.extras_save_path)
+        if slots_result.get("success"):
+            session.extras_ereader_slots = slots_result.get("slots", [])
+            for idx, slot in enumerate(session.extras_ereader_slots):
+                if slot.get("is_empty"):
+                    session.extras_ereader_slot_index = idx
+                    break
 
 
 class ExtrasResultScreen(ScreenBase):

@@ -1,0 +1,253 @@
+================================================================================
+POKECABLE EXTRAS FEATURE - DIAGNOSTIC PACKAGE
+Generated: 2026-05-24
+================================================================================
+
+This diagnostic package contains a complete analysis of:
+1. Test save file validity across all generations (Gen 1-4)
+2. Corruption identification and repair attempts
+3. Comprehensive Extras feature testing (event tickets + e-Reader battles)
+4. Root cause analysis and recommendations
+
+================================================================================
+MAIN DOCUMENTS (Start Here)
+================================================================================
+
+1. EXTRAS_TEST_SUMMARY.txt (THIS DOCUMENT)
+   - Quick overview of all test results
+   - Summary by generation
+   - Root causes of failures
+   - Next steps and recommendations
+
+2. SAVE_DIAGNOSTIC_REPORT.md
+   - Detailed diagnostic report (12 KB, read in Markdown)
+   - Complete save file status table
+   - Corruption root cause analysis
+   - Repair instructions for each corrupted save
+   - Detailed failure analysis with code locations
+   - Recommendations for fixes
+
+================================================================================
+PYTHON TEST SCRIPTS
+================================================================================
+
+1. diagnose_saves.py (16 KB)
+   Purpose: Scan and validate all test saves, attempt repairs
+   Usage:   python3 diagnose_saves.py
+   Output:  - Console output with status
+           - save_diagnostics.json (detailed results)
+           - Backup files created for repaired saves
+
+2. test_extras_fixed.py (15 KB)
+   Purpose: Test Extras features (events) on all valid saves
+   Usage:   python3 test_extras_fixed.py
+   Output:  - Console output showing test results
+           - test_extras_results_fixed.json (detailed results)
+   Note:    Shows all failures due to bugs in applicator.py (expected)
+
+3. test_extras_comprehensive.py (14 KB)
+   Purpose: Earlier version of test (has some API issues)
+   Note:    Use test_extras_fixed.py instead
+
+================================================================================
+JSON RESULTS FILES
+================================================================================
+
+1. save_diagnostics.json (5.2 KB)
+   - Save file status for all 14 test saves
+   - By generation: Gen 1 (3), Gen 2 (3), Gen 3 (5 valid, 3 corrupted), Gen 4 (1)
+   - Detailed issues for each corrupted save
+   - Repair actions attempted
+
+2. test_extras_results_fixed.json (4.9 KB)
+   - Test results for 15 test cases
+   - Status: 0 passed, 7 failed, 8 skipped
+   - Detailed error messages for each failure
+   - Summary by generation
+
+================================================================================
+SAVE FILE STATUS OVERVIEW
+================================================================================
+
+TOTAL: 14 save files
+Valid:     11 files (78%)
+Corrupted:  3 files (22%)
+
+BY GENERATION:
+
+GEN 1 (3 files - ALL VALID)
+  ✓ Red Version
+  ✓ Blue Version  
+  ✓ Yellow Version
+  Status: Ready for testing (no events to test)
+
+GEN 2 (3 files - 2 VALID, 1 QUESTIONABLE)
+  ✓ Gold Version
+  ✓ Silver Version
+  ⚠ Crystal Version (structural anomalies but loads)
+  Status: Gold/Silver ready; Crystal usable but flagged
+
+GEN 3 (8 files - 5 VALID, 3 CORRUPTED)
+  ✓ Sapphire Version
+  ✓ Sapphire Version [save file]
+  ✓ Emerald Version
+  ✓ Emerald Version (original)
+  ✓ LeafGreen Version
+  ✗ Ruby Version (missing sectors 8, 9)
+  ✗ Ruby Version [save file] (missing sectors 8, 9)
+  ✗ FireRed Version (missing sector 12)
+  Status: Can test Sapphire, Emerald, LeafGreen; Ruby/FireRed unfixable
+
+GEN 4 (1 file - VALID)
+  ✓ Platinum Version (USA)
+  Status: Ready for testing
+
+================================================================================
+EXTRAS TEST RESULTS
+================================================================================
+
+TESTS RUN: 15 test cases
+Results:   0 passed (0%), 7 failed (47%), 8 skipped (53%)
+
+BREAKDOWN BY GENERATION:
+
+Gen 1: 3 tests SKIPPED (no events for Gen 1)
+Gen 2: 1 test FAILED (GS Ball), 1 test SKIPPED (Gold/Silver baseline)
+Gen 3: 4 tests FAILED, 3 tests SKIPPED (due to corruption)
+Gen 4: 2 tests FAILED (inventory overflow)
+
+ROOT CAUSES OF FAILURES:
+
+1. SaveModel.write_to_disk() API Mismatch [2 failures]
+   - Applicator calls save.write_to_disk(path) but method signature is save.write_to_disk()
+   - Affects: Crystal GS Ball, LeafGreen Mystic Ticket
+   - Fix: Don't save in apply_event(); let caller handle it
+
+2. Item Inventory Overflow [4 failures]
+   - Test saves have full or near-full item bags
+   - Cannot add event items (GS Ball, Eon Ticket, Old Sea Map, Member Card, Oak's Letter)
+   - Affects: Sapphire, Emerald, Platinum
+   - Fix: Create clean test saves with empty item bags
+
+3. e-Reader Byte Offset Error [1 failure]
+   - SaveModel.bytes buffer offset mismatch for e-Reader trainer injection
+   - Affects: Sapphire e-Reader battle test
+   - Fix: Debug offset calculation (0x3030 + slot*40) for SaveModel layout
+
+================================================================================
+CORRUPTION ANALYSIS
+================================================================================
+
+3 saves are corrupted due to MISSING SECTORS in Gen 3 format:
+
+Gen 3 Structure: 14 sectors × 2 slots = 28 total sectors
+Each sector: 4,096 bytes
+Missing sectors = incomplete save dump from emulator
+
+Affected saves:
+1. Pokémon - Ruby Version.sav
+   Missing: Sectors 8, 9 (PC box data)
+   Status: UNRECOVERABLE (data loss, cannot reconstruct)
+   Backup: Pokémon - Ruby Version.sav.backup
+
+2. Pokémon Ruby Version [save file].sav
+   Missing: Sectors 8, 9 (PC box data)
+   Status: UNRECOVERABLE (data loss, cannot reconstruct)
+   Backup: Pokémon Ruby Version [save file].sav.backup
+
+3. Pokémon - FireRed Version.sav
+   Missing: Sector 12 (additional box data)
+   Status: UNRECOVERABLE (data loss, cannot reconstruct)
+   Backup: Pokémon - FireRed Version.sav.backup
+
+Recovery instructions: Re-export from emulator with complete sector dump.
+
+================================================================================
+KEY FINDINGS
+================================================================================
+
+STRENGTHS:
+1. Save file validation is robust (pokecable_save detects corruption correctly)
+2. Most test saves are valid and can be loaded
+3. Event catalog is comprehensive (7 ticket types + 5 e-Reader trainers)
+4. Diagnostic tooling can identify exact issues
+
+ISSUES TO FIX:
+1. applicator.py has API mismatch with SaveModel.write_to_disk()
+2. e-Reader offset calculation has buffer layout issue
+3. No inventory space check before adding event items
+4. Test saves have full inventories (testing issue, not code issue)
+
+ACTIONABLE NEXT STEPS:
+1. Fix SaveModel API usage in applicator.py (1 hour)
+2. Fix e-Reader offset for SaveModel (1 hour)
+3. Create clean test saves with empty bags (30 minutes)
+4. Re-run test_extras_fixed.py to verify fixes (10 minutes)
+5. Update documentation with supported events per game
+
+================================================================================
+HOW TO USE THIS PACKAGE
+================================================================================
+
+QUICK START:
+1. Read EXTRAS_TEST_SUMMARY.txt (this file) for overview
+2. Read SAVE_DIAGNOSTIC_REPORT.md for detailed analysis
+3. Review test scripts if you want to understand methodology
+
+VERIFY RESULTS:
+1. Run: python3 diagnose_saves.py
+   Expected: Creates save_diagnostics.json with status of all saves
+   
+2. Run: python3 test_extras_fixed.py
+   Expected: Shows test failures (applicator bugs not yet fixed)
+
+FIX APPLICATOR BUGS:
+1. Edit: pokecable_runtime/events/applicator.py
+2. Fix issues listed in SAVE_DIAGNOSTIC_REPORT.md
+3. Re-run: python3 test_extras_fixed.py
+4. Result: Should see improved pass rate (after creating clean test saves)
+
+================================================================================
+FILE LOCATIONS
+================================================================================
+
+All diagnostic files are in:
+/mnt/c/Users/Angelo/Documents/projetos/PokeCable_Room/Pokecable_tool/
+
+Test saves:
+/mnt/c/Users/Angelo/Documents/projetos/PokeCable_Room/roms/test-saves/
+
+Applicator code (needs fixes):
+/mnt/c/Users/Angelo/Documents/projetos/PokeCable_Room/Pokecable_tool/pokecable_runtime/events/
+
+================================================================================
+STATISTICS
+================================================================================
+
+SAVE FILES ANALYZED:
+  Gen 1: 3 files, 100% valid
+  Gen 2: 3 files, 67% valid (1 questionable)
+  Gen 3: 8 files, 62% valid (3 corrupted)
+  Gen 4: 1 file, 100% valid
+  -------
+  Total: 14 files, 78% valid (11 usable)
+
+EVENTS SUPPORTED:
+  Ticket items: 7 types
+  - Gen 2: 1 ticket (GS Ball)
+  - Gen 3: 4 tickets (Eon, Aurora, Mystic, Old Sea Map)
+  - Gen 4: 2 tickets (Member Card, Oak's Letter) [+1 for HeartGold/SoulSilver]
+  
+  e-Reader battles: 5 trainers (Gen 3 Ruby/Sapphire only)
+  - Vincent, Levi, Ernest, Gwen, Larry
+
+EVENTS TESTED:
+  Total: 15 test cases
+  - 3 Gen 1 (skipped, no events)
+  - 2 Gen 2 (1 failed, 1 skipped)
+  - 8 Gen 3 (4 failed, 3 skipped due to corruption, 1 failed due to bug)
+  - 2 Gen 4 (2 failed due to full inventory)
+
+================================================================================
+END OF INDEX
+================================================================================

@@ -645,7 +645,8 @@ def _prune_backups(backup_dir: Path, stem: str) -> None:
 
 
 def _create_backup(save_path: Path) -> Path:
-    backup_dir = Path.home() / ".pokecable" / "backups"
+    configured = os.getenv("POKECABLE_BACKUP_DIR", "").strip()
+    backup_dir = Path(configured).expanduser() if configured else (Path.home() / ".pokecable" / "backups")
     backup_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = backup_dir / f"{save_path.stem}.{timestamp}{save_path.suffix}.bak"
@@ -1889,11 +1890,13 @@ def apply_update() -> Dict[str, Any]:
         }
 
 
-def get_available_events(save_path: str) -> dict:
+def get_available_events(save_path) -> dict:
     """Carrega save, detecta jogo, retorna lista de eventos disponíveis."""
-    from pokecable_runtime.events.catalog import get_events_for_game
+    from pokecable_runtime.events.catalog import get_events_for_save
+    from pokecable_runtime.events.official import profile_from_save
 
     try:
+        save_path = Path(save_path) if isinstance(save_path, str) else save_path
         save = load_save(save_path)
         if not save:
             return {"success": False, "events": []}
@@ -1902,20 +1905,32 @@ def get_available_events(save_path: str) -> dict:
         if not game_id:
             return {"success": False, "events": []}
 
-        events = get_events_for_game(game_id)
-        return {"success": True, "events": events, "game_id": game_id}
+        profile = profile_from_save(save)
+        events = get_events_for_save(save)
+        return {
+            "success": True,
+            "events": events,
+            "game_id": game_id,
+            "profile": {
+                "game_id": profile.game_id,
+                "generation": profile.generation,
+                "region": profile.region,
+                "language": profile.language,
+                "revision": profile.revision,
+            },
+        }
 
     except Exception as e:
         logger.error(f"Error loading events: {e}")
         return {"success": False, "events": []}
 
 
-def apply_event_to_save(save_path: str, event_id: str) -> dict:
+def apply_event_to_save(save_path, event_id: str) -> dict:
     """Backup → parser → apply_event → recalculate_checksums → save."""
     from pokecable_runtime.events.applicator import apply_event
 
     try:
-        backup_path = _create_backup(save_path)
+        save_path = Path(save_path) if isinstance(save_path, str) else save_path
 
         save = load_save(save_path)
         if not save:
@@ -1925,6 +1940,7 @@ def apply_event_to_save(save_path: str, event_id: str) -> dict:
         if not result.get("success"):
             return result
 
+        backup_path = _create_backup(save_path)
         save.write_to_disk()
         return {
             "success": True,
@@ -1937,42 +1953,105 @@ def apply_event_to_save(save_path: str, event_id: str) -> dict:
         return {"success": False, "message": str(e)[:100]}
 
 
-def get_ereader_slots(save_path: str) -> dict:
-    """Retorna os 5 slots e-Reader atuais do save (nome, pokémon)."""
-    import struct
+def preflight_extras_for_save(save_path, event_ids=None) -> dict:
+    """Valida tickets de extras sem escrever no save."""
+    from pokecable_runtime.events.applicator import preflight_events
 
     try:
+        save_path = Path(save_path) if isinstance(save_path, str) else save_path
+        save = load_save(save_path)
+        if not save:
+            return {"success": False, "can_apply": False, "message": "Could not load save", "events": [], "blockers": []}
+        return preflight_events(save, event_ids)
+    except Exception as e:
+        logger.error(f"Error preflighting extras: {e}")
+        return {"success": False, "can_apply": False, "message": str(e)[:100], "events": [], "blockers": []}
+
+
+def apply_all_safe_events_to_save(save_path) -> dict:
+    """Aplica todos os tickets oficiais seguros em lote, sem escrita parcial."""
+    from pokecable_runtime.events.applicator import apply_event, preflight_events
+    from pokecable_runtime.events.catalog import get_events_for_save
+
+    try:
+        save_path = Path(save_path) if isinstance(save_path, str) else save_path
+        save = load_save(save_path)
+        if not save:
+            return {"success": False, "message": "Could not load save"}
+
+        event_ids = [
+            event["id"]
+            for event in get_events_for_save(save)
+            if event.get("category") == "ticket"
+        ]
+        if not event_ids:
+            return {
+                "success": True,
+                "message": "extras_no_events",
+                "applied_event_ids": [],
+                "preflight": {"success": True, "can_apply": True, "events": [], "blockers": [], "event_ids_to_apply": []},
+            }
+
+        preflight = preflight_events(save, event_ids)
+        if not preflight.get("can_apply"):
+            return {
+                "success": False,
+                "message": preflight.get("message", "extras_preflight_failed"),
+                "preflight": preflight,
+            }
+
+        event_ids_to_apply = list(preflight.get("event_ids_to_apply") or [])
+        if not event_ids_to_apply:
+            return {
+                "success": True,
+                "message": "extras_already_active",
+                "applied_event_ids": [],
+                "preflight": preflight,
+            }
+
+        applied_ids = []
+        for event_id in event_ids_to_apply:
+            result = apply_event(save, event_id)
+            if not result.get("success"):
+                return {
+                    "success": False,
+                    "message": result.get("message", "extras_preflight_failed"),
+                    "applied_event_ids": applied_ids,
+                    "preflight": preflight,
+                }
+            applied_ids.append(event_id)
+
+        backup_path = _create_backup(save_path)
+        save.write_to_disk()
+        return {
+            "success": True,
+            "message": "extras_applied",
+            "applied_event_ids": applied_ids,
+            "backup": backup_path,
+            "preflight": preflight,
+        }
+
+    except Exception as e:
+        logger.error(f"Error applying all extras: {e}")
+        return {"success": False, "message": str(e)[:100]}
+
+
+def get_ereader_slots(save_path) -> dict:
+    """Retorna os 5 slots e-Reader atuais do save (nome, pokémon)."""
+    from pokecable_runtime.events.applicator import read_ereader_slots
+    from pokecable_runtime.events.official import compatibility_for_save
+
+    try:
+        save_path = Path(save_path) if isinstance(save_path, str) else save_path
         save = load_save(save_path)
         if not save:
             return {"success": False, "slots": []}
 
-        game_id = _get_game_id_from_save(save)
-        if game_id not in ["pokemon_ruby", "pokemon_sapphire"]:
-            return {"success": False, "slots": [], "message": "e-Reader not available for this game"}
+        compatibility = compatibility_for_save(save, "ereader")
+        if not compatibility.can_apply:
+            return {"success": False, "slots": [], "message": compatibility.message or "e-Reader not available for this game"}
 
-        data = save._require_data()
-
-        slots = []
-        for slot_idx in range(5):
-            offset = 0x3030 + (slot_idx * 40)
-            name_bytes = data[offset : offset + 7]
-            name = name_bytes.split(b"\x00")[0].decode("ascii", errors="replace")
-
-            mons = []
-            for mon_idx in range(6):
-                base_offset = offset + 0x1C + (mon_idx * 3)
-                species = struct.unpack("<H", data[base_offset : base_offset + 2])[0]
-                level = data[base_offset + 2]
-                if species > 0:
-                    mons.append({"species": species, "level": level})
-
-            slots.append({
-                "slot": slot_idx,
-                "name": name if name else f"[Empty]",
-                "mons_count": len(mons),
-                "mons": mons,
-            })
-
+        slots = read_ereader_slots(save)
         return {"success": True, "slots": slots}
 
     except Exception as e:
@@ -1980,11 +2059,12 @@ def get_ereader_slots(save_path: str) -> dict:
         return {"success": False, "slots": []}
 
 
-def apply_ereader_to_save(save_path: str, slot: int, battle_id: str) -> dict:
+def apply_ereader_to_save(save_path, slot: int, battle_id: str) -> dict:
     """Backup → parser → apply_ereader_battle → recalculate → save."""
     from pokecable_runtime.events.applicator import apply_ereader_battle
 
     try:
+        save_path = Path(save_path) if isinstance(save_path, str) else save_path
         backup_path = _create_backup(save_path)
 
         save = load_save(save_path)
@@ -2005,6 +2085,90 @@ def apply_ereader_to_save(save_path: str, slot: int, battle_id: str) -> dict:
     except Exception as e:
         logger.error(f"Error applying e-Reader battle: {e}")
         return {"success": False, "message": str(e)[:100]}
+
+
+def get_applied_events(save_path) -> dict:
+    """Retorna set de event_ids já aplicados ao save."""
+    try:
+        from pokecable_runtime.events.applicator import read_ereader_slots
+        from pokecable_runtime.events.catalog import get_events_for_save
+        from pokecable_runtime.events.official import compatibility_for_save
+
+        save_path = Path(save_path) if isinstance(save_path, str) else save_path
+        save = load_save(save_path)
+        if not save:
+            return {"success": False, "applied": set(), "applied_event_ids": set(), "applied_ereader_battles": set(), "occupied_ereader_slots": set(), "unknown_ereader_slots": set()}
+
+        applied_event_ids = set()
+        applied_ereader_battles = set()
+        occupied_ereader_slots = set()
+        unknown_ereader_slots = set()
+        compatible_events = [event for event in get_events_for_save(save) if event.get("category") == "ticket"]
+
+        parser = None
+        if save._backend_parser:
+            parser = save._backend_parser
+        else:
+            if save.generation == 1:
+                _ensure_backend_import_path()
+                from parsers import Gen1Parser
+                p = Gen1Parser()
+                if p.detect(save_path):
+                    p.load(save_path)
+                    parser = p
+            elif save.generation == 2:
+                _ensure_backend_import_path()
+                from parsers import Gen2Parser
+                p = Gen2Parser()
+                if p.detect(save_path):
+                    p.load(save_path)
+                    parser = p
+            elif save.generation == 3:
+                _ensure_backend_import_path()
+                from parsers import Gen3Parser
+                p = Gen3Parser()
+                if p.detect(save_path):
+                    p.load(save_path)
+                    parser = p
+
+        if parser:
+            try:
+                inventory = parser.list_inventory()
+                item_ids_in_bag = {entry.item_id for entry in inventory}
+            except Exception:
+                item_ids_in_bag = set()
+
+            for event in compatible_events:
+                if "item_id" in event and event["item_id"] in item_ids_in_bag:
+                    applied_event_ids.add(event["id"])
+
+        ereader_compatibility = compatibility_for_save(save, "ereader")
+        if ereader_compatibility.can_apply:
+            for slot_info in read_ereader_slots(save):
+                if slot_info.get("is_empty"):
+                    continue
+                occupied_ereader_slots.add(int(slot_info["slot"]))
+                battle_id = slot_info.get("battle_id")
+                if battle_id:
+                    applied_ereader_battles.add(battle_id)
+                else:
+                    unknown_ereader_slots.add(int(slot_info["slot"]))
+
+        applied = set(applied_event_ids)
+        applied.update(f"ereader:{battle_id}" for battle_id in applied_ereader_battles)
+        return {
+            "success": True,
+            "applied": applied_event_ids,
+            "applied_event_ids": applied_event_ids,
+            "applied_ereader_battles": applied_ereader_battles,
+            "occupied_ereader_slots": occupied_ereader_slots,
+            "unknown_ereader_slots": unknown_ereader_slots,
+            "applied_all": applied,
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting applied events: {e}")
+        return {"success": False, "applied": set(), "applied_event_ids": set(), "applied_ereader_battles": set(), "occupied_ereader_slots": set(), "unknown_ereader_slots": set()}
 
 
 def _get_game_id_from_save(save) -> Optional[str]:
