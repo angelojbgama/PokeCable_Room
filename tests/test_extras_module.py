@@ -21,7 +21,7 @@ from Pokecable_tool.pokecable_runtime.events.official import (
     STATUS_OFFICIAL_UNRELEASED,
     get_official_extra,
 )
-from Pokecable_tool.save_repair import repair_gen3_save_file
+from save_repair import repair_gen3_save_file  # moved into tests/
 
 TEST_SAVES = Path(__file__).resolve().parent.parent / "roms" / "test-saves"
 
