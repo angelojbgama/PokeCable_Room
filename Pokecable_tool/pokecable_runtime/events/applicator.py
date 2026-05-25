@@ -55,7 +55,9 @@ def apply_event(save_model, event_id: str):
 
     if "flags" in event:
         try:
-            _set_event_flags(save_model, event["flags"])
+            flag_ids = _resolve_event_flags(event["flags"], save_model.game)
+            if flag_ids:
+                _set_event_flags(save_model, flag_ids)
         except Exception as e:
             return {"success": False, "message": f"Erro ao setar flags: {str(e)}"}
 
@@ -324,6 +326,34 @@ def _preflight_block(
     if pocket_capacity is not None:
         result["pocket_capacity"] = pocket_capacity
     return result
+
+
+def _game_flag_key(game):
+    """Maps a save game id to the per-game flag group used in event payloads."""
+    g = (game or "").lower()
+    if "firered" in g or "leafgreen" in g:
+        return "frlg"
+    if "emerald" in g:
+        return "emerald"
+    if "ruby" in g or "sapphire" in g:
+        return "rs"
+    return ""
+
+
+def _resolve_event_flags(flags, game):
+    """Resolve event flags to a concrete id list.
+
+    Gen 3 event flag numbers differ per game (FR/LG vs Emerald vs R/S), so a
+    payload may provide either a flat list (same ids for every supported game)
+    or a dict keyed by game group ('frlg', 'emerald', 'rs', or 'default').
+    """
+    if isinstance(flags, dict):
+        key = _game_flag_key(game)
+        selected = flags.get(key)
+        if selected is None:
+            selected = flags.get("default")
+        return list(selected or [])
+    return list(flags or [])
 
 
 def _set_event_flags(save_model, flag_ids):

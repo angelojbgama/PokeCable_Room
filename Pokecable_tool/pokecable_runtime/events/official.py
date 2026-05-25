@@ -110,7 +110,9 @@ OFFICIAL_EXTRAS: tuple[OfficialExtra, ...] = (
         target_system="bag_item",
         distribution_method="mystery_event",
         source_notes="Official Ruby/Sapphire Eon Ticket distribution path.",
-        payload={"item_id": 275},
+        # EonTicket enables Southern Island (Latios/Latias). In R/S this is
+        # FLAG_SYS_HAS_EON_TICKET = SYSTEM_FLAGS(0x800)+0x53 = 0x853 (2131).
+        payload={"item_id": 275, "flags": {"rs": [2131]}},
     ),
     OfficialExtra(
         id="gen3_eon_ticket_emerald_record_mixing",
@@ -126,7 +128,8 @@ OFFICIAL_EXTRAS: tuple[OfficialExtra, ...] = (
         requires_record_mixing=True,
         authenticity_level=AUTHENTICITY_OFFICIAL_CHANNEL_RECONSTRUCTED,
         source_notes="Emerald receives Eon Ticket from Ruby/Sapphire through Record Mixing, not direct Mystery Event.",
-        payload={"item_id": 275},
+        # Emerald uses FLAG_ENABLE_SHIP_SOUTHERN_ISLAND = SYSTEM_FLAGS(0x860)+0x53 = 0x8B3 (2227).
+        payload={"item_id": 275, "flags": {"emerald": [2227]}},
     ),
     OfficialExtra(
         id="gen3_aurora",
@@ -140,7 +143,10 @@ OFFICIAL_EXTRAS: tuple[OfficialExtra, ...] = (
         target_system="bag_item",
         distribution_method="mystery_gift",
         source_notes="Official AuroraTicket distribution path.",
-        payload={"item_id": 371, "flags": [2122, 2123]},
+        # AuroraTicket enables Birth Island (Deoxys) via FLAG_ENABLE_SHIP_BIRTH_ISLAND.
+        # FR/LG 0x800+0x4B=0x84B(2123); Emerald 0x860+0x75=0x8D5(2261).
+        # (Previously a flat [2122, 2123]: FR/LG-only and it also enabled Navel Rock.)
+        payload={"item_id": 371, "flags": {"frlg": [2123], "emerald": [2261]}},
     ),
     OfficialExtra(
         id="gen3_mystic",
@@ -154,7 +160,10 @@ OFFICIAL_EXTRAS: tuple[OfficialExtra, ...] = (
         target_system="bag_item",
         distribution_method="mystery_gift",
         source_notes="Official MysticTicket distribution path.",
-        payload={"item_id": 370},
+        # Item alone is not enough: the ferry only offers Navel Rock (Ho-Oh/Lugia)
+        # once FLAG_ENABLE_SHIP_NAVEL_ROCK is set. Flag id differs per game:
+        # FR/LG SYS_FLAGS(0x800)+0x4A=0x84A(2122); Emerald SYSTEM_FLAGS(0x860)+0x80=0x8E0(2272).
+        payload={"item_id": 370, "flags": {"frlg": [2122], "emerald": [2272]}},
     ),
     OfficialExtra(
         id="gen3_old_sea_map",

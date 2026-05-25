@@ -693,6 +693,12 @@ class ExtrasCategoryScreen(ScreenBase):
                 session.menu_index = 0
             return
 
+        if not self._categories:
+            if action == "back":
+                services.go_back("extras_select_save", "back_from_category")
+                session.menu_index = 0
+            return
+
         if action == "up":
             session.menu_index = (session.menu_index - 1) % len(self._categories)
         elif action == "down":
@@ -701,7 +707,12 @@ class ExtrasCategoryScreen(ScreenBase):
             if self._categories and session.menu_index < len(self._categories):
                 category = self._categories[session.menu_index]
                 session.extras_category = category
-                services.switch_screen("extras_events", "extras_category")
+                if category == "ereader":
+                    services.switch_screen("extras_ereader", "extras_category")
+                elif category == "utilities":
+                    services.switch_screen("extras_utilities", "extras_category")
+                else:
+                    services.switch_screen("extras_events", "extras_category")
                 session.menu_index = 0
         elif action == "back":
             services.go_back("extras_select_save", "back_from_category")
@@ -711,6 +722,8 @@ class ExtrasCategoryScreen(ScreenBase):
         # Reset if save path changed
         if session.extras_save_path != self._last_loaded_save_path:
             self._load_started = False
+            self._categories = []
+            self._error_message = None
             self._last_loaded_save_path = session.extras_save_path
 
         if not self._load_started:
@@ -725,12 +738,15 @@ class ExtrasCategoryScreen(ScreenBase):
         ctx.draw.draw_extras_category(ctx.screen, ctx.fonts, self._categories, session.menu_index, state.language, self._error_message)
 
     def _load_events_bg(self, session, state):
-        from r36s_pokecable_core import get_available_events, get_applied_events
+        from r36s_pokecable_core import get_available_events, get_applied_events, get_available_utilities
 
         save_path = session.extras_save_path
-        result = get_available_events(save_path)
-        if result.get("success"):
-            events = result.get("events", [])
+        events_result = get_available_events(save_path)
+        utilities_result = get_available_utilities(save_path)
+
+        if events_result.get("success") or utilities_result.get("success"):
+            events = events_result.get("events", []) if events_result.get("success") else []
+            utilities = utilities_result.get("utilities", []) if utilities_result.get("success") else []
             has_ticket = any(e["category"] == "ticket" for e in events)
             has_ereader = any(e["category"] == "ereader" for e in events)
             self._categories = []
@@ -738,10 +754,16 @@ class ExtrasCategoryScreen(ScreenBase):
                 self._categories.append("tickets")
             if has_ereader:
                 self._categories.append("ereader")
+            if utilities:
+                self._categories.append("utilities")
             session.extras_events = events
+            session.extras_utilities = utilities
 
-            applied_result = get_applied_events(save_path)
-            session.extras_applied_ids = applied_result.get("applied", set())
+            if events_result.get("success"):
+                applied_result = get_applied_events(save_path)
+                session.extras_applied_ids = applied_result.get("applied", set())
+            else:
+                session.extras_applied_ids = set()
 
             self._error_message = None
         else:
@@ -780,6 +802,40 @@ class ExtrasEventsScreen(ScreenBase):
         if session.extras_event_index >= len(events):
             session.extras_event_index = max(0, len(events) - 1)
         ctx.draw.draw_extras_events(ctx.screen, ctx.fonts, events, session.extras_event_index, state.language, applied_ids=session.extras_applied_ids)
+
+
+class ExtrasUtilitiesScreen(ScreenBase):
+    screen_id = "extras_utilities"
+
+    def handle_action(self, action, ctx, session, state, services):
+        utilities = list(session.extras_utilities or [])
+        if action == "up" and utilities:
+            session.extras_utility_index = (session.extras_utility_index - 1) % len(utilities)
+        elif action == "down" and utilities:
+            session.extras_utility_index = (session.extras_utility_index + 1) % len(utilities)
+        elif action == "select":
+            if utilities and session.extras_utility_index < len(utilities):
+                from r36s_pokecable_core import apply_utility_to_save
+
+                utility = utilities[session.extras_utility_index]
+                result = apply_utility_to_save(session.extras_save_path, utility["id"])
+                session.extras_result = result
+                services.switch_screen("extras_result", "extras_apply")
+        elif action == "back":
+            services.go_back("extras_category", "back_from_utilities")
+            session.menu_index = 0
+
+    def render(self, ctx, session, state, services):
+        utilities = list(session.extras_utilities or [])
+        if session.extras_utility_index >= len(utilities):
+            session.extras_utility_index = max(0, len(utilities) - 1)
+        ctx.draw.draw_extras_utilities(
+            ctx.screen,
+            ctx.fonts,
+            utilities,
+            session.extras_utility_index,
+            state.language,
+        )
 
 
 class ExtrasEreaderScreen(ScreenBase):
@@ -865,6 +921,8 @@ class ExtrasResultScreen(ScreenBase):
         if action == "select" or action == "back":
             if session.extras_category == "ereader":
                 services.go_back("extras_ereader", "back_from_result")
+            elif session.extras_category == "utilities":
+                services.go_back("extras_utilities", "back_from_result")
             else:
                 services.go_back("extras_events", "back_from_result")
             session.menu_index = 0

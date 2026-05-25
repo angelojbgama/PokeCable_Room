@@ -15,6 +15,7 @@ from frontend.screens.menu import (
     ExtrasSelectSaveScreen,
     ExtrasCategoryScreen,
     ExtrasEventsScreen,
+    ExtrasUtilitiesScreen,
     ExtrasEreaderScreen,
     ExtrasResultScreen,
 )
@@ -185,6 +186,7 @@ def register_default_screens(controller):
         ExtrasSelectSaveScreen(),
         ExtrasCategoryScreen(),
         ExtrasEventsScreen(),
+        ExtrasUtilitiesScreen(),
         ExtrasEreaderScreen(),
         ExtrasResultScreen(),
     ):

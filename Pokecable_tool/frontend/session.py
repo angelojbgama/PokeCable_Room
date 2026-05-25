@@ -101,13 +101,16 @@ class UiSessionState:
     update_data: dict[str, Any] = field(default_factory=dict)
     extras_save_path: str = ""
     extras_events: list[dict[str, Any]] = field(default_factory=list)
+    extras_utilities: list[dict[str, Any]] = field(default_factory=list)
     extras_event_index: int = 0
+    extras_utility_index: int = 0
     extras_category: str = ""
     extras_result: dict[str, Any] = field(default_factory=dict)
     extras_ereader_slots: list[dict[str, Any]] = field(default_factory=list)
     extras_ereader_index: int = 0
     extras_ereader_slot_index: int = 0
     extras_events_scroll: float = 0.0
+    extras_utilities_scroll: float = 0.0
     extras_ereader_scroll: float = 0.0
     extras_applied_ids: set = field(default_factory=set)
 

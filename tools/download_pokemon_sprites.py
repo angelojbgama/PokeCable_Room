@@ -48,12 +48,22 @@ def _sprite_url(variant: str, national_id: int) -> str:
 
 
 def _ensure_sprite(variant: str, national_id: int) -> tuple[bool, str]:
-    target = DEST_ROOT / variant / f"{national_id}.png"
+    return _ensure_named_sprite(variant, f"{national_id}.png", _sprite_url(variant, national_id))
+
+
+def _egg_url(variant: str) -> str:
+    prefix = VARIANTS[variant]
+    if prefix:
+        return f"{RAW_PREFIX}/{prefix}/egg.png"
+    return f"{RAW_PREFIX}/egg.png"
+
+
+def _ensure_named_sprite(variant: str, filename: str, url: str) -> tuple[bool, str]:
+    target = DEST_ROOT / variant / filename
     if _is_valid_png(target):
         return True, ""
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    url = _sprite_url(variant, national_id)
     try:
         payload = _download(url)
     except (OSError, urllib.error.URLError, urllib.error.HTTPError) as exc:
@@ -102,6 +112,22 @@ def main() -> int:
                 )
             if processed % 100 == 0:
                 print(f"Checked/downloaded {processed}/{total}")
+
+    # Egg sprite (not part of the national dex range, used for unhatched eggs).
+    for variant in sorted(VARIANTS):
+        ok, error = _ensure_named_sprite(variant, "egg.png", _egg_url(variant))
+        if ok:
+            print(f"Egg sprite ready: {variant}/egg.png")
+        else:
+            missing.append(
+                {
+                    "variant": variant,
+                    "national_dex_id": None,
+                    "path": f"{variant}/egg.png",
+                    "source_url": _egg_url(variant),
+                    "error": error,
+                }
+            )
 
     manifest = {
         "source": RAW_PREFIX,

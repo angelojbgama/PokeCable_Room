@@ -7,6 +7,28 @@ from frontend.i18n import t
 from frontend.screens.base import ScreenBase, show_info_modal
 
 
+def _is_egg(pokemon):
+    pokemon = pokemon or {}
+    if pokemon.get("is_egg"):
+        return True
+    return str(pokemon.get("species_name") or "").strip().lower() == "egg"
+
+
+def _block_if_egg(pokemon, session, services, state, return_screen, reason):
+    """Show a modal and return True when the pokemon is an egg (not tradeable)."""
+    if not _is_egg(pokemon):
+        return False
+    show_info_modal(
+        session,
+        services,
+        title=t(state.language, "egg_trade_blocked_title"),
+        message=t(state.language, "egg_trade_blocked_msg"),
+        return_screen=return_screen,
+        reason=reason,
+    )
+    return True
+
+
 class SelfSelectPokemonAScreen(ScreenBase):
     screen_id = "self_select_pokemon_a"
 
@@ -25,6 +47,12 @@ class SelfSelectPokemonAScreen(ScreenBase):
                     return_screen="self_select_pokemon_a",
                     reason="self_select_a_from_pc_blocked",
                 )
+            elif _block_if_egg(
+                state.pokemon_list[session.menu_index],
+                session, services, state,
+                "self_select_pokemon_a", "self_select_a_egg_blocked",
+            ):
+                pass
             else:
                 session.self_trade_pokemon_a = state.pokemon_list[session.menu_index]
                 ctx.logger.info("Self trade pokemon A selected: %s", session.self_trade_pokemon_a.get("location"))
@@ -121,6 +149,12 @@ class SelfSelectPokemonBScreen(ScreenBase):
                     return_screen="self_select_pokemon_b",
                     reason="self_select_b_from_pc_blocked",
                 )
+            elif _block_if_egg(
+                state.pokemon_list[session.menu_index],
+                session, services, state,
+                "self_select_pokemon_b", "self_select_b_egg_blocked",
+            ):
+                pass
             else:
                 session.self_trade_pokemon_b = state.pokemon_list[session.menu_index]
                 ctx.logger.info("Self trade pokemon B selected: %s", session.self_trade_pokemon_b.get("location"))
@@ -271,6 +305,12 @@ class SelectPokemonScreen(ScreenBase):
                     return_screen="select_pokemon",
                     reason="select_from_pc_blocked",
                 )
+            elif _block_if_egg(
+                state.pokemon_list[session.menu_index],
+                session, services, state,
+                "select_pokemon", "select_egg_blocked",
+            ):
+                pass
             else:
                 state.selected_pokemon = state.pokemon_list[session.menu_index]
                 session.trade_return_context = services.capture_selection_context(

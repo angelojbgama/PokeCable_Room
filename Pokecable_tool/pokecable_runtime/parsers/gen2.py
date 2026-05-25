@@ -40,6 +40,8 @@ PARTY_HEADER_SIZE = 1 + PARTY_CAPACITY + 1
 RAW_PAYLOAD_SIZE = PARTY_MON_SIZE + NAME_SIZE + NAME_SIZE
 POKEDEX_SIZE = 32
 GEN2_MAX_STACK = 99
+GEN2_TMHM_ITEM_IDS = tuple(item_id for item_id in range(0xBF, 0xFA) if item_id not in (0xC3, 0xDC))
+GEN2_TMHM_INDEX_BY_ITEM_ID = {item_id: index for index, item_id in enumerate(GEN2_TMHM_ITEM_IDS)}
 BOX_OT_OFFSET = 0x296
 BOX_NICK_OFFSET = 0x372
 STORED_BOX_OFFSETS = tuple(0x4000 + 0x450 * index for index in range(7)) + tuple(0x6000 + 0x450 * index for index in range(7))
@@ -1298,24 +1300,26 @@ class Gen2Parser:
     def _read_tmhm_quantities(self, offset: int) -> dict[int, int]:
         data = self._require_data()
         quantities: dict[int, int] = {}
-        for item_id in range(0xBF, 0xBF + 57):
-            quantity = data[offset + (item_id - 0xBF)]
+        for index, item_id in enumerate(GEN2_TMHM_ITEM_IDS):
+            quantity = data[offset + index]
             if quantity:
                 quantities[item_id] = quantity
         return quantities
 
     def _write_tmhm_quantity(self, item_id: int, quantity: int) -> None:
-        if item_id < 0xBF or item_id >= 0xBF + 57:
+        index = GEN2_TMHM_INDEX_BY_ITEM_ID.get(item_id)
+        if index is None:
             raise ValueError("Item nao pertence ao pocket TM/HM da Gen 2.")
         pocket = inventory_layout_for_game(self.game_id).pocket("tm_hm")
-        self._require_data()[pocket.offset + (item_id - 0xBF)] = quantity
+        self._require_data()[pocket.offset + index] = quantity
         self.recalculate_checksums()
 
     def _bag_pocket_for_item(self, item_id: int) -> str:
         category = item_category(item_id, 2)
-        if category in {"tm", "hm", "tmhm"}:
+        name = item_name(item_id, 2)
+        if item_id in GEN2_TMHM_INDEX_BY_ITEM_ID or category in {"tm", "hm", "tmhm"}:
             return "tm_hm"
-        if category == "ball":
+        if category == "ball" or name in GEN2_BALL_NAMES:
             return "balls"
         if category == "key_item":
             return "key_items"

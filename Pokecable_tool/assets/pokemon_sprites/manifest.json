@@ -520,6 +520,7 @@
     "normal/97.png",
     "normal/98.png",
     "normal/99.png",
+    "normal/egg.png",
     "shiny/1.png",
     "shiny/10.png",
     "shiny/100.png",
@@ -1039,7 +1040,8 @@
     "shiny/96.png",
     "shiny/97.png",
     "shiny/98.png",
-    "shiny/99.png"
+    "shiny/99.png",
+    "shiny/egg.png"
   ],
   "forms": {
     "201": [

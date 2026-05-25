@@ -135,6 +135,8 @@ GEN1 = {
     "nick_offset": 0x307E,
     "current_box_offset": 0x284C,
     "current_box_data_offset": 0x30C0,
+    "money_offset": 0x25F3,
+    "coin_offset": 0x2850,
     "checksum_start": 0x2598,
     "checksum_end": 0x3522,
     "checksum_offset": 0x3523,
@@ -174,6 +176,8 @@ GEN2_CRYSTAL = {
     "box_ot_offset": 0x296,
     "box_nick_offset": 0x372,
     "name_size": 11,
+    "pokedex_owned_offset": 0x2A27,
+    "pokedex_seen_offset": 0x2A47,
     "party_format": "gen2-crystal-party-v1",
     "box_format": "gen2-crystal-box-v1",
     "game_label": "Gen 2 Crystal",
@@ -202,6 +206,8 @@ GEN2_GS = {
     "box_ot_offset": 0x296,
     "box_nick_offset": 0x372,
     "name_size": 11,
+    "pokedex_owned_offset": 0x2A4C,
+    "pokedex_seen_offset": 0x2A6C,
     "party_format": "gen2-gold-silver-party-v1",
     "box_format": "gen2-gold-silver-box-v1",
 }
@@ -248,6 +254,41 @@ GEN3_NATURES = [
     "Modest", "Mild", "Quiet", "Bashful", "Rash",
     "Calm", "Gentle", "Sassy", "Careful", "Quirky",
 ]
+
+KANTO_DEX_NATIONAL_IDS = tuple(range(1, 152))
+JOHTO_DEX_NATIONAL_IDS = tuple(range(1, 252))
+HOENN_DEX_NATIONAL_IDS = (
+    252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267,
+    268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283,
+    284, 285, 286, 287, 288, 289, 63, 64, 65, 290, 291, 292, 293, 294, 295, 296,
+    297, 118, 119, 129, 130, 298, 183, 184, 74, 75, 76, 299, 300, 301, 41, 42, 169,
+    72, 73, 302, 303, 304, 305, 306, 66, 67, 68, 307, 308, 309, 310, 311, 312, 81,
+    82, 100, 101, 313, 314, 43, 44, 45, 182, 84, 85, 315, 316, 317, 318, 319, 320,
+    321, 322, 323, 218, 219, 324, 88, 89, 109, 110, 325, 326, 27, 28, 327, 227,
+    328, 329, 330, 331, 332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343,
+    344, 345, 346, 347, 348, 174, 39, 40, 349, 350, 351, 120, 121, 352, 353, 354,
+    355, 356, 357, 358, 359, 37, 38, 172, 25, 26, 54, 55, 360, 202, 177, 178, 203,
+    231, 232, 127, 214, 111, 112, 361, 362, 363, 364, 365, 366, 367, 368, 369, 222,
+    170, 171, 370, 116, 117, 230, 371, 372, 373, 374, 375, 376, 377, 378, 379, 380,
+    381, 382, 383, 384, 385, 386,
+)
+GEN3_NATIONAL_DEX_MAGIC = 0xDA
+GEN3_NATIONAL_DEX_MODE = 1
+GEN3_NATIONAL_DEX_ORDER = 0
+GEN3_NATIONAL_DEX_VAR_ID = 0x4046
+GEN3_NATIONAL_DEX_VAR_VALUE = 0x0302
+GEN3_VARS_START = 0x4000
+GEN3_NATIONAL_DEX_VAR_INDEX = GEN3_NATIONAL_DEX_VAR_ID - GEN3_VARS_START
+GEN3_NATIONAL_DEX_VAR_BASE_BY_GROUP = {
+    "emerald": 0x139C,
+    "rs": 0x1340,
+    "frlg": 0x1000,
+}
+GEN3_NATIONAL_DEX_FLAG_BY_GROUP = {
+    "emerald": 0x896,
+    "rs": 0x836,
+    "frlg": 0x840,
+}
 
 def clean_name(value: Any) -> str:
     return str(value or "").replace("\x00", "").strip()
@@ -377,6 +418,22 @@ def sum_range(data: bytes | bytearray, start: int, end: int) -> int:
     for index in range(start, end + 1):
         total = (total + int(data[index])) & 0xFFFF
     return total
+
+
+def _int_to_bcd_be(value: int, num_bytes: int) -> bytes:
+    """Codifica um inteiro em BCD big-endian (Gen 1/2 money/coins).
+
+    Ex.: 999999, 3 -> b'\\x99\\x99\\x99'; 1250, 2 -> b'\\x12\\x50'.
+    """
+    digits = str(max(0, int(value))).rjust(num_bytes * 2, "0")[-num_bytes * 2:]
+    return bytes((int(digits[i]) << 4) | int(digits[i + 1]) for i in range(0, len(digits), 2))
+
+
+def _bcd_be_to_int(raw: bytes) -> int:
+    value = 0
+    for byte in raw:
+        value = value * 100 + (byte >> 4) * 10 + (byte & 0x0F)
+    return value
 
 
 def gen1_checksum(data: bytes | bytearray) -> int:
@@ -552,7 +609,7 @@ def parse_gen3_pokemon(raw: bytes) -> Dict[str, Any]:
         "held_item_id": read_u16(secure, growth + 2) or None,
         "moves": moves,
         "is_egg": is_egg,
-        "is_shiny": False if is_egg else _gen3_is_shiny(personality, trainer_id),
+        "is_shiny": _gen3_is_shiny(personality, trainer_id),
         "experience": read_u32(secure, growth + 4),
         "personality": personality,
         "gender": None if is_egg else gender_from_gen3_personality(national_dex_id, personality),
@@ -597,7 +654,7 @@ def parse_gen3_box_pokemon(raw: bytes) -> Dict[str, Any]:
         "held_item_id": read_u16(secure, growth + 2) or None,
         "moves": moves,
         "is_egg": is_egg,
-        "is_shiny": False if is_egg else _gen3_is_shiny(personality, trainer_id),
+        "is_shiny": _gen3_is_shiny(personality, trainer_id),
         "experience": experience,
         "personality": personality,
         "gender": None if is_egg else gender_from_gen3_personality(national_dex_id, personality),
@@ -873,6 +930,10 @@ class SaveModel:
             flags_off = 0x1220
         if "firered" in game or "leafgreen" in game:
             badge_ids = list(range(0x820, 0x828))
+        elif "emerald" in game:
+            # Emerald badge flags live at FLAG_BADGE01_GET=0x867..0x86E,
+            # not at the Ruby/Sapphire range (0x807).
+            badge_ids = list(range(0x867, 0x86F))
         else:
             badge_ids = list(range(0x807, 0x80F))
         mask = 0
@@ -1971,7 +2032,7 @@ class SaveModel:
                 "moves": [move for move in mon[0x02:0x06] if move],
                 "move_details": move_details,
                 "is_egg": is_egg,
-                "is_shiny": False if is_egg else _legacy_shiny_from_mon(mon, 0x15),
+                "is_shiny": _legacy_shiny_from_mon(mon, 0x15),
                 "gender": None if is_egg else gender_from_gen2_attack_dv(species_id, mon[0x15] >> 4),
                 "unown_form": unown_form,
             }
@@ -2443,6 +2504,98 @@ class SaveModel:
             seen_c = 0x0B98 if is_frlg else (0x0CA4 if is_emerald else 0x0C0C)
             self.bytes[sec4 + seen_c + byte_off] |= mask
             write_u16(self.bytes, sec4 + 0xFF6, gen3_sector_checksum(self.bytes, sec4))
+
+    def _gen3_game_group(self) -> str:
+        game = str(self.game or "")
+        if "firered" in game or "leafgreen" in game:
+            return "frlg"
+        if "ruby" in game or "sapphire" in game:
+            return "rs"
+        return "emerald"
+
+    def _pokedex_species_ids_for_game(self) -> tuple[int, ...]:
+        if self.generation == 1:
+            return KANTO_DEX_NATIONAL_IDS
+        if self.generation == 2:
+            return JOHTO_DEX_NATIONAL_IDS
+        if self.generation == 3:
+            if self._gen3_game_group() == "frlg":
+                return KANTO_DEX_NATIONAL_IDS
+            return HOENN_DEX_NATIONAL_IDS
+        raise SaveError("Pokédex completa não suportada nesta geração.")
+
+    def complete_pokedex(self) -> int:
+        """Marca a Pokédex regional do jogo como vista E capturada.
+
+        Reaproveita _mark_pokedex_caught, que já grava caught+seen (incluindo os
+        3 espelhos de "visto" do Gen 3) e recalcula os checksums por geração.
+        Retorna a quantidade de espécies marcadas.
+        """
+        species_ids = self._pokedex_species_ids_for_game()
+        if self.generation == 2 and self.layout.get("pokedex_owned_offset") is None:
+            raise SaveError("Offsets de Pokédex Gen 2 ausentes no layout.")
+        if self.generation == 3 and not getattr(self, "slot", None):
+            raise SaveError("Não foi possível localizar o SaveBlock do Gen 3.")
+        for national_dex_id in species_ids:
+            self._mark_pokedex_caught(national_dex_id)
+        return len(species_ids)
+
+    def enable_national_dex(self) -> dict:
+        """Destrava a National Dex no Gen 3 sem marcar espécies extras."""
+        if self.generation != 3:
+            raise SaveError("National Dex só se aplica a saves Gen 3.")
+        if not getattr(self, "slot", None):
+            raise SaveError("Não foi possível localizar o SaveBlock do Gen 3.")
+
+        section_offsets = self.slot.get("section_offsets") or {}
+        sec0 = section_offsets.get(0)
+        if sec0 is None:
+            raise SaveError("SaveBlock2 do Gen 3 não encontrado.")
+
+        group = self._gen3_game_group()
+        flag_id = GEN3_NATIONAL_DEX_FLAG_BY_GROUP[group]
+        var_base = GEN3_NATIONAL_DEX_VAR_BASE_BY_GROUP[group]
+        var_offset = var_base + GEN3_NATIONAL_DEX_VAR_INDEX * 2
+
+        self.bytes[sec0 + 0x18] = GEN3_NATIONAL_DEX_ORDER
+        self.bytes[sec0 + 0x19] = GEN3_NATIONAL_DEX_MODE
+        self.bytes[sec0 + 0x1A] = GEN3_NATIONAL_DEX_MAGIC
+        write_u16(self.bytes, sec0 + 0xFF6, gen3_sector_checksum(self.bytes, sec0))
+
+        from pokecable_runtime.events.applicator import _set_event_flags, _write_gen3_saveblock1
+
+        _write_gen3_saveblock1(
+            self,
+            var_offset,
+            GEN3_NATIONAL_DEX_VAR_VALUE.to_bytes(2, "little"),
+        )
+        _set_event_flags(self, [flag_id])
+
+        return {
+            "game_group": group,
+            "flag_id": flag_id,
+            "var_offset": var_offset,
+            "var_value": GEN3_NATIONAL_DEX_VAR_VALUE,
+            "order": GEN3_NATIONAL_DEX_ORDER,
+            "mode": GEN3_NATIONAL_DEX_MODE,
+            "national_magic": GEN3_NATIONAL_DEX_MAGIC,
+        }
+
+    def give_gen1_money_coins(self, money: int = 999999, coins: int = 9999) -> dict:
+        """Define dinheiro (BCD 3 bytes, máx 999999) e fichas (BCD 2 bytes, máx 9999) no Gen 1.
+
+        Offsets internacionais: money 0x25F3, coins 0x2850. Recalcula o checksum.
+        """
+        if self.generation != 1:
+            raise SaveError("Dinheiro/fichas Gen 1 só se aplica a Red/Blue/Yellow.")
+        money = max(0, min(int(money), 999999))
+        coins = max(0, min(int(coins), 9999))
+        money_off = GEN1["money_offset"]
+        coin_off = GEN1["coin_offset"]
+        self.bytes[money_off:money_off + 3] = _int_to_bcd_be(money, 3)
+        self.bytes[coin_off:coin_off + 2] = _int_to_bcd_be(coins, 2)
+        self.bytes[GEN1["checksum_offset"]] = gen1_checksum(self.bytes)
+        return {"money": money, "coins": coins}
 
     def _apply_gen1_payload(self, parsed: Dict[str, Any], source_kind: str, raw: bytes) -> None:
         party_len = GEN1["mon_size"] + GEN1["name_size"] * 2

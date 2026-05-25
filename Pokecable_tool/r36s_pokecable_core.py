@@ -1953,6 +1953,44 @@ def apply_event_to_save(save_path, event_id: str) -> dict:
         return {"success": False, "message": str(e)[:100]}
 
 
+def get_available_utilities(save_path) -> dict:
+    """Lista utilitários de save (Pokédex completa, etc.) aplicáveis ao save."""
+    from pokecable_runtime.events.save_utilities import get_available_utilities_for_save
+
+    try:
+        save_path = Path(save_path) if isinstance(save_path, str) else save_path
+        save = load_save(save_path)
+        if not save:
+            return {"success": False, "utilities": []}
+        return {"success": True, "utilities": get_available_utilities_for_save(save)}
+    except Exception as e:
+        logger.error(f"Error listing utilities: {e}")
+        return {"success": False, "utilities": [], "message": str(e)[:100]}
+
+
+def apply_utility_to_save(save_path, utility_id: str) -> dict:
+    """Backup → aplica utilitário (edição direta) → grava no disco."""
+    from pokecable_runtime.events.save_utilities import apply_utility
+
+    try:
+        save_path = Path(save_path) if isinstance(save_path, str) else save_path
+        save = load_save(save_path)
+        if not save:
+            return {"success": False, "message": "Could not load save"}
+
+        result = apply_utility(save, utility_id)
+        if not result.get("success"):
+            return result
+
+        backup_path = _create_backup(save_path)
+        save.write_to_disk()
+        result["backup"] = backup_path
+        return result
+    except Exception as e:
+        logger.error(f"Error applying utility: {e}")
+        return {"success": False, "message": str(e)[:100]}
+
+
 def preflight_extras_for_save(save_path, event_ids=None) -> dict:
     """Valida tickets de extras sem escrever no save."""
     from pokecable_runtime.events.applicator import preflight_events

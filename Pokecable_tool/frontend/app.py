@@ -287,8 +287,19 @@ def held_item_info(pokemon):
     }
 
 
-def pokemon_display_name(pokemon, fallback="Pokemon"):
+def pokemon_is_egg(pokemon):
     pokemon = pokemon or {}
+    if pokemon.get("is_egg"):
+        return True
+    species_name = str(pokemon.get("species_name") or "").strip().lower()
+    return species_name == "egg"
+
+
+def pokemon_display_name(pokemon, fallback="Pokemon", language="pt"):
+    pokemon = pokemon or {}
+    if pokemon_is_egg(pokemon):
+        # Eggs store a garbage nickname ("?????"); show the localized egg label.
+        return t(language, "egg_name")
     base = (
         pokemon.get("nickname")
         or pokemon.get("species_name")
@@ -786,6 +797,7 @@ def draw_pokemon_detail_component(screen, fonts, panel_area, pokemon, display_na
     """Componente modular: visor digital + box informativo com item e ataques."""
     _, _, small_f, tiny_f = fonts
     pokemon = enrich_pokemon_experience_for_display(pokemon)
+    is_egg = pokemon_is_egg(pokemon)
 
     side_pad = 12
     visor_height = 100
@@ -813,15 +825,18 @@ def draw_pokemon_detail_component(screen, fonts, panel_area, pokemon, display_na
     level = int((pokemon or {}).get("level") or 0)
     name_f = font(11)
     wrap_text(screen, name_f, display_name, name_area, (0, 0, 0), line_gap=1, max_lines=1)
+    if pokemon_sprite_variant(pokemon)[0] == "shiny":
+        star = gender_font(13).render("★", True, (218, 165, 32))
+        screen.blit(star, star.get_rect(topright=(name_area.right, name_area.y - 1)))
 
     level_y = visor_area.y + 30
-    level_text = f"Nivel {level}" if level else t(language, "level_unknown")
+    level_text = t(language, "level_unknown") if (is_egg or not level) else f"Nivel {level}"
     level_surface = font(10).render(level_text, True, (0, 0, 0))
     screen.blit(level_surface, (text_x, level_y))
 
     type_box = pygame.Rect(text_x, level_y + 14, text_w, 22)
     draw_digital_visor(screen, type_box, 1.0)
-    type_names = pokemon_types(pokemon)
+    type_names = [] if is_egg else pokemon_types(pokemon)
     if type_names:
         tint = TYPE_COLORS.get(type_names[0], (170, 232, 206))
         overlay = pygame.Surface(type_box.size, pygame.SRCALPHA)
@@ -829,7 +844,7 @@ def draw_pokemon_detail_component(screen, fonts, panel_area, pokemon, display_na
         pygame.draw.rect(overlay, (255, 255, 255, 60), overlay.get_rect(), 1)
         screen.blit(overlay, type_box.topleft)
     pygame.draw.rect(screen, BORDER, type_box, 1)
-    type_label_text = " / ".join(type_label(type_name, language) for type_name in type_names[:2]) or "-"
+    type_label_text = "?" if is_egg else (" / ".join(type_label(type_name, language) for type_name in type_names[:2]) or "-")
     type_surface = font(10).render(type_label_text, True, (0, 0, 0))
     screen.blit(type_surface, type_surface.get_rect(center=type_box.center))
 
@@ -864,7 +879,7 @@ def draw_pokemon_detail_component(screen, fonts, panel_area, pokemon, display_na
 
         moves_panel = pygame.Rect(summary_panel.x + 8, summary_panel.y + 50, summary_panel.w - 16, summary_panel.h - 58)
         text(screen, small_f, t(language, "moves"), moves_panel.x, moves_panel.y, TEXT, moves_panel.w)
-        move_entries = move_display_entries(pokemon)
+        move_entries = [] if is_egg else move_display_entries(pokemon)
         if move_entries:
             move_f = font(11)
             for move_idx, move_entry in enumerate(move_entries[:4]):
@@ -1416,8 +1431,9 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
         level_area = pygame.Rect(text_x, row.y + level_y_offset, text_w, 12)
         item_area = pygame.Rect(text_x, row.y + item_y_offset, text_w, 12)
         level = int(pokemon.get("level") or 0)
-        text(screen, name_font, pokemon_display_name(pokemon, f"Pokemon {idx + 1}"), title_area.x, title_area.y, color, title_area.w)
-        text(screen, meta_font, t(language, "level_tag", level=level), level_area.x, level_area.y, color if idx == selected else MUTED, level_area.w)
+        text(screen, name_font, pokemon_display_name(pokemon, f"Pokemon {idx + 1}", language), title_area.x, title_area.y, color, title_area.w)
+        level_label = t(language, "level_unknown") if pokemon_is_egg(pokemon) else t(language, "level_tag", level=level)
+        text(screen, meta_font, level_label, level_area.x, level_area.y, color if idx == selected else MUTED, level_area.w)
         item_info = held_item_info(pokemon)
         item_name = item_info["name"] if item_info else t(language, "item_none")
         item_text = t(language, "item_label", name=item_name)
@@ -1432,7 +1448,7 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
 
     if selected_pokemon:
         sprite, loading, error = sprite_loader.snapshot()
-        display_name = pokemon_display_name(selected_pokemon, "Pokemon")
+        display_name = pokemon_display_name(selected_pokemon, "Pokemon", language)
         draw_pokemon_detail_component(screen, fonts, detail_panel, selected_pokemon, display_name, sprite, loading, language)
         if error and DEBUG:
             text(screen, tiny_f, error[:40], detail_panel.x + 14, detail_panel.bottom - 30, WARN, detail_panel.w - 28)
@@ -1562,7 +1578,7 @@ def draw_deposit_confirm(screen, fonts, pokemon, sprite_loader, language="pt"):
     pygame.draw.rect(screen, BORDER, left_panel, 2, border_radius=0)
     pygame.draw.rect(screen, BORDER, right_panel, 2, border_radius=0)
 
-    name = pokemon_display_name(pokemon)
+    name = pokemon_display_name(pokemon, language=language)
     msg = t(language, "deposit_question", name=name)
     text_area = pygame.Rect(left_panel.x + 18, left_panel.y + 22, left_panel.w - 36, 68)
     wrap_text(screen, body_f, msg, text_area, TEXT, line_gap=2)
@@ -1585,14 +1601,14 @@ def draw_deposit_confirm(screen, fonts, pokemon, sprite_loader, language="pt"):
     entry = _build_sprite_entry(pokemon)
     sprite_loader.request_for(entry)
     sprite, loading, _ = sprite_loader.snapshot_for(entry)
-    display_name = pokemon_display_name(pokemon, "Pokemon")
+    display_name = pokemon_display_name(pokemon, "Pokemon", language)
     draw_pokemon_detail_component(screen, fonts, right_panel, pokemon, display_name, sprite, loading, language)
 
     draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_yes")), ("B", t(language, "btn_no"))])
 
 
 def draw_withdraw_confirm(screen, fonts, pokemon, language="pt"):
-    name = pokemon_display_name(pokemon)
+    name = pokemon_display_name(pokemon, language=language)
     box_name = (pokemon or {}).get("box_name") or ""
     details = [t(language, "withdraw_from", box=box_name)] if box_name else []
     details.extend([t(language, "withdraw_help"), t(language, "backup_help")])
@@ -1698,7 +1714,7 @@ def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_i
         entry = _build_sprite_entry(pokemon)
         sprite_loader.request_for(entry)
         sprite, loading, _ = sprite_loader.snapshot_for(entry)
-        display_name = pokemon_display_name(pokemon, "Pokemon")
+        display_name = pokemon_display_name(pokemon, "Pokemon", language)
         draw_pokemon_detail_component(screen, fonts, right_panel, pokemon, display_name, sprite, loading, language)
 
         # sobrescreve o box de movimentos com oscilação no slot que precisa trocar
@@ -1771,7 +1787,7 @@ def draw_resolve_item_relocation(screen, fonts, item_relocation, selected_index,
         entry = _build_sprite_entry(pokemon)
         sprite_loader.request_for(entry)
         sprite, loading, _ = sprite_loader.snapshot_for(entry)
-        display_name = pokemon_display_name(pokemon, "Pokemon")
+        display_name = pokemon_display_name(pokemon, "Pokemon", language)
         draw_pokemon_detail_component(screen, fonts, right_panel, pokemon, display_name, sprite, loading, language)
     else:
         visor_rect = right_visor_rect(right_panel)
@@ -1786,7 +1802,7 @@ def draw_cancel_waiting_confirm(screen, fonts, pokemon, sprite_loader, language=
     del title_f
     layout = draw_pokedex_shell(screen, screen_title(language, "cancel_trade_title"))
 
-    pokemon_name = pokemon_display_name(pokemon, "???")
+    pokemon_name = pokemon_display_name(pokemon, "???", language)
 
     pokemon_entry = dict(pokemon or {})
     pokemon_entry.setdefault("generation", int(pokemon.get("generation") or 0))
@@ -1831,8 +1847,8 @@ def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon, sprite_loade
     del title_f
     layout = draw_pokedex_shell(screen, screen_title(language, "confirm_trade"))
 
-    mine = pokemon_display_name(my_pokemon, "???")
-    peer = pokemon_display_name(opponent_pokemon, "???")
+    mine = pokemon_display_name(my_pokemon, "???", language)
+    peer = pokemon_display_name(opponent_pokemon, "???", language)
 
     my_entry = dict(my_pokemon or {})
     my_entry.setdefault("generation", int(my_pokemon.get("generation") or 0))
@@ -2517,8 +2533,8 @@ def draw_trade_result(screen, fonts, success, data, sprite_loader, language="pt"
         left_sprite, left_loading, _ = sprite_loader.snapshot_for(left_entry)
         right_sprite, right_loading, _ = sprite_loader.snapshot_for(right_entry)
 
-        left_name = pokemon_display_name(left_pokemon) if left_pokemon else "Pokemon"
-        right_name = pokemon_display_name(right_pokemon) if right_pokemon else "Pokemon"
+        left_name = pokemon_display_name(left_pokemon, language=language) if left_pokemon else "Pokemon"
+        right_name = pokemon_display_name(right_pokemon, language=language) if right_pokemon else "Pokemon"
 
         pulse = 0.5 + 0.5 * math.sin(time.perf_counter() * 3.0)
         green_tint = (int(140 + 60 * pulse), int(210 + 30 * pulse), int(150 + 40 * pulse), 255)
@@ -2630,6 +2646,7 @@ def draw_extras_category(screen, fonts, categories, selected, language, error_me
         category_labels = {
             "tickets": t(language, "extras_tickets"),
             "ereader": t(language, "extras_ereader"),
+            "utilities": t(language, "extras_cat_utilities"),
         }
 
         visible = 6
@@ -2704,6 +2721,48 @@ def draw_extras_events(screen, fonts, events, selected, language, scroll=0.0, ap
     draw_footer_actions(screen, tiny_f, [("A", action_label), ("B", t(language, "btn_back"))])
 
 
+def draw_extras_utilities(screen, fonts, utilities, selected, language, scroll=0.0):
+    """List save-editing utilities available for the selected game."""
+    _, _, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, t(language, "extras_cat_utilities"))
+
+    list_panel = layout.left_panel
+    rect(screen, PANEL, list_panel, 0)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
+
+    if not utilities:
+        text(screen, small_f, t(language, "extras_no_events"), list_panel.x + 20, list_panel.y + 20, MUTED)
+    else:
+        visible = 6
+        row_h = 48
+        scroll_offset = list_scroll_offset("extras_utilities", selected, len(utilities), visible)
+        first = max(0, int(scroll_offset) - 1)
+        last = min(len(utilities), int(scroll_offset) + visible + 2)
+        previous_clip = screen.get_clip()
+        screen.set_clip(list_panel.inflate(-8, -8))
+        for idx in range(first, last):
+            utility = utilities[idx]
+            utility_name = t(language, utility["name_key"])
+            y = list_panel.y + 14 + int((idx - scroll_offset) * row_h)
+            row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
+            color = SCREEN if idx == selected else TEXT
+            draw_selectable_list_item(screen, row, idx == selected)
+            text(screen, small_f, utility_name, row.x + 9, row.y + 9, color, row.w - 18)
+        screen.set_clip(previous_clip)
+        LIST_SCROLLBAR.draw(screen, scroll_offset, len(utilities), visible)
+
+    info_panel = right_info_panel(layout)
+    rect(screen, PANEL_2, info_panel, 0)
+    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
+
+    selected_utility = utilities[selected] if utilities and selected < len(utilities) else None
+    if selected_utility:
+        desc = t(language, selected_utility.get("desc_key", "no_details"))
+        text(screen, tiny_f, desc, info_panel.x + 16, info_panel.y + 16, MUTED, info_panel.w - 32)
+
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "extras_apply")), ("B", t(language, "btn_back"))])
+
+
 def draw_extras_ereader(screen, fonts, slots, battles, selected, language, scroll=0.0, selected_slot=0):
     """Show e-Reader slots and available battles to inject."""
     _, _, small_f, tiny_f = fonts
@@ -2765,7 +2824,7 @@ def draw_extras_result(screen, fonts, result, language):
         status_color = SCREEN
     else:
         msg = result.get("message", "extras_no_events")
-        status_text = t(language, msg) if msg in ["extras_already_active", "extras_no_space", "extras_no_events"] else msg
+        status_text = t(language, msg)
         status_color = (255, 100, 100)
 
     y_offset = panel.y + 40
@@ -2887,6 +2946,7 @@ def main(initial_screen=None):
         draw_extras_select_save=draw_extras_select_save,
         draw_extras_category=draw_extras_category,
         draw_extras_events=draw_extras_events,
+        draw_extras_utilities=draw_extras_utilities,
         draw_extras_ereader=draw_extras_ereader,
         draw_extras_result=draw_extras_result,
         next_theme=next_theme,

@@ -185,7 +185,10 @@ class SpriteLoader:
     def _identity(self, pokemon):
         species_name = pokemon.get("species_name") if pokemon else ""
         species_id = int((pokemon or {}).get("species_id") or 0)
-        if not pokemon or (not species_name and not species_id) or species_name.lower() == "egg":
+        if pokemon and (pokemon.get("is_egg") or str(species_name or "").strip().lower() == "egg"):
+            variant, _ = pokemon_sprite_variant(pokemon)
+            return f"{SPRITE_CACHE_VERSION}-egg-{variant}", {"egg": True, "variant": variant}
+        if not pokemon or (not species_name and not species_id):
             return "", {}
 
         generation = int((pokemon or {}).get("generation") or 0)
@@ -239,7 +242,50 @@ class SpriteLoader:
             return None
         return self.asset_dir / variant / f"{sprite_id}.png"
 
+    @staticmethod
+    def _render_egg_surface(size=96):
+        """Draw a Pokemon egg sprite (cream oval with green blotches)."""
+        surface = pygame.Surface((size, size), pygame.SRCALPHA)
+        cream = (245, 240, 222)
+        cream_shadow = (214, 205, 178)
+        green = (138, 196, 130)
+        outline = (90, 84, 70)
+        cx = size // 2
+        # Egg body: slightly tapered oval, narrower at top.
+        body = pygame.Rect(int(size * 0.20), int(size * 0.10), int(size * 0.60), int(size * 0.82))
+        pygame.draw.ellipse(surface, outline, body.inflate(4, 4))
+        pygame.draw.ellipse(surface, cream, body)
+        # Bottom shading.
+        shade = pygame.Rect(body.x, body.y + int(body.h * 0.45), body.w, int(body.h * 0.55))
+        pygame.draw.ellipse(surface, cream_shadow, shade)
+        pygame.draw.ellipse(surface, cream, body.inflate(-int(size * 0.06), -int(size * 0.10)))
+        # Green blotches.
+        for bx, by, r in (
+            (0.38, 0.32, 0.07), (0.60, 0.40, 0.06),
+            (0.45, 0.58, 0.08), (0.62, 0.66, 0.05),
+            (0.36, 0.72, 0.05),
+        ):
+            pygame.draw.circle(surface, green, (int(size * bx), int(size * by)), int(size * r))
+        return surface
+
     def _load(self, key, lookup):
+        if lookup.get("egg"):
+            surface = None
+            variant = str(lookup.get("variant") or "normal")
+            egg_path = self.asset_dir / variant / "egg.png"
+            if not egg_path.exists():
+                egg_path = self.asset_dir / "normal" / "egg.png"
+            if egg_path.exists():
+                try:
+                    surface = pygame.image.load(str(egg_path)).convert_alpha()
+                except Exception as exc:
+                    logger.warning("Egg sprite load failed: %s", exc)
+            if surface is None:
+                # Offline fallback when the official egg asset is not bundled.
+                surface = self._render_egg_surface()
+            with self.lock:
+                self.entries[key] = {"surface": surface, "loading": False, "error": ""}
+            return
         try:
             sprite_path = self._sprite_path(lookup)
             if not sprite_path or not sprite_path.exists():
