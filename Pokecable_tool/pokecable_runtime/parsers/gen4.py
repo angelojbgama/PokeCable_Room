@@ -1258,6 +1258,22 @@ class Gen4Parser:
     def store_item_in_pc(self, item_id: int, quantity: int = 1) -> InventoryStoreResult:
         raise NotImplementedError("Gen 4 nao possui PC de itens no formato principal do save.")
 
+    def remove_item_from_bag(self, item_id: int, quantity: int | None = None) -> bool:
+        return self._remove_item_from_pocket(self._bag_pocket_for_item(item_id), item_id, quantity)
+
+    def _remove_item_from_pocket(self, pocket_name: str, item_id: int, quantity: int | None = None) -> bool:
+        """Remove (ou reduz) um item do pocket. quantity=None remove o stack inteiro. Retorna True se algo mudou."""
+        item_id = int(item_id)
+        entries = self._read_inventory_pocket(pocket_name)
+        for index, (current_id, current_quantity) in enumerate(entries):
+            if current_id == item_id:
+                if quantity is None or int(quantity) >= current_quantity:
+                    self._write_inventory_slot(pocket_name, index, 0, 0)
+                else:
+                    self._write_inventory_slot(pocket_name, index, item_id, current_quantity - int(quantity))
+                return True
+        return False
+
     def _inventory_pocket_names(self) -> tuple[str, ...]:
         return ("items", "key_items", "tm_hm", "mail", "medicine", "berries", "balls", "battle_items")
 

@@ -40,15 +40,15 @@ def tr(language, key, **kwargs):
             return value
     return value
 from frontend.item_sprites import draw_item_sprite
-from frontend import input as input_module
 from frontend.input import (
     ACTION_DEBOUNCE,
     AXIS_THRESHOLD,
     AXIS_X,
     AXIS_Y,
+    JOY_BUTTON_SELECT,
+    JOY_BUTTON_START,
     JOY_MAP,
     QUIT_COMBO_WINDOW,
-    apply_detected_profile,
     debounce_action,
     event_to_action,
     translate_joy_button,
@@ -2656,6 +2656,7 @@ def draw_extras_category(screen, fonts, categories, selected, language, error_me
             "tickets": t(language, "extras_tickets"),
             "ereader": t(language, "extras_ereader"),
             "utilities": t(language, "extras_cat_utilities"),
+            "additem": t(language, "extras_cat_additem"),
         }
 
         visible = 6
@@ -2724,14 +2725,16 @@ def draw_extras_events(screen, fonts, events, selected, language, scroll=0.0, ap
 
     selected_event = events[selected] if events and selected < len(events) else None
     if selected_event and selected_event["id"] in applied_ids:
-        action_label = t(language, "extras_already_active")
+        action_label = t(language, "extras_remove")
     else:
         action_label = t(language, "extras_apply")
     draw_footer_actions(screen, tiny_f, [("A", action_label), ("B", t(language, "btn_back"))])
 
 
-def draw_extras_utilities(screen, fonts, utilities, selected, language, scroll=0.0):
+def draw_extras_utilities(screen, fonts, utilities, selected, language, scroll=0.0, active_ids=None, reversible_ids=None):
     """List save-editing utilities available for the selected game."""
+    active_ids = active_ids or set()
+    reversible_ids = reversible_ids or set()
     _, _, small_f, tiny_f = fonts
     layout = draw_pokedex_shell(screen, t(language, "extras_cat_utilities"))
 
@@ -2752,11 +2755,13 @@ def draw_extras_utilities(screen, fonts, utilities, selected, language, scroll=0
         for idx in range(first, last):
             utility = utilities[idx]
             utility_name = t(language, utility["name_key"])
+            is_active = utility["id"] in active_ids
+            label = f"✓ {utility_name}" if is_active else utility_name
             y = list_panel.y + 14 + int((idx - scroll_offset) * row_h)
             row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
             color = SCREEN if idx == selected else TEXT
             draw_selectable_list_item(screen, row, idx == selected)
-            text(screen, small_f, utility_name, row.x + 9, row.y + 9, color, row.w - 18)
+            text(screen, small_f, label, row.x + 9, row.y + 9, color, row.w - 18)
         screen.set_clip(previous_clip)
         LIST_SCROLLBAR.draw(screen, scroll_offset, len(utilities), visible)
 
@@ -2769,7 +2774,11 @@ def draw_extras_utilities(screen, fonts, utilities, selected, language, scroll=0
         desc = t(language, selected_utility.get("desc_key", "no_details"))
         text(screen, tiny_f, desc, info_panel.x + 16, info_panel.y + 16, MUTED, info_panel.w - 32)
 
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "extras_apply")), ("B", t(language, "btn_back"))])
+    if selected_utility and selected_utility["id"] in active_ids:
+        action_label = t(language, "extras_remove")
+    else:
+        action_label = t(language, "extras_apply")
+    draw_footer_actions(screen, tiny_f, [("A", action_label), ("B", t(language, "btn_back"))])
 
 
 def draw_extras_ereader(screen, fonts, slots, battles, selected, language, scroll=0.0, selected_slot=0):
@@ -2781,6 +2790,10 @@ def draw_extras_ereader(screen, fonts, slots, battles, selected, language, scrol
     rect(screen, PANEL, list_panel, 0)
     pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
 
+    applied_battle_ids = {
+        slot_info.get("battle_id") for slot_info in (slots or []) if slot_info.get("battle_id")
+    }
+
     visible = 6
     row_h = 48
     scroll_offset = list_scroll_offset("extras_ereader", selected, len(battles), visible)
@@ -2790,7 +2803,8 @@ def draw_extras_ereader(screen, fonts, slots, battles, selected, language, scrol
     screen.set_clip(list_panel.inflate(-8, -8))
     for idx in range(first, last):
         battle = battles[idx]
-        battle_name = battle["name"]
+        is_applied = battle["id"] in applied_battle_ids
+        battle_name = f"✓ {battle['name']}" if is_applied else battle["name"]
         y = list_panel.y + 14 + int((idx - scroll_offset) * row_h)
         row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
         color = SCREEN if idx == selected else TEXT
@@ -2816,7 +2830,12 @@ def draw_extras_ereader(screen, fonts, slots, battles, selected, language, scrol
                 detail = f"{detail} ({slot_info['battle_id']})"
             text(screen, tiny_f, detail, row.x + 64, row.y + 4, MUTED, row.w - 70)
 
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "extras_apply")), ("L/R", "Slot"), ("B", t(language, "btn_back"))])
+    selected_battle = battles[selected] if battles and selected < len(battles) else None
+    if selected_battle and selected_battle["id"] in applied_battle_ids:
+        action_label = t(language, "extras_remove")
+    else:
+        action_label = t(language, "extras_apply")
+    draw_footer_actions(screen, tiny_f, [("A", action_label), ("L/R", "Slot"), ("B", t(language, "btn_back"))])
 
 
 def draw_extras_result(screen, fonts, result, language):
@@ -2847,6 +2866,79 @@ def draw_extras_result(screen, fonts, result, language):
     rect(screen, PANEL_2, info_panel, 0)
     pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
     draw_footer_actions(screen, tiny_f, [("A/B", t(language, "btn_ok"))])
+
+
+def draw_extras_item_category(screen, fonts, groups, selected, language):
+    """Choose a consumable item category (Balls, Healing, Berries, ...)."""
+    _, _, small_f, tiny_f = fonts
+    from pokecable_runtime.data.consumables import bucket_name_key
+
+    layout = draw_pokedex_shell(screen, t(language, "extras_cat_additem"))
+    list_panel = layout.left_panel
+    rect(screen, PANEL, list_panel, 0)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
+
+    visible = 6
+    row_h = 48
+    scroll_offset = list_scroll_offset("extras_item_category", selected, len(groups), visible)
+    first = max(0, int(scroll_offset) - 1)
+    last = min(len(groups), int(scroll_offset) + visible + 2)
+    previous_clip = screen.get_clip()
+    screen.set_clip(list_panel.inflate(-8, -8))
+    for idx in range(first, last):
+        bucket_key, items = groups[idx]
+        label = f"{t(language, bucket_name_key(bucket_key))} ({len(items)})"
+        y = list_panel.y + 14 + int((idx - scroll_offset) * row_h)
+        row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
+        color = SCREEN if idx == selected else TEXT
+        draw_selectable_list_item(screen, row, idx == selected)
+        text(screen, small_f, label, row.x + 9, row.y + 9, color, row.w - 18)
+    screen.set_clip(previous_clip)
+    LIST_SCROLLBAR.draw(screen, scroll_offset, len(groups), visible)
+
+    info_panel = right_info_panel(layout)
+    rect(screen, PANEL_2, info_panel, 0)
+    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
+
+
+def draw_extras_item_select(screen, fonts, items, selected, quantity, language):
+    """Pick an item from the chosen consumable category and set the quantity."""
+    _, _, small_f, tiny_f = fonts
+    layout = draw_pokedex_shell(screen, t(language, "extras_cat_additem"))
+
+    list_panel = layout.left_panel
+    rect(screen, PANEL, list_panel, 0)
+    pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
+
+    if not items:
+        text(screen, small_f, t(language, "extras_no_events"), list_panel.x + 20, list_panel.y + 20, MUTED)
+    else:
+        visible = 6
+        row_h = 48
+        scroll_offset = list_scroll_offset("extras_item_select", selected, len(items), visible)
+        first = max(0, int(scroll_offset) - 1)
+        last = min(len(items), int(scroll_offset) + visible + 2)
+        previous_clip = screen.get_clip()
+        screen.set_clip(list_panel.inflate(-8, -8))
+        for idx in range(first, last):
+            name = items[idx][1]
+            y = list_panel.y + 14 + int((idx - scroll_offset) * row_h)
+            row = pygame.Rect(list_panel.x + 10, y, list_panel.w - 20, 38)
+            color = SCREEN if idx == selected else TEXT
+            draw_selectable_list_item(screen, row, idx == selected)
+            text(screen, small_f, name, row.x + 9, row.y + 9, color, row.w - 18)
+        screen.set_clip(previous_clip)
+        LIST_SCROLLBAR.draw(screen, scroll_offset, len(items), visible)
+
+    info_panel = right_info_panel(layout)
+    rect(screen, PANEL_2, info_panel, 0)
+    pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
+    qty_label = t(language, "extras_item_qty", qty=str(quantity))
+    text(screen, small_f, qty_label, info_panel.x + 16, info_panel.y + 20, ACCENT, info_panel.w - 32)
+    text(screen, tiny_f, t(language, "extras_item_qty_hint"), info_panel.x + 16, info_panel.y + 56, MUTED, info_panel.w - 32)
+
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "extras_item_add")), ("L/R", t(language, "extras_item_qty_short")), ("B", t(language, "btn_back"))])
 
 
 def reset_flow_state(state):
@@ -2891,16 +2983,6 @@ def main(initial_screen=None):
             joy.get_numhats(),
         )
     logger.info("Boot timing: joystick enumeration %.3fs (count=%s)", time.perf_counter() - joystick_enum_start, len(joysticks))
-
-    device_override = os.getenv("POKECABLE_DEVICE", "").strip().lower() or None
-    applied = apply_detected_profile(
-        [joy.get_name() for joy in joysticks],
-        override=device_override,
-    )
-    if applied:
-        logger.info("Input profile applied: %s", applied)
-    else:
-        logger.info("Using default input profile (R36S)")
 
     pygame.mouse.set_visible(False)
     display_start = time.perf_counter()
@@ -2968,6 +3050,8 @@ def main(initial_screen=None):
         draw_extras_utilities=draw_extras_utilities,
         draw_extras_ereader=draw_extras_ereader,
         draw_extras_result=draw_extras_result,
+        draw_extras_item_category=draw_extras_item_category,
+        draw_extras_item_select=draw_extras_item_select,
         next_theme=next_theme,
         KEYBOARD_GRID_W=KEYBOARD_GRID_W,
     )

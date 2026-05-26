@@ -18,6 +18,8 @@ from frontend.screens.menu import (
     ExtrasUtilitiesScreen,
     ExtrasEreaderScreen,
     ExtrasResultScreen,
+    ExtrasItemCategoryScreen,
+    ExtrasItemSelectScreen,
 )
 from frontend.screens.selection import (
     EnterLanEndpointScreen,
@@ -189,6 +191,8 @@ def register_default_screens(controller):
         ExtrasUtilitiesScreen(),
         ExtrasEreaderScreen(),
         ExtrasResultScreen(),
+        ExtrasItemCategoryScreen(),
+        ExtrasItemSelectScreen(),
     ):
         controller.register(screen)
     return controller

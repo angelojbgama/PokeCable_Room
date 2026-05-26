@@ -937,6 +937,9 @@ class Gen3Parser:
     def store_item_in_pc(self, item_id: int, quantity: int = 1) -> InventoryStoreResult:
         return self._store_item_in_pocket("pc_items", item_id, quantity)
 
+    def remove_item_from_bag(self, item_id: int, quantity: int | None = None) -> bool:
+        return self._remove_item_from_pocket(self._bag_pocket_for_item(item_id), item_id, quantity)
+
     def mark_pokedex_seen(self, national_dex_id: int) -> None:
         self._validate_pokedex_national_id(national_dex_id)
         self._set_pokedex_bit(POKEDEX_SEEN_A_SECTION, POKEDEX_SEEN_A_OFFSET, national_dex_id)
@@ -1399,6 +1402,21 @@ class Gen3Parser:
             storage=pocket.storage,
             pocket_name=pocket_name,
         )
+
+    def _remove_item_from_pocket(self, pocket_name: str, item_id: int, quantity: int | None = None) -> bool:
+        """Remove (ou reduz) um item do pocket. quantity=None remove o stack inteiro. Retorna True se algo mudou."""
+        item_id = int(item_id)
+        items = self._read_item_slots(pocket_name)
+        if item_id not in items:
+            return False
+        current = items[item_id]
+        if quantity is None or int(quantity) >= current:
+            del items[item_id]
+        else:
+            items[item_id] = current - int(quantity)
+        ordered_items = sorted(items.items(), key=lambda entry: entry[0])
+        self._write_item_slots(pocket_name, ordered_items)
+        return True
 
     def _require_data(self) -> bytearray:
         if self.data is None:

@@ -711,6 +711,9 @@ class ExtrasCategoryScreen(ScreenBase):
                     services.switch_screen("extras_ereader", "extras_category")
                 elif category == "utilities":
                     services.switch_screen("extras_utilities", "extras_category")
+                elif category == "additem":
+                    session.extras_item_bucket_index = 0
+                    services.switch_screen("extras_item_category", "extras_category")
                 else:
                     services.switch_screen("extras_events", "extras_category")
                 session.menu_index = 0
@@ -738,7 +741,13 @@ class ExtrasCategoryScreen(ScreenBase):
         ctx.draw.draw_extras_category(ctx.screen, ctx.fonts, self._categories, session.menu_index, state.language, self._error_message)
 
     def _load_events_bg(self, session, state):
-        from r36s_pokecable_core import get_available_events, get_applied_events, get_available_utilities
+        from r36s_pokecable_core import (
+            get_applied_events,
+            get_applied_utilities,
+            get_available_events,
+            get_available_utilities,
+            get_consumable_item_groups,
+        )
 
         save_path = session.extras_save_path
         events_result = get_available_events(save_path)
@@ -756,6 +765,13 @@ class ExtrasCategoryScreen(ScreenBase):
                 self._categories.append("ereader")
             if utilities:
                 self._categories.append("utilities")
+            # Adicionar item consumível está sempre disponível (qualquer save com mochila).
+            item_groups_result = get_consumable_item_groups(save_path)
+            item_groups = item_groups_result.get("groups", []) if item_groups_result.get("success") else []
+            if item_groups:
+                self._categories.append("additem")
+                session.extras_item_groups = item_groups
+                session.extras_item_max_stack = item_groups_result.get("max_stack", 99)
             session.extras_events = events
             session.extras_utilities = utilities
 
@@ -764,6 +780,14 @@ class ExtrasCategoryScreen(ScreenBase):
                 session.extras_applied_ids = applied_result.get("applied", set())
             else:
                 session.extras_applied_ids = set()
+
+            if utilities:
+                applied_utils = get_applied_utilities(save_path)
+                session.extras_utilities_active = applied_utils.get("active", set())
+                session.extras_utilities_reversible = applied_utils.get("reversible", set())
+            else:
+                session.extras_utilities_active = set()
+                session.extras_utilities_reversible = set()
 
             self._error_message = None
         else:
@@ -781,17 +805,25 @@ class ExtrasEventsScreen(ScreenBase):
             session.extras_event_index = (session.extras_event_index + 1) % len(events)
         elif action == "select":
             if events and session.extras_event_index < len(events):
+                from r36s_pokecable_core import (
+                    apply_event_to_save,
+                    get_applied_events,
+                    remove_event_from_save,
+                )
+
                 event = events[session.extras_event_index]
-
                 if event["id"] in session.extras_applied_ids:
-                    session.extras_result = {"success": False, "message": "extras_already_active"}
-                    services.switch_screen("extras_result", "extras_apply")
+                    result = remove_event_from_save(session.extras_save_path, event["id"])
                 else:
-                    from r36s_pokecable_core import apply_event_to_save
-
                     result = apply_event_to_save(session.extras_save_path, event["id"])
-                    session.extras_result = result
-                    services.switch_screen("extras_result", "extras_apply")
+                session.extras_result = result
+
+                # Atualiza o estado aplicado para refletir o toggle ao voltar.
+                applied_result = get_applied_events(session.extras_save_path)
+                if applied_result.get("success"):
+                    session.extras_applied_ids = applied_result.get("applied", set())
+
+                services.switch_screen("extras_result", "extras_apply")
         elif action == "back":
             services.go_back("extras_category", "back_from_events")
             session.menu_index = 0
@@ -815,11 +847,25 @@ class ExtrasUtilitiesScreen(ScreenBase):
             session.extras_utility_index = (session.extras_utility_index + 1) % len(utilities)
         elif action == "select":
             if utilities and session.extras_utility_index < len(utilities):
-                from r36s_pokecable_core import apply_utility_to_save
+                from r36s_pokecable_core import (
+                    apply_utility_to_save,
+                    get_applied_utilities,
+                    remove_utility_from_save,
+                )
 
                 utility = utilities[session.extras_utility_index]
-                result = apply_utility_to_save(session.extras_save_path, utility["id"])
+                if utility["id"] in session.extras_utilities_active:
+                    result = remove_utility_from_save(session.extras_save_path, utility["id"])
+                else:
+                    result = apply_utility_to_save(session.extras_save_path, utility["id"])
                 session.extras_result = result
+
+                # Atualiza o estado dos utilitários reversíveis para refletir o toggle.
+                applied_utils = get_applied_utilities(session.extras_save_path)
+                if applied_utils.get("success"):
+                    session.extras_utilities_active = applied_utils.get("active", set())
+                    session.extras_utilities_reversible = applied_utils.get("reversible", set())
+
                 services.switch_screen("extras_result", "extras_apply")
         elif action == "back":
             services.go_back("extras_category", "back_from_utilities")
@@ -835,6 +881,8 @@ class ExtrasUtilitiesScreen(ScreenBase):
             utilities,
             session.extras_utility_index,
             state.language,
+            active_ids=session.extras_utilities_active,
+            reversible_ids=session.extras_utilities_reversible,
         )
 
 
@@ -860,13 +908,23 @@ class ExtrasEreaderScreen(ScreenBase):
         elif action == "right" and session.extras_ereader_slots:
             session.extras_ereader_slot_index = (session.extras_ereader_slot_index + 1) % len(session.extras_ereader_slots)
         elif action == "select":
-            from r36s_pokecable_core import apply_ereader_to_save
+            from r36s_pokecable_core import apply_ereader_to_save, remove_ereader_from_save
 
             if battles and session.extras_ereader_index < len(battles):
                 battle = battles[session.extras_ereader_index]
-                target_slot = session.extras_ereader_slot_index if session.extras_ereader_slots else 0
-                result = apply_ereader_to_save(session.extras_save_path, target_slot, battle["id"])
+                existing_slot = None
+                for slot_info in (session.extras_ereader_slots or []):
+                    if slot_info.get("battle_id") == battle["id"]:
+                        existing_slot = int(slot_info["slot"])
+                        break
+                if existing_slot is not None:
+                    result = remove_ereader_from_save(session.extras_save_path, existing_slot)
+                else:
+                    target_slot = session.extras_ereader_slot_index if session.extras_ereader_slots else 0
+                    result = apply_ereader_to_save(session.extras_save_path, target_slot, battle["id"])
                 session.extras_result = result
+                # Recarrega os slots para refletir o toggle ao voltar.
+                self._slots_load_started = False
                 services.switch_screen("extras_result", "extras_apply")
         elif action == "back":
             services.go_back("extras_category", "back_from_ereader")
@@ -923,9 +981,90 @@ class ExtrasResultScreen(ScreenBase):
                 services.go_back("extras_ereader", "back_from_result")
             elif session.extras_category == "utilities":
                 services.go_back("extras_utilities", "back_from_result")
+            elif session.extras_category == "additem":
+                services.go_back("extras_item_select", "back_from_result")
             else:
                 services.go_back("extras_events", "back_from_result")
             session.menu_index = 0
 
     def render(self, ctx, session, state, services):
         ctx.draw.draw_extras_result(ctx.screen, ctx.fonts, session.extras_result, state.language)
+
+
+class ExtrasItemCategoryScreen(ScreenBase):
+    screen_id = "extras_item_category"
+
+    def handle_action(self, action, ctx, session, state, services):
+        groups = session.extras_item_groups or []
+        if not groups:
+            if action == "back":
+                services.go_back("extras_category", "back_from_item_category")
+                session.menu_index = 0
+            return
+        if action == "up":
+            session.extras_item_bucket_index = (session.extras_item_bucket_index - 1) % len(groups)
+        elif action == "down":
+            session.extras_item_bucket_index = (session.extras_item_bucket_index + 1) % len(groups)
+        elif action == "select":
+            session.extras_item_index = 0
+            session.extras_item_qty = 1
+            services.switch_screen("extras_item_select", "extras_item_category")
+        elif action == "back":
+            services.go_back("extras_category", "back_from_item_category")
+            session.menu_index = 0
+
+    def render(self, ctx, session, state, services):
+        groups = session.extras_item_groups or []
+        if session.extras_item_bucket_index >= len(groups):
+            session.extras_item_bucket_index = max(0, len(groups) - 1)
+        ctx.draw.draw_extras_item_category(
+            ctx.screen, ctx.fonts, groups, session.extras_item_bucket_index, state.language
+        )
+
+
+class ExtrasItemSelectScreen(ScreenBase):
+    screen_id = "extras_item_select"
+
+    def _items(self, session):
+        groups = session.extras_item_groups or []
+        if 0 <= session.extras_item_bucket_index < len(groups):
+            return groups[session.extras_item_bucket_index][1]
+        return []
+
+    def handle_action(self, action, ctx, session, state, services):
+        items = self._items(session)
+        max_stack = max(1, int(session.extras_item_max_stack or 99))
+        if not items:
+            if action == "back":
+                services.go_back("extras_item_category", "back_from_item_select")
+            return
+        if action == "up":
+            session.extras_item_index = (session.extras_item_index - 1) % len(items)
+        elif action == "down":
+            session.extras_item_index = (session.extras_item_index + 1) % len(items)
+        elif action == "left":
+            session.extras_item_qty = max_stack if session.extras_item_qty <= 1 else session.extras_item_qty - 1
+        elif action == "right":
+            session.extras_item_qty = 1 if session.extras_item_qty >= max_stack else session.extras_item_qty + 1
+        elif action == "select":
+            from r36s_pokecable_core import add_item_to_save
+
+            item_id = items[session.extras_item_index][0]
+            qty = max(1, min(int(session.extras_item_qty), max_stack))
+            session.extras_result = add_item_to_save(session.extras_save_path, item_id, qty)
+            services.switch_screen("extras_result", "extras_item_add")
+        elif action == "back":
+            services.go_back("extras_item_category", "back_from_item_select")
+
+    def render(self, ctx, session, state, services):
+        items = self._items(session)
+        if session.extras_item_index >= len(items):
+            session.extras_item_index = max(0, len(items) - 1)
+        ctx.draw.draw_extras_item_select(
+            ctx.screen,
+            ctx.fonts,
+            items,
+            session.extras_item_index,
+            session.extras_item_qty,
+            state.language,
+        )

@@ -113,6 +113,13 @@ class UiSessionState:
     extras_utilities_scroll: float = 0.0
     extras_ereader_scroll: float = 0.0
     extras_applied_ids: set = field(default_factory=set)
+    extras_utilities_active: set = field(default_factory=set)
+    extras_utilities_reversible: set = field(default_factory=set)
+    extras_item_groups: list = field(default_factory=list)  # [(bucket_key, [(item_id, name), ...]), ...]
+    extras_item_bucket_index: int = 0
+    extras_item_index: int = 0
+    extras_item_qty: int = 1
+    extras_item_max_stack: int = 99
 
     def reset_info_modal(self) -> None:
         self.info_modal_data = default_info_modal()

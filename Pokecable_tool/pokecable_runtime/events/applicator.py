@@ -8,6 +8,18 @@ GEN3_SAVEBLOCK1_SECTION_IDS = (1, 2, 3, 4)
 GEN3_RS_EREADER_OFFSET = 0x3030
 GEN3_EREADER_SLOT_SIZE = 40
 GEN3_EREADER_SLOT_COUNT = 5
+# Base do array wEventFlags do Crystal dentro do save (offset de arquivo).
+# Confirmado contra a disassembly pret/pokecrystal: a SECTION "Save" é a primeira
+# do banco SRAM 1 → arquivo 0x2000; sGameData = 0x2009 (= CRYSTAL_PRIMARY_START).
+# wEventFlags fica no bloco wPlayerData; somando o storage do wram.asm de wNumPCItems
+# (= pocket pc_items, arquivo 0x247F) até wEventFlags dá +0x181 → 0x2600. Está dentro
+# da região com checksum primário (0x2009–0x2B82). (Antes era 0x25FD, 3 bytes
+# adiantado, jogando todos os flags no byte errado.)
+GEN2_EVENT_FLAGS_OFFSET = 0x2600
+GEN2_EVENT_CAN_GIVE_GS_BALL_TO_KURT = 0x0BE
+GEN2_EVENT_GAVE_GS_BALL_TO_KURT = 0x0BF
+GEN2_EVENT_FOREST_IS_RESTLESS = 0x0C0
+GEN2_EVENT_GOT_GS_BALL_FROM_POKECOM_CENTER = 0x340
 
 
 def apply_event(save_model, event_id: str):
@@ -68,6 +80,55 @@ def apply_event(save_model, event_id: str):
             return {"success": False, "message": f"Erro ao setar GS Ball flags: {str(e)}"}
 
     return {"success": True, "message": "extras_applied"}
+
+
+def revert_event(save_model, event_id: str):
+    """Reverte um evento de ticket: remove o item dado e limpa as flags.
+
+    Inverso de apply_event. Não faz backup nem grava — responsabilidade do chamador.
+    """
+    from .catalog import get_event_by_id
+
+    event = get_event_by_id(event_id)
+    if not event:
+        return {"success": False, "message": "Evento não encontrado"}
+
+    parser = _get_parser_for_save(save_model)
+    if not parser:
+        return {"success": False, "message": "Não foi possível carregar parser"}
+
+    changed = False
+    item_id = event.get("item_id")
+    if item_id is not None and hasattr(parser, "remove_item_from_bag"):
+        try:
+            removed = bool(parser.remove_item_from_bag(int(item_id)))
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+        changed = changed or removed
+        # Sincronizar dados modificados do parser de volta para SaveModel.bytes
+        if hasattr(parser, "data") and parser.data:
+            save_model.bytes[:] = parser.data
+
+    if "flags" in event:
+        try:
+            flag_ids = _resolve_event_flags(event["flags"], save_model.game)
+            if flag_ids:
+                _clear_event_flags(save_model, flag_ids)
+                changed = True
+        except Exception as e:
+            return {"success": False, "message": f"Erro ao limpar flags: {str(e)}"}
+
+    if event.get("target_system") == "gs_ball":
+        try:
+            _clear_gsball_flags(save_model)
+            changed = True
+        except Exception as e:
+            return {"success": False, "message": f"Erro ao limpar GS Ball flags: {str(e)}"}
+
+    if not changed:
+        return {"success": False, "message": "extras_not_active"}
+
+    return {"success": True, "message": "extras_removed"}
 
 
 def preflight_event(save_model, event_id: str) -> dict:
@@ -366,6 +427,16 @@ def _set_event_flags(save_model, flag_ids):
         _write_gen3_saveblock1(save_model, flag_block_offset + byte_idx, bytes([current | (1 << bit)]))
 
 
+def _clear_event_flags(save_model, flag_ids):
+    """Limpa event flags no SaveBlock1 de Gen 3 (inverso de _set_event_flags)."""
+    flag_block_offset = _get_event_flag_offset(save_model)
+    for flag_id in flag_ids:
+        byte_idx = flag_id // 8
+        bit = flag_id % 8
+        current = _read_gen3_saveblock1(save_model, flag_block_offset + byte_idx, 1)[0]
+        _write_gen3_saveblock1(save_model, flag_block_offset + byte_idx, bytes([current & ~(1 << bit) & 0xFF]))
+
+
 def _get_event_flag_offset(save_model):
     """Retorna offset do event flag block baseado no tipo de jogo."""
     game = save_model.game or ""
@@ -379,10 +450,55 @@ def _get_event_flag_offset(save_model):
 
 
 def _set_gsball_flags(save_model):
-    """Seta GS Ball flags específicos do Crystal."""
-    data = save_model.bytes
-    data[0x3E3C] = 0x0B
-    data[0x3E44] = 0x0B
+    """Seta o estado do evento da GS Ball para o ponto "acabei de receber a bola"."""
+    if (save_model.game or "") == "pokemon_crystal":
+        _set_gen2_event_flag(save_model, GEN2_EVENT_GOT_GS_BALL_FROM_POKECOM_CENTER)
+        _set_gen2_event_flag(save_model, GEN2_EVENT_CAN_GIVE_GS_BALL_TO_KURT)
+        _clear_gen2_event_flag(save_model, GEN2_EVENT_GAVE_GS_BALL_TO_KURT)
+        _clear_gen2_event_flag(save_model, GEN2_EVENT_FOREST_IS_RESTLESS)
+        _recalculate_gen2_checksums(save_model)
+
+
+def _clear_gsball_flags(save_model):
+    """Reverte o estado do evento da GS Ball (inverso de _set_gsball_flags)."""
+    if (save_model.game or "") == "pokemon_crystal":
+        _clear_gen2_event_flag(save_model, GEN2_EVENT_GOT_GS_BALL_FROM_POKECOM_CENTER)
+        _clear_gen2_event_flag(save_model, GEN2_EVENT_CAN_GIVE_GS_BALL_TO_KURT)
+        _clear_gen2_event_flag(save_model, GEN2_EVENT_GAVE_GS_BALL_TO_KURT)
+        _clear_gen2_event_flag(save_model, GEN2_EVENT_FOREST_IS_RESTLESS)
+        _recalculate_gen2_checksums(save_model)
+
+
+def _recalculate_gen2_checksums(save_model):
+    """Recalcula os checksums Gen 2 após editar bytes diretamente em save_model.bytes.
+
+    _set/_clear_gen2_event_flag escrevem direto nos bytes (dentro da região com
+    checksum primário), sem recalcular. write_to_disk grava os bytes crus, então é
+    aqui que precisamos atualizar o checksum primário e a cópia secundária — senão o
+    jogo trata o save como corrompido.
+    """
+    parser = _get_parser_for_save(save_model)
+    if not parser or not hasattr(parser, "recalculate_checksums"):
+        return
+    if hasattr(parser, "data") and parser.data is not None:
+        parser.data[:] = save_model.bytes
+    parser.recalculate_checksums()
+    if hasattr(parser, "data") and parser.data is not None:
+        save_model.bytes[:] = parser.data
+
+
+def _set_gen2_event_flag(save_model, flag_id: int) -> None:
+    byte_idx = flag_id // 8
+    bit = flag_id % 8
+    offset = GEN2_EVENT_FLAGS_OFFSET + byte_idx
+    save_model.bytes[offset] |= 1 << bit
+
+
+def _clear_gen2_event_flag(save_model, flag_id: int) -> None:
+    byte_idx = flag_id // 8
+    bit = flag_id % 8
+    offset = GEN2_EVENT_FLAGS_OFFSET + byte_idx
+    save_model.bytes[offset] &= ~(1 << bit) & 0xFF
 
 
 def apply_ereader_battle(save_model, slot: int, battle_id: str):
@@ -412,6 +528,28 @@ def apply_ereader_battle(save_model, slot: int, battle_id: str):
         return {"success": True, "message": "extras_applied", "slot": slot, "battle_id": battle_id}
     except Exception as e:
         return {"success": False, "message": f"Erro ao injetar batalha: {str(e)}"}
+
+
+def clear_ereader_slot(save_model, slot: int):
+    """Zera um slot e-Reader (inverso de apply_ereader_battle). Não faz backup nem grava."""
+    from .official import compatibility_for_save
+
+    if slot < 0 or slot >= GEN3_EREADER_SLOT_COUNT:
+        return {"success": False, "message": "Slot inválido (0-4)"}
+
+    compatibility = compatibility_for_save(save_model, "ereader")
+    if not compatibility.can_apply:
+        return {"success": False, "message": compatibility.message or "e-Reader só suporta Ruby/Sapphire"}
+
+    try:
+        current = read_ereader_slots(save_model)[slot]
+        if current.get("is_empty"):
+            return {"success": False, "message": "extras_not_active"}
+        offset = GEN3_RS_EREADER_OFFSET + (slot * GEN3_EREADER_SLOT_SIZE)
+        save_model.bytes[offset : offset + GEN3_EREADER_SLOT_SIZE] = bytes(GEN3_EREADER_SLOT_SIZE)
+        return {"success": True, "message": "extras_removed", "slot": slot}
+    except Exception as e:
+        return {"success": False, "message": f"Erro ao limpar slot: {str(e)}"}
 
 
 def _write_ereader_trainer(save_model, slot: int, trainer_data: dict):

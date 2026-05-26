@@ -42,6 +42,11 @@ POKEDEX_SIZE = 32
 GEN2_MAX_STACK = 99
 GEN2_TMHM_ITEM_IDS = tuple(item_id for item_id in range(0xBF, 0xFA) if item_id not in (0xC3, 0xDC))
 GEN2_TMHM_INDEX_BY_ITEM_ID = {item_id: index for index, item_id in enumerate(GEN2_TMHM_ITEM_IDS)}
+# O catálogo Gen 2 não marca key items (no jogo a separação é uma tabela na ROM,
+# não um byte por item), então roteamos manualmente os que precisam ir ao pocket
+# Key Items. A GS Ball (0x73) é essencial: a quest do Celebi (Kurt / santuário da
+# Ilex) procura a bola no pocket Key Items. Lista pode ser expandida conforme preciso.
+GEN2_KEY_ITEM_IDS = {0x73}  # GS Ball
 BOX_OT_OFFSET = 0x296
 BOX_NICK_OFFSET = 0x372
 STORED_BOX_OFFSETS = tuple(0x4000 + 0x450 * index for index in range(7)) + tuple(0x6000 + 0x450 * index for index in range(7))
@@ -989,6 +994,9 @@ class Gen2Parser:
     def store_item_in_pc(self, item_id: int, quantity: int = 1) -> InventoryStoreResult:
         return self._store_item_in_pocket("pc_items", item_id, quantity)
 
+    def remove_item_from_bag(self, item_id: int, quantity: int | None = None) -> bool:
+        return self._remove_item_from_pocket(self._bag_pocket_for_item(item_id), item_id, quantity)
+
     def mark_pokedex_seen(self, national_dex_id: int) -> None:
         self._set_pokedex_bit(self._require_layout().pokedex_seen_offset, national_dex_id)
         self.recalculate_checksums()
@@ -1317,6 +1325,8 @@ class Gen2Parser:
     def _bag_pocket_for_item(self, item_id: int) -> str:
         category = item_category(item_id, 2)
         name = item_name(item_id, 2)
+        if int(item_id) in GEN2_KEY_ITEM_IDS:
+            return "key_items"
         if item_id in GEN2_TMHM_INDEX_BY_ITEM_ID or category in {"tm", "hm", "tmhm"}:
             return "tm_hm"
         if category == "ball" or name in GEN2_BALL_NAMES:
@@ -1379,6 +1389,35 @@ class Gen2Parser:
             items.append((item_id, quantity))
         self._write_counted_item_pairs(pocket.offset, pocket.capacity, items)
         return InventoryStoreResult(item_id, item_name(item_id, 2) or f"Item #{item_id}", quantity, 2, pocket.storage, pocket_name)
+
+    def _remove_item_from_pocket(self, pocket_name: str, item_id: int, quantity: int | None = None) -> bool:
+        """Remove (ou reduz) um item do pocket. quantity=None remove o stack inteiro. Retorna True se algo mudou."""
+        item_id = int(item_id)
+        pocket = inventory_layout_for_game(self.game_id).pocket(pocket_name)
+        if pocket_name == "key_items":
+            items = self._read_counted_item_ids(pocket.offset)
+            if item_id not in items:
+                return False
+            items.remove(item_id)
+            self._write_counted_item_ids(pocket.offset, pocket.capacity, items)
+            return True
+        if pocket_name == "tm_hm":
+            current = self._read_tmhm_quantities(pocket.offset).get(item_id, 0)
+            if current <= 0:
+                return False
+            new_quantity = 0 if quantity is None or int(quantity) >= current else current - int(quantity)
+            self._write_tmhm_quantity(item_id, new_quantity)
+            return True
+        items = self._read_counted_item_pairs(pocket.offset)
+        for index, (current_item_id, current_quantity) in enumerate(items):
+            if current_item_id == item_id:
+                if quantity is None or int(quantity) >= current_quantity:
+                    items.pop(index)
+                else:
+                    items[index] = (current_item_id, current_quantity - int(quantity))
+                self._write_counted_item_pairs(pocket.offset, pocket.capacity, items)
+                return True
+        return False
 
     def _require_data(self) -> bytearray:
         if self.data is None:

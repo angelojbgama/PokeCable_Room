@@ -2209,6 +2209,171 @@ def get_applied_events(save_path) -> dict:
         return {"success": False, "applied": set(), "applied_event_ids": set(), "applied_ereader_battles": set(), "occupied_ereader_slots": set(), "unknown_ereader_slots": set()}
 
 
+def remove_event_from_save(save_path, event_id: str) -> dict:
+    """Inverso de apply_event_to_save: remove o item do evento e limpa as flags."""
+    from pokecable_runtime.events.applicator import revert_event
+
+    try:
+        save_path = Path(save_path) if isinstance(save_path, str) else save_path
+
+        save = load_save(save_path)
+        if not save:
+            return {"success": False, "message": "Could not load save"}
+
+        result = revert_event(save, event_id)
+        if not result.get("success"):
+            return result
+
+        backup_path = _create_backup(save_path)
+        save.write_to_disk()
+        return {
+            "success": True,
+            "message": result.get("message", "extras_removed"),
+            "backup": backup_path,
+        }
+
+    except Exception as e:
+        logger.error(f"Error reverting event: {e}")
+        return {"success": False, "message": str(e)[:100]}
+
+
+def remove_ereader_from_save(save_path, slot: int) -> dict:
+    """Inverso de apply_ereader_to_save: zera o slot e-Reader informado."""
+    from pokecable_runtime.events.applicator import clear_ereader_slot
+
+    try:
+        save_path = Path(save_path) if isinstance(save_path, str) else save_path
+
+        save = load_save(save_path)
+        if not save:
+            return {"success": False, "message": "Could not load save"}
+
+        result = clear_ereader_slot(save, slot)
+        if not result.get("success"):
+            return result
+
+        backup_path = _create_backup(save_path)
+        save.write_to_disk()
+        result["backup"] = backup_path
+        return result
+
+    except Exception as e:
+        logger.error(f"Error clearing e-Reader slot: {e}")
+        return {"success": False, "message": str(e)[:100]}
+
+
+def remove_utility_from_save(save_path, utility_id: str) -> dict:
+    """Inverso de apply_utility_to_save (apenas utilitários reversíveis)."""
+    from pokecable_runtime.events.save_utilities import revert_utility
+
+    try:
+        save_path = Path(save_path) if isinstance(save_path, str) else save_path
+
+        save = load_save(save_path)
+        if not save:
+            return {"success": False, "message": "Could not load save"}
+
+        result = revert_utility(save, utility_id)
+        if not result.get("success"):
+            return result
+
+        backup_path = _create_backup(save_path)
+        save.write_to_disk()
+        result["backup"] = backup_path
+        return result
+
+    except Exception as e:
+        logger.error(f"Error reverting utility: {e}")
+        return {"success": False, "message": str(e)[:100]}
+
+
+def add_item_to_save(save_path, item_id: int, quantity: int = 1) -> dict:
+    """Adiciona um item consumível à mochila (backup → store_item_in_bag → grava)."""
+    from pokecable_runtime.events.applicator import _get_parser_for_save
+
+    try:
+        save_path = Path(save_path) if isinstance(save_path, str) else save_path
+        save = load_save(save_path)
+        if not save:
+            return {"success": False, "message": "Could not load save"}
+
+        parser = _get_parser_for_save(save)
+        if not parser:
+            return {"success": False, "message": "Não foi possível carregar parser"}
+
+        quantity = max(1, int(quantity))
+        try:
+            result = parser.store_item_in_bag(int(item_id), quantity)
+        except Exception as exc:  # noqa: BLE001 - mensagens de espaço/limite para o usuário
+            message = str(exc)
+            if any(token in message.lower() for token in ("no space", "bag is full", "cheio", "excedeu", "stack", "maxima")):
+                return {"success": False, "message": "extras_no_space"}
+            return {"success": False, "message": message[:120]}
+
+        if hasattr(parser, "data") and parser.data:
+            save.bytes[:] = parser.data
+
+        backup_path = _create_backup(save_path)
+        save.write_to_disk()
+        return {
+            "success": True,
+            "message": "extras_applied",
+            "backup": backup_path,
+            "item_id": int(item_id),
+            "quantity_added": quantity,
+            "pocket_name": getattr(result, "pocket_name", ""),
+        }
+    except Exception as e:
+        logger.error(f"Error adding item: {e}")
+        return {"success": False, "message": str(e)[:100]}
+
+
+def get_consumable_item_groups(save_path) -> dict:
+    """Retorna os grupos de itens consumíveis aplicáveis ao save (por categoria)."""
+    from pokecable_runtime.data.consumables import consumable_groups, max_item_stack
+
+    try:
+        save_path = Path(save_path) if isinstance(save_path, str) else save_path
+        save = load_save(save_path)
+        if not save:
+            return {"success": False, "groups": [], "max_stack": 99}
+        generation = int(getattr(save, "generation", 0) or 0)
+        groups = consumable_groups(generation)
+        return {"success": True, "groups": groups, "max_stack": max_item_stack(generation)}
+    except Exception as e:
+        logger.error(f"Error listing consumable items: {e}")
+        return {"success": False, "groups": [], "max_stack": 99}
+
+
+def get_applied_utilities(save_path) -> dict:
+    """Retorna o estado dos utilitários reversíveis: ids ativos e ids reversíveis."""
+    from pokecable_runtime.events.save_utilities import (
+        get_available_utilities_for_save,
+        is_utility_active,
+        is_utility_reversible,
+    )
+
+    try:
+        save_path = Path(save_path) if isinstance(save_path, str) else save_path
+        save = load_save(save_path)
+        if not save:
+            return {"success": False, "active": set(), "reversible": set()}
+
+        active = set()
+        reversible = set()
+        for util in get_available_utilities_for_save(save):
+            util_id = util["id"]
+            if is_utility_reversible(util_id):
+                reversible.add(util_id)
+                if is_utility_active(save, util_id):
+                    active.add(util_id)
+        return {"success": True, "active": active, "reversible": reversible}
+
+    except Exception as e:
+        logger.error(f"Error getting applied utilities: {e}")
+        return {"success": False, "active": set(), "reversible": set()}
+
+
 def _get_game_id_from_save(save) -> Optional[str]:
     """Mapeia SaveModel para game_id."""
     if hasattr(save, "game"):

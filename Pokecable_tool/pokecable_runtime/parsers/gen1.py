@@ -606,6 +606,9 @@ class Gen1Parser:
     def store_item_in_pc(self, item_id: int, quantity: int = 1) -> InventoryStoreResult:
         return self._store_counted_pair_item("pc_items", item_id, quantity)
 
+    def remove_item_from_bag(self, item_id: int, quantity: int | None = None) -> bool:
+        return self._remove_counted_pair_item("bag_items", item_id, quantity)
+
     def mark_pokedex_seen(self, national_dex_id: int) -> None:
         self._set_pokedex_bit(POKEDEX_SEEN_OFFSET, national_dex_id)
         self.recalculate_checksums()
@@ -881,3 +884,18 @@ class Gen1Parser:
             storage=pocket.storage,
             pocket_name=pocket_name,
         )
+
+    def _remove_counted_pair_item(self, pocket_name: str, item_id: int, quantity: int | None = None) -> bool:
+        """Remove (ou reduz) um item do pocket. quantity=None remove o stack inteiro. Retorna True se algo mudou."""
+        item_id = int(item_id)
+        pocket = inventory_layout_for_game(self.game_id).pocket(pocket_name)
+        items = self._read_counted_item_pairs(pocket.offset)
+        for index, (current_item_id, current_quantity) in enumerate(items):
+            if current_item_id == item_id:
+                if quantity is None or int(quantity) >= current_quantity:
+                    items.pop(index)
+                else:
+                    items[index] = (current_item_id, current_quantity - int(quantity))
+                self._write_counted_item_pairs(pocket.offset, pocket.capacity, items)
+                return True
+        return False
