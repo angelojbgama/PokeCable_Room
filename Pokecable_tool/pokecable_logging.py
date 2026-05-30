@@ -22,6 +22,7 @@ def resolve_log_paths() -> Dict[str, Path | str]:
         "session_dir": log_root,
         "error_log": Path(os.getenv("POKECABLE_ERROR_LOG", str(log_root / "error.log"))).expanduser(),
         "debug_log": Path(os.getenv("POKECABLE_DEBUG_LOG", str(log_root / "debug.log"))).expanduser(),
+        "input_log": Path(os.getenv("POKECABLE_INPUT_LOG", str(log_root / "input.log"))).expanduser(),
         "debug": "1" if _enabled(os.getenv("POKECABLE_DEBUG")) else "0",
     }
 
@@ -36,7 +37,7 @@ def configure_logging() -> Dict[str, Path | str]:
     formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s:%(lineno)d | %(message)s")
 
     root.handlers.clear()
-    root.setLevel(logging.DEBUG if debug_enabled else logging.ERROR)
+    root.setLevel(logging.DEBUG if debug_enabled else logging.INFO)
 
     error_log = Path(paths["error_log"])
     error_log.parent.mkdir(parents=True, exist_ok=True)
@@ -45,13 +46,19 @@ def configure_logging() -> Dict[str, Path | str]:
     error_handler.setFormatter(formatter)
     root.addHandler(error_handler)
 
-    if debug_enabled:
-        debug_log = Path(paths["debug_log"])
-        debug_log.parent.mkdir(parents=True, exist_ok=True)
-        debug_handler = RotatingFileHandler(debug_log, maxBytes=512 * 1024, backupCount=1, encoding="utf-8")
-        debug_handler.setLevel(logging.DEBUG)
-        debug_handler.setFormatter(formatter)
-        root.addHandler(debug_handler)
+    input_log = Path(paths["input_log"])
+    input_log.parent.mkdir(parents=True, exist_ok=True)
+    input_handler = RotatingFileHandler(input_log, maxBytes=512 * 1024, backupCount=2, encoding="utf-8")
+    input_handler.setLevel(logging.INFO)
+    input_handler.setFormatter(formatter)
+    root.addHandler(input_handler)
+
+    debug_log = Path(paths["debug_log"])
+    debug_log.parent.mkdir(parents=True, exist_ok=True)
+    debug_handler = RotatingFileHandler(debug_log, maxBytes=1024 * 1024, backupCount=2, encoding="utf-8")
+    debug_handler.setLevel(logging.DEBUG if debug_enabled else logging.INFO)
+    debug_handler.setFormatter(formatter)
+    root.addHandler(debug_handler)
 
     logging.captureWarnings(True)
     root._pokecable_logging_ready = True
