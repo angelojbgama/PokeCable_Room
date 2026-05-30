@@ -1020,7 +1020,7 @@ def _urlopen_with_fallback(request_or_url, timeout: int = UPDATE_TIMEOUT):
 def _download_file(url: str, destination: Path) -> int:
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "PokeCable-R36S/1.0", "Accept": "application/octet-stream"},
+        headers={"User-Agent": "PokeCable-R36S/1.0", "Accept": "*/*"},
     )
     logger.info("Update download start: %s -> %s", url, destination)
     total = 0
