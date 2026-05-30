@@ -1056,7 +1056,9 @@ def _safe_extract_zip(archive: zipfile.ZipFile, destination: Path) -> None:
 
 
 def _copy_update_tree(source: Path, destination: Path) -> None:
-    skip_names = {"logs", ".git", "__pycache__"}
+    # "dependence" traz libs nativas (.so) em uso pelo processo; sobrescrever
+    # mata o app (SIGSEGV). É gerenciada na instalacao, nao no update.
+    skip_names = {"logs", ".git", "__pycache__", "dependence"}
     for item in source.iterdir():
         if item.name in skip_names:
             continue
