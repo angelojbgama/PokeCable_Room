@@ -175,12 +175,11 @@ def resolve_sprite_national_dex_id(generation, species_id, pokemon=None):
 
 
 class SpriteLoader:
-    def __init__(self, server_url: str):
+    def __init__(self):
         self.lock = threading.Lock()
         self.asset_dir = POKEMON_SPRITE_ASSET_DIR
         self.current_key = ""
         self.entries = {}
-        del server_url
 
     def _identity(self, pokemon):
         species_name = pokemon.get("species_name") if pokemon else ""

@@ -182,7 +182,6 @@ class UiServices:
     keyboard_chars: Callable[[bool], list[str]]
     keyboard_limits: Callable[[bool], int]
     random_room_name: Callable[[], str]
-    start_trade_thread: Callable[..., Any]
     start_lan_trade_thread: Callable[..., Any]
     request_trade_cancel: Callable[[Any], bool]
     request_leave_room: Callable[[Any], None]

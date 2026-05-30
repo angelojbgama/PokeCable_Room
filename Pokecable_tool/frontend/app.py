@@ -109,7 +109,6 @@ from r36s_pokecable_core import (
     execute_self_trade,
     prepare_self_trade,
     validate_self_trade_candidate,
-    start_trade_thread,
     start_lan_trade_thread,
     request_trade_cancel,
     request_leave_room,
@@ -3018,7 +3017,7 @@ def main(initial_screen=None):
     logger.info("Boot timing: save scan %.3fs", time.perf_counter() - saves_start)
     state.action = "access"
     apply_theme(state.theme)
-    logger.info("UI boot complete: saves=%s server=%s total=%.3fs", len(state.saves), state.server_url, time.perf_counter() - boot_start)
+    logger.info("UI boot complete: saves=%s total=%.3fs", len(state.saves), time.perf_counter() - boot_start)
 
     session = UiSessionState()
     if initial_screen:
@@ -3036,7 +3035,7 @@ def main(initial_screen=None):
     ui_queue = queue.Queue()
     confirm_queue = queue.Queue()
     trade_thread_ref = MutableRef()
-    sprite_loader = SpriteLoader(state.server_url)
+    sprite_loader = SpriteLoader()
     controller = register_default_screens(
         ScreenController(session, input_state, logger, INPUT_TRANSITION_GUARD_SECONDS)
     )
@@ -3210,7 +3209,6 @@ def main(initial_screen=None):
         keyboard_chars=keyboard_chars,
         keyboard_limits=keyboard_limits,
         random_room_name=random_room_name,
-        start_trade_thread=start_trade_thread,
         start_lan_trade_thread=start_lan_trade_thread,
         request_trade_cancel=request_trade_cancel,
         request_leave_room=request_leave_room,

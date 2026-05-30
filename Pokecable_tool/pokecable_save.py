@@ -4,8 +4,8 @@ Local save parsing and write support for PokeCable on R36S.
 
 This module intentionally focuses on the safe, party-based trade path.
 It parses party Pokemon from supported saves, exports same-generation raw
-payloads compatible with the current websocket backend, and applies the
-received payload back into the selected party slot with checksum updates.
+payloads for local/LAN trading, and applies the received payload back into
+the selected party slot with checksum updates.
 """
 
 from __future__ import annotations
