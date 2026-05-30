@@ -538,7 +538,7 @@ class UpdateScreen(ScreenBase):
     def _background_apply(self, session, ctx):
         from r36s_pokecable_core import apply_update
         try:
-            result = apply_update()
+            result = apply_update(session.update_data.get("zipball_url") if isinstance(session.update_data, dict) else None)
             if result.get("success"):
                 session.update_status = "done"
             else:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 PokeCable Room - R36S UI
-Interface para trading de Pokemon via WebSocket.
+Interface para troca local e LAN de Pokemon.
 """
 
 import os
@@ -40,6 +40,7 @@ def tr(language, key, **kwargs):
             return value
     return value
 from frontend.item_sprites import draw_item_sprite
+from frontend.display_scaling import create_display
 from frontend.input import (
     ACTION_DEBOUNCE,
     AXIS_THRESHOLD,
@@ -49,6 +50,8 @@ from frontend.input import (
     JOY_BUTTON_START,
     JOY_MAP,
     QUIT_COMBO_WINDOW,
+    apply_detected_profile,
+    current_combo_buttons,
     debounce_action,
     event_to_action,
     translate_joy_button,
@@ -122,6 +125,8 @@ logger = logging.getLogger("r36s_pokecable_ui")
 logger.info("=" * 80)
 logger.info("PokeCable Room - R36S UI")
 logger.info("Error log: %s", ERROR_LOG)
+logger.info("Debug log: %s", LOG_PATHS.get("debug_log"))
+logger.info("Input log: %s", LOG_PATHS.get("input_log"))
 logger.info("=" * 80)
 
 SCREEN_W, SCREEN_H = 640, 480
@@ -2983,14 +2988,29 @@ def main(initial_screen=None):
             joy.get_numhats(),
         )
     logger.info("Boot timing: joystick enumeration %.3fs (count=%s)", time.perf_counter() - joystick_enum_start, len(joysticks))
+    profile = apply_detected_profile([joy.get_name() for joy in joysticks], os.getenv("POKECABLE_INPUT_PROFILE"))
+    start_button, select_button = current_combo_buttons()
+    logger.info(
+        "Input profile: %s start=%s select=%s map=%s",
+        profile,
+        start_button,
+        select_button,
+        {action: sorted(ids) for action, ids in JOY_MAP.items()},
+    )
 
     pygame.mouse.set_visible(False)
     display_start = time.perf_counter()
-    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+    screen, display_config = create_display((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("PokeCable")
     clock = pygame.time.Clock()
     fonts = (font(20, True), font(16), font(14), font(12))
-    logger.info("Boot timing: display + fonts %.3fs", time.perf_counter() - display_start)
+    logger.info(
+        "Boot timing: display + fonts %.3fs logical=%s scaled=%s flags=%s",
+        time.perf_counter() - display_start,
+        display_config.logical_size,
+        display_config.scaled,
+        display_config.flags,
+    )
 
     saves_start = time.perf_counter()
     state = PokecableState()
@@ -3234,7 +3254,7 @@ def main(initial_screen=None):
                     input_state.nav_hold["started"] = now
                     input_state.nav_hold["last_fire"] = now
             if input_action_blocked(mapped):
-                logger.debug("Input action blocked after screen transition: %s", mapped)
+                logger.info("INPUT action_blocked_after_transition action=%s screen=%s", mapped, session.current_screen)
                 mapped = None
             mapped = debounce_action(mapped, input_state.action_state)
             if mapped and action is None:
@@ -3246,6 +3266,7 @@ def main(initial_screen=None):
                now - input_state.nav_hold["last_fire"] >= NAV_REPEAT_INTERVAL:
                 repeated_action = input_state.nav_hold["direction"]
                 if input_action_blocked(repeated_action):
+                    logger.info("INPUT repeat_blocked action=%s screen=%s", repeated_action, session.current_screen)
                     input_state.nav_hold["direction"] = None
                 else:
                     action = repeated_action
@@ -3256,16 +3277,17 @@ def main(initial_screen=None):
         dispatch_ui_queue(session, services, logger)
 
         if action and input_action_blocked(action):
-            logger.debug("Input action blocked on active screen: %s", action)
+            logger.info("INPUT action_blocked_active_screen action=%s screen=%s", action, session.current_screen)
             action = None
 
         if action:
-            logger.debug(
-                "ACTION screen=%s action=%s menu=%s room=%s",
+            logger.info(
+                "ACTION screen=%s action=%s menu=%s room=%s profile=%s",
                 session.current_screen,
                 action,
                 session.menu_index,
                 state.room_name,
+                profile,
             )
         if action == "quit_system":
             logger.info("Global quit requested by Start+Select")

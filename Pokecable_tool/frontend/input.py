@@ -4,6 +4,8 @@ import time
 
 import pygame
 
+from frontend.input_mapping import InputMapping, load_input_mapping
+
 
 AXIS_X = 0
 AXIS_Y = 1
@@ -23,6 +25,7 @@ JOY_MAP = {
     "left": {10},
     "right": {11},
 }
+CURRENT_MAPPING = InputMapping()
 
 _PROFILE_RG35XX_KNULLI = {
     "joy_map": {
@@ -47,31 +50,21 @@ _DEVICE_PROFILES = {
 
 def apply_detected_profile(joystick_names, override=None):
     global JOY_BUTTON_START, JOY_BUTTON_SELECT
-    key = override
-    if not key:
-        for name in joystick_names:
-            name_lower = name.lower()
-            for profile_key in _DEVICE_PROFILES:
-                if profile_key in name_lower:
-                    key = profile_key
-                    break
-            if key:
-                break
-    if not key or key not in _DEVICE_PROFILES:
-        return None
-    profile = _DEVICE_PROFILES[key]
+    global CURRENT_MAPPING
+    CURRENT_MAPPING = load_input_mapping(list(joystick_names or []), override=override)
     JOY_MAP.clear()
-    JOY_MAP.update({k: set(v) for k, v in profile["joy_map"].items()})
-    JOY_BUTTON_START = profile["start"]
-    JOY_BUTTON_SELECT = profile["select_btn"]
-    return key
+    JOY_MAP.update({k: set(v) for k, v in CURRENT_MAPPING.button_map.items()})
+    JOY_BUTTON_START = CURRENT_MAPPING.start_button
+    JOY_BUTTON_SELECT = CURRENT_MAPPING.select_button
+    return CURRENT_MAPPING.profile_name
 
 
 def translate_joy_button(button_id):
-    for action, ids in JOY_MAP.items():
-        if button_id in ids:
-            return action
-    return None
+    return CURRENT_MAPPING.translate_button(button_id)
+
+
+def current_combo_buttons():
+    return CURRENT_MAPPING.start_button, CURRENT_MAPPING.select_button
 
 
 def translate_key(key):
@@ -96,11 +89,12 @@ def translate_key(key):
 
 def event_to_action(event, axis_state, combo_state, logger):
     if event.type == pygame.KEYDOWN:
-        logger.debug("KEYDOWN: key=%s name=%s", event.key, pygame.key.name(event.key))
-        return translate_key(event.key)
+        action = translate_key(event.key)
+        logger.info("INPUT key_down key=%s name=%s action=%s", event.key, pygame.key.name(event.key), action)
+        return action
 
     if event.type == pygame.JOYBUTTONDOWN:
-        logger.debug("JOYBUTTONDOWN: %s", event.button)
+        logger.info("INPUT joy_button_down button=%s", event.button)
         now = time.monotonic()
         combo_state["pressed"].add(event.button)
         combo_state["last_down"][event.button] = now
@@ -115,40 +109,50 @@ def event_to_action(event, axis_state, combo_state, logger):
                 return "quit_system"
             if now < combo_state.get("suppress_until", 0.0):
                 return None
-        return translate_joy_button(event.button)
+        action = translate_joy_button(event.button)
+        if action:
+            logger.info("INPUT joy_button_mapped button=%s action=%s", event.button, action)
+        else:
+            logger.warning("INPUT joy_button_unmapped button=%s profile=%s", event.button, CURRENT_MAPPING.profile_name)
+        return action
 
     if event.type == pygame.JOYBUTTONUP:
-        logger.debug("JOYBUTTONUP: %s", event.button)
+        logger.info("INPUT joy_button_up button=%s", event.button)
         combo_state["pressed"].discard(event.button)
         return None
 
     if event.type == pygame.JOYHATMOTION:
-        logger.debug("JOYHATMOTION: %s", event.value)
         hat_x, hat_y = event.value
+        action = None
         if hat_y > 0:
-            return "up"
-        if hat_y < 0:
-            return "down"
-        if hat_x < 0:
-            return "left"
-        if hat_x > 0:
-            return "right"
-        return None
+            action = "up"
+        elif hat_y < 0:
+            action = "down"
+        elif hat_x < 0:
+            action = "left"
+        elif hat_x > 0:
+            action = "right"
+        logger.info("INPUT joy_hat hat=%s value=%s action=%s", getattr(event, "hat", 0), event.value, action)
+        return action
 
     if event.type == pygame.JOYAXISMOTION:
-        logger.debug("JOYAXISMOTION: axis=%s value=%.2f", event.axis, event.value)
         prev = axis_state.get(event.axis, 0.0)
         axis_state[event.axis] = event.value
         if event.axis == AXIS_Y:
             if event.value <= -AXIS_THRESHOLD and prev > -AXIS_THRESHOLD:
+                logger.info("INPUT joy_axis axis=%s value=%.2f action=up", event.axis, event.value)
                 return "up"
             if event.value >= AXIS_THRESHOLD and prev < AXIS_THRESHOLD:
+                logger.info("INPUT joy_axis axis=%s value=%.2f action=down", event.axis, event.value)
                 return "down"
         if event.axis == AXIS_X:
             if event.value <= -AXIS_THRESHOLD and prev > -AXIS_THRESHOLD:
+                logger.info("INPUT joy_axis axis=%s value=%.2f action=left", event.axis, event.value)
                 return "left"
             if event.value >= AXIS_THRESHOLD and prev < AXIS_THRESHOLD:
+                logger.info("INPUT joy_axis axis=%s value=%.2f action=right", event.axis, event.value)
                 return "right"
+        logger.debug("INPUT joy_axis_raw axis=%s value=%.2f prev=%.2f", event.axis, event.value, prev)
     return None
 
 
@@ -157,8 +161,8 @@ def debounce_action(action, action_state):
         return None
     now = time.monotonic()
     if action_state["last_action"] == action and now - action_state["last_time"] < ACTION_DEBOUNCE:
+        action_state["last_debounced"] = action
         return None
     action_state["last_action"] = action
     action_state["last_time"] = now
     return action
-

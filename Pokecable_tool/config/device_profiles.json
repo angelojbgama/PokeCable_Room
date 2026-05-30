@@ -1,0 +1,36 @@
+{
+  "profiles": [
+    {
+      "name": "r36s_default",
+      "match": ["r36s", "rk3326", "gamepad"],
+      "start_button": 13,
+      "select_button": 12,
+      "actions": {
+        "select": [{"type": "button", "id": 1}],
+        "back": [{"type": "button", "id": 0}],
+        "x": [{"type": "button", "id": 2}],
+        "y": [{"type": "button", "id": 3}],
+        "up": [{"type": "button", "id": 8}],
+        "down": [{"type": "button", "id": 9}],
+        "left": [{"type": "button", "id": 10}],
+        "right": [{"type": "button", "id": 11}]
+      }
+    },
+    {
+      "name": "rg35xx_knulli_deeplay",
+      "match": ["deeplay", "rg35xx", "knulli"],
+      "start_button": 10,
+      "select_button": 9,
+      "actions": {
+        "select": [{"type": "button", "id": 3}],
+        "back": [{"type": "button", "id": 4}],
+        "x": [{"type": "button", "id": 6}],
+        "y": [{"type": "button", "id": 5}],
+        "up": [],
+        "down": [],
+        "left": [],
+        "right": []
+      }
+    }
+  ]
+}

@@ -12,12 +12,14 @@ import logging
 import os
 import queue
 import shutil
+import ssl
 import socket
 import sys
 import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -1789,6 +1791,84 @@ def start_lan_trade_thread(
     return thread
 
 
+UPDATE_REPO_API = "https://api.github.com/repos/angelojbgama/PokeCable_Room/releases/latest"
+UPDATE_ZIP_FALLBACK = "https://github.com/angelojbgama/PokeCable_Room/archive/refs/heads/main.zip"
+UPDATE_TIMEOUT = 20
+
+
+def _version_tuple(value: str) -> tuple[int, ...]:
+    parts: list[int] = []
+    for part in str(value or "").strip().lstrip("v").split("."):
+        digits = "".join(ch for ch in part if ch.isdigit())
+        parts.append(int(digits or 0))
+    return tuple(parts or [0])
+
+
+def _urlopen_with_fallback(request_or_url, timeout: int = UPDATE_TIMEOUT):
+    try:
+        return urllib.request.urlopen(request_or_url, timeout=timeout)
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", None)
+        if isinstance(reason, ssl.SSLError):
+            logger.warning("HTTPS certificate validation failed; retrying update request without certificate validation: %s", reason)
+            context = ssl._create_unverified_context()
+            return urllib.request.urlopen(request_or_url, timeout=timeout, context=context)
+        raise
+
+
+def _download_file(url: str, destination: Path) -> int:
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "PokeCable-R36S/1.0", "Accept": "application/octet-stream"},
+    )
+    logger.info("Update download start: %s -> %s", url, destination)
+    total = 0
+    with _urlopen_with_fallback(request, timeout=UPDATE_TIMEOUT) as response:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with destination.open("wb") as handle:
+            while True:
+                chunk = response.read(1024 * 64)
+                if not chunk:
+                    break
+                handle.write(chunk)
+                total += len(chunk)
+    logger.info("Update download complete: bytes=%s file=%s", total, destination)
+    return total
+
+
+def _find_extracted_tool_root(extract_dir: Path) -> Path:
+    candidates = [extract_dir / "Pokecable_tool"]
+    candidates.extend(path / "Pokecable_tool" for path in extract_dir.iterdir() if path.is_dir())
+    for candidate in candidates:
+        if (candidate / "r36s_pokecable_core.py").exists() and (candidate / "pokecable.sh").exists():
+            return candidate
+    raise FileNotFoundError("Pokecable_tool nao encontrado dentro do pacote de atualizacao")
+
+
+def _safe_extract_zip(archive: zipfile.ZipFile, destination: Path) -> None:
+    destination_resolved = destination.resolve()
+    for member in archive.infolist():
+        target = (destination / member.filename).resolve()
+        if destination_resolved != target and destination_resolved not in target.parents:
+            raise RuntimeError(f"entrada insegura no ZIP: {member.filename}")
+    archive.extractall(destination)
+
+
+def _copy_update_tree(source: Path, destination: Path) -> None:
+    skip_names = {"logs", ".git", "__pycache__"}
+    for item in source.iterdir():
+        if item.name in skip_names:
+            continue
+        target = destination / item.name
+        if item.is_dir():
+            shutil.copytree(item, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        else:
+            shutil.copy2(item, target)
+    launcher = destination / "pokecable.sh"
+    if launcher.exists():
+        launcher.chmod(launcher.stat().st_mode | 0o755)
+
+
 def check_for_update() -> Dict[str, Any]:
     """Check GitHub Releases API for new version without external dependencies."""
     try:
@@ -1797,26 +1877,32 @@ def check_for_update() -> Dict[str, Any]:
         APP_VERSION = "1.0.0"
 
     try:
-        url = "https://api.github.com/repos/angelojbgama/PokeCable_Room/releases/latest"
+        url = UPDATE_REPO_API
         req = urllib.request.Request(
             url,
             headers={"User-Agent": "PokeCable-R36S/1.0", "Accept": "application/vnd.github.v3+json"},
         )
 
-        with urllib.request.urlopen(req, timeout=8) as response:
+        logger.info("Update check start: %s", url)
+        with _urlopen_with_fallback(req, timeout=UPDATE_TIMEOUT) as response:
             response_data = response.read().decode("utf-8")
             data = json.loads(response_data)
             latest_version = data.get("tag_name", "").lstrip("v")
+            if not latest_version:
+                raise RuntimeError(str(data.get("message") or "resposta sem tag_name")[:160])
             release_url = data.get("html_url", "")
-            is_up_to_date = APP_VERSION >= latest_version
+            zipball_url = data.get("zipball_url") or UPDATE_ZIP_FALLBACK
+            is_up_to_date = _version_tuple(APP_VERSION) >= _version_tuple(latest_version)
 
             result = {
                 "current": APP_VERSION,
                 "latest": latest_version,
                 "up_to_date": is_up_to_date,
                 "release_url": release_url,
+                "zipball_url": zipball_url,
                 "error": None,
             }
+            logger.info("Update check result: %s", result)
             return result
 
     except urllib.error.URLError as e:
@@ -1841,52 +1927,66 @@ def check_for_update() -> Dict[str, Any]:
         }
 
 
-def apply_update() -> Dict[str, Any]:
-    """Apply update using git pull. Returns success status and message."""
-    import subprocess
+def apply_update(zipball_url: str | None = None) -> Dict[str, Any]:
+    """Apply update from a ZIP package using only Python standard library."""
+    current_tool_dir = Path(__file__).resolve().parent
+    url = str(zipball_url or "").strip() or UPDATE_ZIP_FALLBACK
 
     try:
-        result = subprocess.run(
-            ["git", "pull", "origin", "main"],
-            cwd=str(Path(__file__).parent),
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
+        import tempfile
 
-        if result.returncode == 0:
+        with tempfile.TemporaryDirectory(prefix="pokecable_update_") as tmp_name:
+            tmp_dir = Path(tmp_name)
+            zip_path = tmp_dir / "pokecable_update.zip"
+            extract_dir = tmp_dir / "extract"
+            backup_dir = current_tool_dir.parent / f"Pokecable_tool.backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+
+            size = _download_file(url, zip_path)
+            if size <= 0:
+                raise RuntimeError("download vazio")
+
+            logger.info("Update extract start: %s", zip_path)
+            with zipfile.ZipFile(zip_path) as archive:
+                _safe_extract_zip(archive, extract_dir)
+            source_tool_dir = _find_extracted_tool_root(extract_dir)
+            logger.info("Update extracted tool root: %s", source_tool_dir)
+
+            logger.info("Update backup start: %s -> %s", current_tool_dir, backup_dir)
+            shutil.copytree(
+                current_tool_dir,
+                backup_dir,
+                ignore=shutil.ignore_patterns("logs", "dependence", "__pycache__", "*.pyc", ".git"),
+            )
+
+            logger.info("Update copy start: %s -> %s", source_tool_dir, current_tool_dir)
+            _copy_update_tree(source_tool_dir, current_tool_dir)
+            logger.info("Update applied successfully; backup=%s", backup_dir)
             return {
                 "success": True,
-                "message": "Update applied. Restart the app.",
-            }
-        else:
-            logger.error(f"Git pull failed (returncode {result.returncode}): {result.stderr[:200]}")
-            return {
-                "success": False,
-                "message": f"Update error: {result.stderr[:200]}",
+                "message": "Atualizacao aplicada. Reinicie o app.",
+                "backup": str(backup_dir),
+                "downloaded_bytes": size,
             }
 
-    except FileNotFoundError:
-        logger.error("Git not found. Check PATH and git installation.")
+    except urllib.error.URLError as e:
+        logger.error("Update download connection error: %s (%s)", e, type(e).__name__)
         return {
             "success": False,
-            "message": "Git not available. Download manually from GitHub.",
+            "message": f"Erro de conexao: {str(e)[:120]}",
         }
-
-    except subprocess.TimeoutExpired:
-        logger.error("Git pull timeout (>60s)")
+    except zipfile.BadZipFile as e:
+        logger.error("Update ZIP invalid: %s", e)
         return {
             "success": False,
-            "message": "Update timeout (>60s). Try manually.",
+            "message": "ZIP de atualizacao invalido ou incompleto.",
         }
-
     except Exception as e:
         logger.error(f"Update error: {e} ({type(e).__name__})")
         import traceback
         logger.error(f"Traceback:\n{traceback.format_exc()}")
         return {
             "success": False,
-            "message": f"Error: {str(e)[:100]}",
+            "message": f"Erro: {str(e)[:120]}",
         }
 
 
