@@ -25,6 +25,9 @@ DEPENDENCE_PYTHON_DIR="$DEPENDENCE_DIR/python"
 DEPENDENCE_LIB_DIR="$DEPENDENCE_DIR/lib/aarch64-linux-gnu"
 DEPENDENCE_ARCH="aarch64"
 DEPENDENCE_PYTHON_VERSION="3.13"
+BUNDLE_STATUS="not_checked"
+CURRENT_ARCH=""
+CURRENT_PYTHON_VERSION=""
 
 mkdir -p "$LOG_ROOT" 2>/dev/null || true
 touch "$ERROR_LOG" 2>/dev/null || true
@@ -86,29 +89,33 @@ find_python() {
 PYTHON_BIN="$(find_python || true)"
 if [ -z "$PYTHON_BIN" ]; then
   ttyprint "ERRO: Python nao encontrado."
-  ttyprint "Instale python3 no sistema e execute ./pokecable.sh novamente."
+  ttyprint "O PokeCable usa o Python do sistema R36S; inclua python3 na imagem/base do sistema."
   exit 1
 fi
 
+detect_runtime_target() {
+  CURRENT_ARCH="$(uname -m 2>/dev/null || true)"
+  CURRENT_PYTHON_VERSION="$("$PYTHON_BIN" -B -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || true)"
+}
+
 enable_dependence_bundle() {
-  local arch
-  local py_version
-  arch="$(uname -m 2>/dev/null || true)"
-  py_version="$("$PYTHON_BIN" -B -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || true)"
-  if [ "$arch" = "$DEPENDENCE_ARCH" ] && [ "$py_version" = "$DEPENDENCE_PYTHON_VERSION" ]; then
+  detect_runtime_target
+  if [ "$CURRENT_ARCH" = "$DEPENDENCE_ARCH" ] && [ "$CURRENT_PYTHON_VERSION" = "$DEPENDENCE_PYTHON_VERSION" ]; then
     if [ -d "$DEPENDENCE_LIB_DIR" ]; then
       export LD_LIBRARY_PATH="$DEPENDENCE_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     fi
     if [ -d "$DEPENDENCE_PYTHON_DIR" ]; then
       export PYTHONPATH="$DEPENDENCE_PYTHON_DIR${PYTHONPATH:+:$PYTHONPATH}"
     fi
+    BUNDLE_STATUS="enabled"
     return 0
   fi
 
-  ttyprint "Dependencias locais ignoradas: alvo $DEPENDENCE_ARCH/Python $DEPENDENCE_PYTHON_VERSION, atual ${arch:-?}/Python ${py_version:-?}."
+  BUNDLE_STATUS="incompatible"
+  return 1
 }
 
-enable_dependence_bundle
+enable_dependence_bundle || true
 
 cleanup() {
   if [ -w "$TTY" ]; then
@@ -118,103 +125,71 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-online_install_enabled() {
-  case "${POKECABLE_ALLOW_ONLINE_INSTALL:-0}" in
-    1|true|TRUE|yes|YES|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-install_apt_package() {
-  local pkg="$1"
-  if ! online_install_enabled; then
-    ttyprint "  instalacao online desativada para $pkg"
-    return 1
-  fi
-  if ! command -v apt-get >/dev/null 2>&1; then
-    ttyprint "  apt-get indisponivel para $pkg"
-    return 1
-  fi
-
-  ttyprint "  apt-get install $pkg ..."
-  if apt-get install -y "$pkg" >> "$DEPS_LOG" 2>&1; then
-    ttyprint "    OK"
-    return 0
-  fi
-  ttyprint "    FALHOU"
-  return 1
-}
-
-ensure_pip() {
-  if "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
-    return 0
-  fi
-
-  if ! online_install_enabled; then
-    ttyprint "  pip ausente e instalacao online desativada"
-    return 1
-  fi
-
-  ttyprint "  pip nao encontrado; tentando habilitar..."
-  "$PYTHON_BIN" -m ensurepip --upgrade >> "$DEPS_LOG" 2>&1 && return 0
-  install_apt_package "python3-pip" || true
-  "$PYTHON_BIN" -m pip --version >/dev/null 2>&1
-}
-
-install_pip_package() {
-  local mod="$1"
-  local pkg="${2:-$1}"
-  if ! ensure_pip; then
-    ttyprint "  pip indisponivel; nao foi possivel instalar $pkg"
-    return 1
-  fi
-
-  ttyprint "  $PYTHON_BIN -m pip install $pkg ..."
-  if "$PYTHON_BIN" -m pip install --user --quiet --no-cache-dir "$pkg" >> "$DEPS_LOG" 2>&1; then
-    ttyprint "    OK"
-    return 0
-  fi
-  if "$PYTHON_BIN" -m pip install --quiet --no-cache-dir --break-system-packages "$pkg" >> "$DEPS_LOG" 2>&1; then
-    ttyprint "    OK (--break-system-packages)"
-    return 0
-  fi
-  ttyprint "    FALHOU"
-  return 1
-}
-
 check_python_module() {
   "$PYTHON_BIN" -B -c "import $1" >/dev/null 2>&1
 }
 
-install_dependencies() {
+validate_local_dependencies() {
   ttyclear
   ttyprint "=== Verificando dependencias PokeCable ==="
   ttyprint "Python: $PYTHON_BIN"
-  ttyprint "Dependencias Python: $DEPENDENCE_PYTHON_DIR"
-  ttyprint "Bibliotecas nativas: $DEPENDENCE_LIB_DIR"
-  ttyprint "Log de instalacao: $DEPS_LOG"
+  ttyprint "Alvo local: $DEPENDENCE_ARCH/Python $DEPENDENCE_PYTHON_VERSION"
+  ttyprint "Ambiente atual: ${CURRENT_ARCH:-?}/Python ${CURRENT_PYTHON_VERSION:-?}"
+  ttyprint "Dependencias Python locais: $DEPENDENCE_PYTHON_DIR"
+  ttyprint "Bibliotecas nativas locais: $DEPENDENCE_LIB_DIR"
+  ttyprint "Log de verificacao: $DEPS_LOG"
   : > "$DEPS_LOG" 2>/dev/null || true
 
-  ttyprint "[1/1] pygame (obrigatorio)..."
-  if check_python_module pygame; then
-    ttyprint "  OK"
-  else
-    install_apt_package "python3-pygame" || install_pip_package "pygame" "pygame" || true
+  {
+    echo "PokeCable dependency check"
+    echo "python=$PYTHON_BIN"
+    echo "target=$DEPENDENCE_ARCH/Python $DEPENDENCE_PYTHON_VERSION"
+    echo "current=${CURRENT_ARCH:-?}/Python ${CURRENT_PYTHON_VERSION:-?}"
+    echo "pythonpath=$PYTHONPATH"
+    echo "ld_library_path=${LD_LIBRARY_PATH:-}"
+  } >> "$DEPS_LOG" 2>/dev/null || true
+
+  if [ "$BUNDLE_STATUS" != "enabled" ]; then
+    ttyprint "ERRO: bundle local incompativel com este ambiente."
+    ttyprint "Atual: ${CURRENT_ARCH:-?}/Python ${CURRENT_PYTHON_VERSION:-?}"
+    ttyprint "Esperado: $DEPENDENCE_ARCH/Python $DEPENDENCE_PYTHON_VERSION"
+    ttyprint "Use o Python do sistema R36S correto ou gere um bundle local compativel."
+    ttyprint "O PokeCable nao instala dependencias pela internet."
+    ttyprint "Veja o log em: $DEPS_LOG"
+    sleep 10
+    return 1
   fi
 
   local missing=""
+  if [ ! -d "$DEPENDENCE_PYTHON_DIR" ]; then
+    ttyprint "  python/ ... AUSENTE"
+    missing="$missing python"
+  else
+    ttyprint "  python/ ... OK"
+  fi
+  if [ ! -d "$DEPENDENCE_LIB_DIR" ]; then
+    ttyprint "  lib/aarch64-linux-gnu/ ... AUSENTE"
+    missing="$missing lib"
+  else
+    ttyprint "  lib/aarch64-linux-gnu/ ... OK"
+  fi
+
+  ttyprint "[1/1] pygame local (obrigatorio)..."
   if check_python_module pygame; then
     ttyprint "  pygame ... OK"
+    "$PYTHON_BIN" -B -c 'import pygame, pathlib; print("pygame_file=" + str(pathlib.Path(pygame.__file__).resolve()))' >> "$DEPS_LOG" 2>&1 || true
   else
     ttyprint "  pygame ... AUSENTE"
     missing="$missing pygame"
+    "$PYTHON_BIN" -B -c 'import pygame' >> "$DEPS_LOG" 2>&1 || true
   fi
+
   if [ -n "$missing" ]; then
-    ttyprint "ERRO: modulos ausentes:$missing"
-    ttyprint "Inclua as dependencias em: $DEPENDENCE_DIR"
-    ttyprint "No R36S alvo, o bundle local deve conter python/ e lib/aarch64-linux-gnu/."
-    ttyprint "Para permitir download manualmente, use POKECABLE_ALLOW_ONLINE_INSTALL=1."
-    ttyprint "Veja o log em: $DEPS_LOG"
+    ttyprint "ERRO: dependencias locais ausentes ou invalidas:$missing"
+    ttyprint "Corrija o pacote em: $DEPENDENCE_DIR"
+    ttyprint "O bundle deve conter pygame em python/ e libs nativas em lib/aarch64-linux-gnu/."
+    ttyprint "Nenhuma instalacao via apt/pip sera tentada."
+    ttyprint "Veja detalhes em: $DEPS_LOG"
     sleep 10
     return 1
   fi
@@ -222,11 +197,11 @@ install_dependencies() {
 }
 
 deps_ready() {
-  check_python_module pygame
+  [ "$BUNDLE_STATUS" = "enabled" ] && check_python_module pygame
 }
 
 if ! deps_ready; then
-  install_dependencies || exit 1
+  validate_local_dependencies || exit 1
 fi
 
 ttyclear
