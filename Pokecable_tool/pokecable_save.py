@@ -584,8 +584,10 @@ def parse_gen3_pokemon(raw: bytes) -> Dict[str, Any]:
         raise SaveError("Checksum interno do Pokémon Gen 3 inválido.")
     growth_index = GEN3["substruct_orders"][personality % 24][0]
     attacks_index = GEN3["substruct_orders"][personality % 24][1]
+    misc_index = GEN3["substruct_orders"][personality % 24][3]
     growth = growth_index * 12
     attacks = attacks_index * 12
+    misc = misc_index * 12
     species_id = read_u16(secure, growth)
     national_dex_id = _resolve_national_dex_id(3, species_id, {})
     moves = []
@@ -593,7 +595,8 @@ def parse_gen3_pokemon(raw: bytes) -> Dict[str, Any]:
         move_id = read_u16(secure, attacks + offset * 2)
         if move_id:
             moves.append(move_id)
-    is_egg = species_id == 412 or bool(raw[0x13] & 0x04)
+    iv_data = read_u32(secure, misc)
+    is_egg = species_id == 412 or bool(raw[0x13] & 0x04) or bool((iv_data >> 30) & 1)
     nickname = decode_gen3_text(raw[0x08:0x12])
     species_name = "Egg" if is_egg else safe_species_name(species_id, nickname)
     return {
@@ -628,8 +631,10 @@ def parse_gen3_box_pokemon(raw: bytes) -> Dict[str, Any]:
     trainer_id = read_u32(raw, 4)
     growth_index = GEN3["substruct_orders"][personality % 24][0]
     attacks_index = GEN3["substruct_orders"][personality % 24][1]
+    misc_index = GEN3["substruct_orders"][personality % 24][3]
     growth = growth_index * 12
     attacks = attacks_index * 12
+    misc = misc_index * 12
     species_id = read_u16(secure, growth)
     national_dex_id = _resolve_national_dex_id(3, species_id, {})
     moves = []
@@ -638,7 +643,8 @@ def parse_gen3_box_pokemon(raw: bytes) -> Dict[str, Any]:
         if move_id:
             moves.append(move_id)
     nickname = decode_gen3_text(raw[0x08:0x12])
-    is_egg = species_id == 412 or bool(raw[0x13] & 0x04)
+    iv_data = read_u32(secure, misc)
+    is_egg = species_id == 412 or bool(raw[0x13] & 0x04) or bool((iv_data >> 30) & 1)
     species_name = "Egg" if is_egg else safe_species_name(species_id, nickname)
     experience = read_u32(secure, growth + 4)
     return {
@@ -838,6 +844,12 @@ class SaveModel:
             getattr(summary, "unown_form", None)
             or canonical_metadata.get("unown_form")
         )
+        is_egg = bool(
+            summary_payload.get("is_egg")
+            or canonical_metadata.get("is_egg")
+            or canonical_payload.get("is_egg")
+            or str(getattr(summary, "species_name", "")).lower() == "egg"
+        )
         pokemon = {
             "location": str(summary.location),
             "source": source,
@@ -862,7 +874,7 @@ class SaveModel:
             "move_details": [dict(move) for move in move_details if isinstance(move, dict)],
             "gender": summary.gender,
             "unown_form": unown_form,
-            "is_egg": False,
+            "is_egg": is_egg,
             "display_summary": str(summary.display_summary),
             "canonical": canonical_payload if canonical_payload else None,
         }
@@ -2050,14 +2062,16 @@ class SaveModel:
             self.box_names.append(name)
 
         for box_index in range(self.layout["box_count"]):
-            count, _, _ = self._gen2_box_header(box_index)
+            count, species_start, _ = self._gen2_box_header(box_index)
             for slot_index in range(count):
                 mon, ot, nick = self._read_gen2_box_data(box_index, slot_index)
+                species_entry = int(self.bytes[species_start + slot_index])
                 species_id = int(mon[0])
                 nickname = decode_gbc_text(nick)
-                species_name = safe_species_name(species_id, nickname)
+                is_egg = species_entry == 0xFD
+                species_name = "Egg" if is_egg else safe_species_name(species_id, nickname)
                 experience = (mon[0x08] << 16) | (mon[0x09] << 8) | mon[0x0A]
-                unown_form = None if species_id != 201 else gen2_unown_form_from_dvs(mon[0x15] >> 4, mon[0x15] & 0x0F, mon[0x16] >> 4, mon[0x16] & 0x0F)
+                unown_form = None if is_egg or species_id != 201 else gen2_unown_form_from_dvs(mon[0x15] >> 4, mon[0x15] & 0x0F, mon[0x16] >> 4, mon[0x16] & 0x0F)
                 move_details = []
                 for offset, move_id in enumerate(mon[0x02:0x06]):
                     if move_id:
@@ -2082,7 +2096,7 @@ class SaveModel:
                     "species_id": species_id,
                     "species_name": species_name,
                     "types": [],
-                    "level": self._level_from_experience_gen2(species_id, experience),
+                    "level": 1 if is_egg else self._level_from_experience_gen2(species_id, experience),
                     "experience": experience,
                     "nickname": nickname or species_name,
                     "ot_name": decode_gbc_text(ot),
@@ -2090,9 +2104,9 @@ class SaveModel:
                     "held_item_id": int(mon[0x01]) or None,
                     "moves": [move for move in mon[0x02:0x06] if move],
                     "move_details": move_details,
-                    "is_egg": False,
+                    "is_egg": is_egg,
                     "is_shiny": _legacy_shiny_from_mon(mon, 0x15),
-                    "gender": gender_from_gen2_attack_dv(species_id, mon[0x15] >> 4),
+                    "gender": None if is_egg else gender_from_gen2_attack_dv(species_id, mon[0x15] >> 4),
                     "unown_form": unown_form,
                     "box_index": box_index,
                     "slot_index": slot_index,

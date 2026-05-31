@@ -24,6 +24,14 @@ SAVE_UTILITIES = [
         "action": "give_items_kit",
     },
     {
+        "id": "mystery_shiny_egg",
+        "category": "utility",
+        "name_key": "util_mystery_shiny_egg",
+        "desc_key": "util_mystery_shiny_egg_desc",
+        "generations": (2, 3, 4),
+        "action": "mystery_shiny_egg",
+    },
+    {
         "id": "gen3_mystery_systems",
         "category": "utility",
         "name_key": "util_gen3_mystery_systems",
@@ -513,6 +521,10 @@ def apply_utility(save_model, util_id):
             return {"success": True, "message": "extras_applied", **result}
         if action == "give_items_kit":
             return _apply_give_items_kit(save_model)
+        if action == "mystery_shiny_egg":
+            from .mystery_egg import apply_mystery_shiny_egg
+
+            return apply_mystery_shiny_egg(save_model)
         if action == "gen3_mystery_systems":
             return _apply_gen3_mystery_systems(save_model)
         if action == "gen3_altering_cave":

@@ -18,6 +18,7 @@ logger = logging.getLogger("r36s_pokecable_core")
 LAN_PORT = int(os.getenv("POKECABLE_LAN_PORT", "8765"))
 LAN_DISCOVERY_PORT = int(os.getenv("POKECABLE_LAN_DISCOVERY_PORT", "8766"))
 LAN_DISCOVERY_SECONDS = float(os.getenv("POKECABLE_LAN_DISCOVERY_SECONDS", "2.8"))
+LAN_CONNECT_TIMEOUT_SECONDS = float(os.getenv("POKECABLE_LAN_CONNECT_TIMEOUT_SECONDS", "2.0"))
 LAN_MAGIC = "pokecable-lan-v1"
 
 
@@ -237,7 +238,7 @@ def _connect_or_host(state, save: SaveModel, ui, stop_event: threading.Event) ->
         host = str(found["host"])
         port = int(found["port"])
         ui.status(f"Conectando na sala LAN {host}:{port}...")
-        sock = socket.create_connection((host, port), timeout=8)
+        sock = socket.create_connection((host, port), timeout=LAN_CONNECT_TIMEOUT_SECONDS)
         state.room_name = "Sala LAN"
         state.room_password = f"{host}:{port}"
         return JsonLineConnection(sock), "client"
@@ -278,7 +279,7 @@ def _connect_or_host(state, save: SaveModel, ui, stop_event: threading.Event) ->
                     if peer_port == port and host in _local_ip_candidates():
                         raise ValueError("este e o IP desta sala")
                     ui.status(f"Conectando em {host}:{peer_port}...")
-                    sock = socket.create_connection((host, peer_port), timeout=8)
+                    sock = socket.create_connection((host, peer_port), timeout=LAN_CONNECT_TIMEOUT_SECONDS)
                     server.close()
                     state.room_password = f"{host}:{peer_port}"
                     return JsonLineConnection(sock), "client"
@@ -292,7 +293,7 @@ def _connect_or_host(state, save: SaveModel, ui, stop_event: threading.Event) ->
                 peer_port = int(advert["port"])
                 ui.status(f"Sala LAN encontrada em {host}:{peer_port}. Entrando...")
                 server.close()
-                sock = socket.create_connection((host, peer_port), timeout=8)
+                sock = socket.create_connection((host, peer_port), timeout=LAN_CONNECT_TIMEOUT_SECONDS)
                 state.room_password = f"{host}:{peer_port}"
                 return JsonLineConnection(sock), "client"
             try:
@@ -591,8 +592,8 @@ def run_lan_trade(state, ui, confirm_queue: queue.Queue, stop_event: threading.E
                     }
                 )
                 if not confirmed:
-                    ui.status("Troca cancelada.")
-                    return
+                    reset_round("Troca cancelada. Escolha outro Pokemon.")
+                    continue
                 ui.screen("trading")
                 ui.status("Confirmacao enviada. Aguardando o outro R36S...")
 

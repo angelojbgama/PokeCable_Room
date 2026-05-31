@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 POKEDEX_RED_THEME = {
-    "bg": (234, 247, 255),
+    "bg": (11, 24, 46),
     "shell": (245, 27, 79),
     "shell_2": (199, 31, 85),
     "panel": (244, 241, 232),

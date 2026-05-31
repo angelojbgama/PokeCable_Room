@@ -886,6 +886,7 @@ def request_leave_room(state: PokecableState) -> bool:
             logger.warning("LAN leave ignored: save write in progress")
             return False
         state.leave_requested = True
+        state.cancel_round_requested = False
         state._lan_stop_event.set()
         connection = state._lan_connection
         if connection is not None:

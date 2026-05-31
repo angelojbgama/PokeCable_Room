@@ -43,7 +43,7 @@ class SelfSelectPokemonAScreen(ScreenBase):
                     session,
                     services,
                     title="Pokemon esta no PC",
-                    message="Pressione X para retirar este Pokemon para a Party antes de troca-lo.",
+                    message="Retire este Pokemon para a Party antes de troca-lo.",
                     return_screen="self_select_pokemon_a",
                     reason="self_select_a_from_pc_blocked",
                 )
@@ -145,7 +145,7 @@ class SelfSelectPokemonBScreen(ScreenBase):
                     session,
                     services,
                     title="Pokemon esta no PC",
-                    message="Pressione X para retirar este Pokemon para a Party antes de troca-lo.",
+                    message="Retire este Pokemon para a Party antes de troca-lo.",
                     return_screen="self_select_pokemon_b",
                     reason="self_select_b_from_pc_blocked",
                 )
@@ -301,7 +301,7 @@ class SelectPokemonScreen(ScreenBase):
                     session,
                     services,
                     title="Pokemon esta no PC",
-                    message="Pressione X para retirar este Pokemon para a Party antes de troca-lo.",
+                    message="Retire este Pokemon para a Party antes de troca-lo.",
                     return_screen="select_pokemon",
                     reason="select_from_pc_blocked",
                 )

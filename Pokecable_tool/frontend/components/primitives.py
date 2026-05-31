@@ -95,11 +95,11 @@ def rect(surface, color, area, radius=0):
 def render_title_sweep(text_surface, progress):
     width, height = text_surface.get_size()
     sweep_surface = pygame.Surface((width, height), pygame.SRCALPHA)
-    trail_w = max(34, width // 3)
+    trail_w = max(42, width // 2)
     sweep_x = int(progress * (width + trail_w * 2)) - trail_w
-    base = (255, 255, 255)
-    glow = (102, 184, 255)
-    hot = (200, 242, 255)
+    base = (230, 245, 255)
+    glow = (58, 206, 235)
+    hot = (255, 255, 255)
     sweep_surface.fill((*base, 255))
     for x in range(width):
         distance = abs(x - (sweep_x + trail_w // 2))
@@ -256,6 +256,10 @@ def compact_action_label(value):
         "ALTERAR": "Alterar",
         "CHANGE": "Change",
         "CAMBIAR": "Cambiar",
+        "NAVEGAR": "Navegar",
+        "NAVIGATE": "Navigate",
+        "SELECIONAR": "Selecionar",
+        "SELECCIONAR": "Seleccionar",
         "CANCELAR": "Cancelar",
         "CANCEL": "Cancel",
         "CONFIRMAR": "Confirmar",
@@ -266,27 +270,30 @@ def compact_action_label(value):
         "PULAR": "Pular",
         "SKIP": "Skip",
         "SALTAR": "Saltar",
-        "MOVER P/ PC": "PC",
-        "MOVE TO PC": "PC",
-        "MOVER AL PC": "PC",
+        "MOVER PARA PC": "Mover para PC",
+        "MOVE TO PC": "Move to PC",
+        "MOVER AL PC": "Mover al PC",
         "RETIRAR": "Retirar",
-        "WITHDRAW": "Retirar",
+        "WITHDRAW": "Withdraw",
         "VER PC": "Ver PC",
         "VIEW PC": "View PC",
-        "VER PARTY": "Party",
-        "VIEW PARTY": "Party",
+        "VER PARTY": "Ver Party",
+        "VIEW PARTY": "View Party",
         "SELECT": "Select",
-        "DEL/VOLTAR": "Del",
-        "DEL/BACK": "Del",
-        "DEL/VOLVER": "Del",
-        "DEIXAR EVOLUIR": "Evoluir",
-        "LET EVOLVE": "Evolve",
-        "DEJAR EVOLUCIONAR": "Evoluir",
+        "APAGAR/VOLTAR": "Apagar/Voltar",
+        "DELETE/BACK": "Delete/Back",
+        "BORRAR/VOLVER": "Borrar/Volver",
+        "DEIXAR EVOLUIR": "Deixar evoluir",
+        "LET EVOLVE": "Let evolve",
+        "DEJAR EVOLUCIONAR": "Dejar evolucionar",
         "CANCELAR EVO": "Cancelar",
         "CANCEL EVO": "Cancel",
-        "NAO, DEIXAR EVOLUIR": "Evoluir",
-        "NO, LET EVOLVE": "Evolve",
-        "NO, DEJAR EVOLUCIONAR": "Evoluir",
+        "CANCELAR EVOLUCAO": "Cancelar evolucao",
+        "CANCEL EVOLUTION": "Cancel evolution",
+        "CANCELAR EVOLUCION": "Cancelar evolucion",
+        "NAO, DEIXAR EVOLUIR": "Nao, deixar evoluir",
+        "NO, LET EVOLVE": "No, let evolve",
+        "NO, DEJAR EVOLUCIONAR": "No, dejar evolucionar",
         "SIM, INTERROMPER": "Interromper",
         "YES, STOP": "Stop",
         "SI, INTERRUMPIR": "Interrumpir",
@@ -299,13 +306,13 @@ class FooterActionStyle:
     """Style and layout values for footer action hints."""
 
     screen_size: tuple[int, int] = (640, 480)
-    footer_margin_x: int = 22
+    footer_margin_x: int = 6
     footer_bottom_offset: int = 32
-    button_height: int = 26
-    gap: int = 6
-    min_button_width: int = 64
-    max_button_width: int = 132
-    compressed_button_width: int = 60
+    button_height: int = 24
+    gap: int = 4
+    min_button_width: int = 56
+    max_button_width: int = 340
+    compressed_button_width: int = 52
     label_pad_width: int = 42
     shadow_color: tuple[int, int, int] = (209, 230, 248)
     fill_color: tuple[int, int, int] = (247, 252, 255)
@@ -332,34 +339,62 @@ def draw_footer_action_button(surface, action, area, button_font, cap_font, styl
     rect(surface, style.fill_color, area, 4)
     pygame.draw.rect(surface, style.border_color, area, 1, border_radius=4)
 
-    cap = pygame.Rect(area.x + 4, area.y + 3, 20, max(1, area.h - 6))
+    cap_w = max(20, min(44, cap_font.size(str(label or ""))[0] + 8))
+    cap = pygame.Rect(area.x + 4, area.y + 3, cap_w, max(1, area.h - 6))
     rect(surface, style.cap_color, cap, 4)
     text_center(surface, cap_font, label, cap, style.cap_text_color)
 
     desc_area = pygame.Rect(cap.right + 6, area.y + 1, area.right - cap.right - 10, area.h - 2)
-    text_center(surface, button_font, desc, desc_area, style.text_color)
+    desc_surface = button_font.render(str(desc or ""), True, style.text_color)
+    if desc_surface.get_width() > desc_area.w and desc_area.w > 0:
+        scale = desc_area.w / max(1, desc_surface.get_width())
+        scaled_size = (
+            max(1, int(desc_surface.get_width() * scale)),
+            max(1, int(desc_surface.get_height() * scale)),
+        )
+        desc_surface = pygame.transform.smoothscale(desc_surface, scaled_size)
+    surface.blit(desc_surface, desc_surface.get_rect(center=desc_area.center))
 
 
 def draw_footer_actions(surface, actions, button_font, cap_font, style=None):
     style = style or FooterActionStyle()
     footer = style.footer_rect()
     compact_actions = [(label, compact_action_label(desc)) for label, desc in actions]
-    widths = [
-        max(
-            style.min_button_width,
-            min(style.max_button_width, button_font.size(str(desc or ""))[0] + style.label_pad_width),
-        )
-        for _, desc in compact_actions
-    ]
-    total = sum(widths) + style.gap * max(0, len(widths) - 1)
-    if total > footer.w:
-        width = max(
-            style.compressed_button_width,
-            (footer.w - style.gap * max(0, len(widths) - 1)) // max(1, len(widths)),
-        )
-        widths = [width] * len(widths)
 
-    x = footer.x
+    def action_width(action):
+        label, desc = action
+        cap_w = max(20, min(44, cap_font.size(str(label or ""))[0] + 8))
+        desc_w = button_font.size(str(desc or ""))[0]
+        return max(
+            style.min_button_width,
+            min(
+                style.max_button_width,
+                cap_w + desc_w + 32,
+            ),
+        )
+
+    widths = [action_width(action) for action in compact_actions]
+    total_w = sum(widths) + style.gap * max(0, len(widths) - 1)
+    if total_w > footer.w and widths:
+        available_w = footer.w - style.gap * max(0, len(widths) - 1)
+        min_total = style.min_button_width * len(widths)
+        if min_total >= available_w:
+            width = max(1, available_w // len(widths))
+            widths = [width] * len(widths)
+        else:
+            extra_available = available_w - min_total
+            natural_extra = sum(max(0, width - style.min_button_width) for width in widths)
+            if natural_extra > 0:
+                widths = [
+                    style.min_button_width
+                    + int(extra_available * max(0, width - style.min_button_width) / natural_extra)
+                    for width in widths
+                ]
+                drift = available_w - sum(widths)
+                if widths:
+                    widths[-1] += drift
+    total_w = sum(widths) + style.gap * max(0, len(widths) - 1)
+    x = footer.x + max(0, (footer.w - total_w) // 2)
     for action, width in zip(compact_actions, widths):
         area = pygame.Rect(x, footer.y, width, style.button_height)
         draw_footer_action_button(surface, action, area, button_font, cap_font, style)
@@ -557,18 +592,23 @@ def draw_pokedex_shell(
         if highlight:
             pygame.draw.circle(screen, (255, 255, 255), (x - 2, 29), 3)
 
-    title_panel = pygame.Rect(202, 4, 418, 30)
+    title_panel = pygame.Rect(202, 0, 418, 36)
+    if title_state.get("title") != title:
+        title_state["title"] = title
+        title_state["start_time"] = time.perf_counter()
     if not title_state["start_time"]:
         title_state["start_time"] = time.perf_counter()
     sweep_elapsed = max(0.0, time.perf_counter() - title_state["start_time"])
-    sweep_duration = 1.1
+    sweep_duration = 2.4
     if title and title_font_func is not None:
-        title_f = title_font_func(24)
+        title_f = title_font_func(28)
         title_label = fit_text(title_f, str(title), title_panel.w - 18)
-        title_surface = title_f.render(title_label, True, (255, 255, 255))
+        title_surface = title_f.render(title_label, True, (230, 245, 255))
         sweep_surface = render_title_sweep(title_surface, (sweep_elapsed % sweep_duration) / sweep_duration)
         title_y = title_panel.y + max(0, (title_panel.h - title_surface.get_height()) // 2)
         title_x = title_panel.right - 9 - title_surface.get_width()
+        shadow_surface = title_f.render(title_label, True, (5, 12, 26))
+        screen.blit(shadow_surface, (title_x + 2, title_y + 2))
         screen.blit(sweep_surface, (title_x, title_y))
     if subtitle and font_func is not None:
         subtitle_font = font_func(13)

@@ -184,7 +184,7 @@ class UiServices:
     random_room_name: Callable[[], str]
     start_lan_trade_thread: Callable[..., Any]
     request_trade_cancel: Callable[[Any], bool]
-    request_leave_room: Callable[[Any], None]
+    request_leave_room: Callable[[Any], bool]
     create_backup: Callable[[Any], None]
     prepare_self_trade: Callable[..., Any]
     validate_self_trade_candidate: Callable[..., Any]

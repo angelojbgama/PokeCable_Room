@@ -992,7 +992,7 @@ def draw_menu(screen, fonts, selected, language):
     visor_duration = 1.2
     draw_digital_visor(screen, title_rect, min(visor_elapsed / visor_duration, 1.0))
     pygame.draw.rect(screen, BORDER, title_rect, 2)
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
+    draw_footer_actions(screen, tiny_f, [("↑↓", t(language, "btn_nav")), ("A", t(language, "btn_select")), ("B", t(language, "menu_exit"))])
 
 
 def draw_infos_topics(screen, fonts, selected, language):
@@ -1028,7 +1028,7 @@ def draw_infos_topics(screen, fonts, selected, language):
         pygame.Rect(title_rect.x + 10, title_rect.y + 10, title_rect.w - 20, title_rect.h - 20),
         (0, 0, 0), line_gap=2, max_lines=3,
     )
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
+    draw_footer_actions(screen, tiny_f, [("↑↓", t(language, "btn_nav")), ("A", t(language, "btn_select")), ("B", t(language, "btn_back"))])
 
 
 def draw_infos_reader(screen, fonts, topic_key, scroll, language):
@@ -1052,7 +1052,7 @@ def draw_infos_reader(screen, fonts, topic_key, scroll, language):
     text_x = content_panel.x + inner_pad
     text_y0 = content_panel.y + inner_pad
     text_w = content_panel.w - inner_pad * 2
-    text_h = content_panel.h - inner_pad * 2 - 18  # leave room for scroll hint
+    text_h = content_panel.h - inner_pad * 2
 
     # Pre-render paragraphs into wrapped lines so we know total height + can clip.
     line_height = small_f.get_linesize() + 2
@@ -1105,12 +1105,7 @@ def draw_infos_reader(screen, fonts, topic_key, scroll, language):
         pygame.draw.rect(screen, BORDER, pygame.Rect(bar_x, bar_y, 4, bar_h), 1)
         pygame.draw.rect(screen, ACCENT, pygame.Rect(bar_x, thumb_y, 4, thumb_h))
 
-    # Scroll hint under the content
-    hint = t(language, "infos_scroll_hint")
-    text(screen, tiny_f, hint, content_panel.x + inner_pad,
-         content_panel.bottom - 16, MUTED, content_panel.w - inner_pad * 2)
-
-    draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_back"))])
+    draw_footer_actions(screen, tiny_f, [("↑↓", t(language, "btn_scroll")), ("B", t(language, "btn_back"))])
     return max_scroll
 
 
@@ -1147,7 +1142,7 @@ def draw_config_menu(screen, fonts, selected, language, theme):
     pygame.draw.rect(screen, BORDER, screen_rect, 2)
     text_center(screen, body_f, t(language, "config_title"), screen_rect, (0, 0, 0))
     draw_footer_actions(screen, tiny_f, [
-        ("A", t(language, "btn_ok")),
+        ("A", t(language, "btn_save")),
         ("B", t(language, "btn_back")),
         ("<>", t(language, "btn_change")),
     ])
@@ -1170,7 +1165,7 @@ def draw_action_menu(screen, fonts, selected, language="pt"):
         draw_selectable_list_item(screen, row, idx == selected)
         text(screen, small_f, item, row.x + 9, row.y + 9, color, row.w - 18)
 
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
+    draw_footer_actions(screen, tiny_f, [("↑↓", t(language, "btn_nav")), ("A", t(language, "btn_select")), ("B", t(language, "btn_back"))])
 
 
 def keyboard_chars(shift=False):
@@ -1253,7 +1248,7 @@ def draw_keyboard(screen, fonts, title, value, grid_index, is_password=False, sh
         label_surface = special_font.render(label, True, SCREEN if selected else TEXT)
         screen.blit(label_surface, label_surface.get_rect(center=key_rect.center))
 
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "key_select")), ("B", t(language, "key_delete_back"))])
+    draw_footer_actions(screen, tiny_f, [("↑↓", t(language, "btn_nav")), ("A", t(language, "key_select")), ("B", t(language, "btn_delete_back"))])
 
 
 def draw_select_save(screen, fonts, selected, saves, title=None, language="pt", state=None, is_loading=1.0):
@@ -1366,7 +1361,7 @@ def draw_select_save(screen, fonts, selected, saves, title=None, language="pt", 
                 spacing=spacing,
             )
 
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
+    draw_footer_actions(screen, tiny_f, [("↑↓", t(language, "btn_nav")), ("A", t(language, "btn_select")), ("B", t(language, "btn_back"))])
 
 
 def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, sprite_loader, status="", allow_pc_actions=True, language="pt"):
@@ -1384,7 +1379,12 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
         pygame.draw.rect(screen, BORDER, message_screen, 2, border_radius=0)
         wrap_text(screen, small_f, t(language, "no_pokemon"), pygame.Rect(message_screen.x + 16, message_screen.y + 42, message_screen.w - 32, 44), SCREEN_TEXT, max_lines=2)
         text(screen, small_f, source_label, detail_panel.x + 18, detail_panel.y + 38, MUTED, detail_panel.w - 36)
-        draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_back"))])
+        actions = []
+        if allow_pc_actions:
+            is_party = "party" in (source_label or "").lower()
+            actions.append(("Y", t(language, "btn_view_pc") if is_party else t(language, "btn_view_party")))
+        actions.append(("B", t(language, "btn_back")))
+        draw_footer_actions(screen, tiny_f, actions)
         return
 
     list_panel = layout.left_panel
@@ -1464,12 +1464,13 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
     else:
         text(screen, small_f, source_label, detail_panel.x + 16, detail_panel.y + 122, MUTED, detail_panel.w - 32)
 
-    actions = [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))]
+    actions = [("↑↓", t(language, "btn_nav")), ("A", t(language, "btn_choose"))]
     if allow_pc_actions:
         is_party = "party" in (source_label or "").lower()
         x_label = t(language, "btn_move_pc") if is_party else t(language, "btn_withdraw")
         y_label = t(language, "btn_view_pc") if is_party else t(language, "btn_view_party")
         actions.extend([("X", x_label), ("Y", y_label)])
+    actions.append(("B", t(language, "btn_back")))
     draw_footer_actions(screen, tiny_f, actions)
 
 
@@ -1492,10 +1493,10 @@ def draw_connecting(screen, fonts, frame, language="pt"):
     pygame.draw.rect(screen, BORDER, visor_rect, 2)
     wrap_text(screen, body_f, message, pygame.Rect(visor_rect.x + 12, visor_rect.y + 35, visor_rect.w - 24, 60), (0, 0, 0), line_gap=1, max_lines=3)
 
-    draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_cancel"))])
+    draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_leave_lan"))])
 
 
-def draw_waiting_partner(screen, fonts, status, language="pt"):
+def draw_waiting_partner(screen, fonts, status, language="pt", leave_lan=False):
     _, body_f, small_f, tiny_f = fonts
     layout = draw_pokedex_shell(screen, screen_title(language, "waiting_partner"), shell_status="loading")
     left_panel = layout.left_panel
@@ -1513,7 +1514,8 @@ def draw_waiting_partner(screen, fonts, status, language="pt"):
     pygame.draw.rect(screen, BORDER, visor_rect, 2)
     wrap_text(screen, body_f, message, pygame.Rect(visor_rect.x + 12, visor_rect.y + 35, visor_rect.w - 24, 60), (0, 0, 0), line_gap=1, max_lines=3)
 
-    draw_footer_actions(screen, tiny_f, [("X", t(language, "btn_enter_ip")), ("B", t(language, "btn_cancel"))])
+    back_label = t(language, "btn_leave_lan" if leave_lan else "btn_cancel_trade")
+    draw_footer_actions(screen, tiny_f, [("X", t(language, "btn_enter_ip")), ("B", back_label)])
 
 
 def draw_pokedex_prompt(screen, fonts, title, question, detail_lines, actions, language="pt", tone=WARN):
@@ -1549,7 +1551,7 @@ def draw_leave_room_confirm(screen, fonts, language="pt"):
         screen_title(language, "leave_room_title"),
         t(language, "leave_room_question"),
         [t(language, "leave_room_help"), t(language, "leave_room_more")],
-        [("A", t(language, "btn_yes")), ("B", t(language, "btn_no"))],
+        [("A", t(language, "btn_leave_lan")), ("B", t(language, "btn_back"))],
         language,
         RED,
     )
@@ -1632,7 +1634,7 @@ def draw_info_modal(screen, fonts, title, message, language="pt"):
     body_msg = translate_literal(language, (message or "").strip()) or t(language, "no_details")
     wrap_text(screen, small_f, body_msg, pygame.Rect(visor_rect.x + 10, visor_rect.y + 10, visor_rect.w - 20, visor_rect.h - 20), (0, 0, 0), max_lines=5)
 
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok"))])
+    draw_footer_actions(screen, tiny_f, [("A/B", t(language, "btn_ok"))])
 
 
 def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_idx, total, chosen_ids=None, sprite_loader=None, pokemon=None, language="pt"):
@@ -1743,7 +1745,7 @@ def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_i
         pygame.draw.rect(screen, BORDER, visor_rect, 2, border_radius=0)
         wrap_text(screen, body_f, t(language, "unsupported_move", move=move_name_text), pygame.Rect(visor_rect.x + 10, visor_rect.y + 10, visor_rect.w - 20, 60), (0, 0, 0), max_lines=3)
 
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_choose")), ("B", t(language, "btn_skip"))])
+    draw_footer_actions(screen, tiny_f, [("↑↓", t(language, "btn_nav")), ("A", t(language, "btn_choose")), ("B", t(language, "btn_cancel"))])
 
 
 def draw_resolve_item_relocation(screen, fonts, item_relocation, selected_index, sprite_loader=None, pokemon=None, language="pt"):
@@ -1781,7 +1783,7 @@ def draw_resolve_item_relocation(screen, fonts, item_relocation, selected_index,
         draw_digital_visor(screen, visor_rect, 1.0)
         pygame.draw.rect(screen, BORDER, visor_rect, 2, border_radius=0)
 
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_store_item")), ("B", t(language, "btn_back"))])
+    draw_footer_actions(screen, tiny_f, [("↑↓", t(language, "btn_nav")), ("A", t(language, "btn_store_item")), ("B", t(language, "btn_cancel"))])
 
 
 def draw_cancel_waiting_confirm(screen, fonts, pokemon, sprite_loader, language="pt"):
@@ -1811,18 +1813,18 @@ def draw_cancel_waiting_confirm(screen, fonts, pokemon, sprite_loader, language=
     draw_digital_visor(screen, visor_rect, 1.0)
     pygame.draw.rect(screen, BORDER, visor_rect, 2)
 
-    y = visor_rect.y + 20
+    y = visor_rect.y + 18
     wrap_text(screen, small_f, t(language, "cancel_trade_question"),
-              pygame.Rect(visor_rect.x + 8, y, visor_rect.w - 16, 40), (0, 0, 0), line_gap=1, max_lines=2)
+              pygame.Rect(visor_rect.x + 8, y, visor_rect.w - 16, 44), (0, 0, 0), line_gap=1, max_lines=2)
 
-    y = visor_rect.y + 65
+    y = visor_rect.y + 66
     wrap_text(screen, tiny_f, t(language, "save_not_modified"),
-              pygame.Rect(visor_rect.x + 8, y, visor_rect.w - 16, 15), (0, 0, 0))
-    y += 18
+              pygame.Rect(visor_rect.x + 8, y, visor_rect.w - 16, 30), (0, 0, 0), line_gap=1, max_lines=2)
+    y += 34
     wrap_text(screen, tiny_f, t(language, "room_stays_open"),
-              pygame.Rect(visor_rect.x + 8, y, visor_rect.w - 16, 15), (0, 0, 0))
+              pygame.Rect(visor_rect.x + 8, y, visor_rect.w - 16, 32), (0, 0, 0), line_gap=1, max_lines=2)
 
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_yes")), ("B", t(language, "btn_no"))])
+    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_cancel_trade")), ("B", t(language, "btn_back"))])
 
 
 def draw_confirm_pokemon_visor(screen, fonts, panel_area, pokemon, display_name, sprite, loading, language="pt"):
@@ -2447,7 +2449,7 @@ def draw_trading(screen, fonts, status, language="pt"):
     pygame.draw.rect(screen, BORDER, visor_rect, 2)
     wrap_text(screen, body_f, message, pygame.Rect(visor_rect.x + 12, visor_rect.y + 35, visor_rect.w - 24, 60), (0, 0, 0), line_gap=1, max_lines=3)
 
-    draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_cancel"))])
+    draw_footer_actions(screen, tiny_f, [])
 
 
 def _build_sprite_entry(pokemon):
@@ -2524,7 +2526,7 @@ def draw_trade_result(screen, fonts, success, data, sprite_loader, language="pt"
         text_center(screen, body_f, t(language, "error_cancelled"), error_rect, SCREEN_TEXT)
         wrap_text(screen, small_f, error_msg, pygame.Rect(error_rect.x + 16, error_rect.y + 40, error_rect.w - 32, error_rect.h - 50), RED, max_lines=3)
 
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok"))])
+    draw_footer_actions(screen, tiny_f, [("A/B", t(language, "btn_ok"))])
 
 
 def draw_update_screen(screen, fonts, update_status, update_data, language):
@@ -2569,14 +2571,14 @@ def draw_update_screen(screen, fonts, update_status, update_data, language):
     elif update_status == "available":
         status_text = t(language, "update_available")
         latest = update_data.get("latest", "?")
-        detail_text = f"v{latest}\n\n{t(language, 'update_press_a')}"
+        detail_text = f"v{latest}"
         show_update_btn = True
     elif update_status == "updating":
         status_text = t(language, "update_updating")
         detail_text = ""
     elif update_status == "done":
         status_text = t(language, "update_done")
-        detail_text = t(language, "update_press_a_restart")
+        detail_text = ""
         show_update_btn = True
 
     y_offset = panel.y + 20
@@ -2588,9 +2590,9 @@ def draw_update_screen(screen, fonts, update_status, update_data, language):
             text(screen, tiny_f, line, panel.x + 20, detail_y, MUTED, panel.w - 40)
             detail_y += 20
 
-    action_text = t(language, "btn_back")
     if show_update_btn:
-        draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
+        action_label = t(language, "btn_restart") if update_status == "done" else t(language, "btn_update")
+        draw_footer_actions(screen, tiny_f, [("A", action_label), ("B", t(language, "btn_back"))])
     else:
         draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_back"))])
 
@@ -2619,7 +2621,11 @@ def draw_extras_select_save(screen, fonts, saves, selected, language):
     info_panel = right_info_panel(layout)
     rect(screen, PANEL_2, info_panel, 0)
     pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
+    if saves:
+        actions = [("↑↓", t(language, "btn_nav")), ("A", t(language, "btn_select")), ("B", t(language, "btn_back"))]
+    else:
+        actions = [("B", t(language, "btn_back"))]
+    draw_footer_actions(screen, tiny_f, actions)
 
 
 def draw_extras_category(screen, fonts, categories, selected, language, error_message=None):
@@ -2670,7 +2676,13 @@ def draw_extras_category(screen, fonts, categories, selected, language, error_me
     info_panel = right_info_panel(layout)
     rect(screen, PANEL_2, info_panel, 0)
     pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
+    if error_message:
+        actions = [("A/B", t(language, "btn_ok"))]
+    elif categories:
+        actions = [("↑↓", t(language, "btn_nav")), ("A", t(language, "btn_select")), ("B", t(language, "btn_back"))]
+    else:
+        actions = [("B", t(language, "btn_back"))]
+    draw_footer_actions(screen, tiny_f, actions)
 
 
 def draw_extras_events(screen, fonts, events, selected, language, scroll=0.0, applied_ids=None):
@@ -2718,7 +2730,11 @@ def draw_extras_events(screen, fonts, events, selected, language, scroll=0.0, ap
         action_label = t(language, "extras_remove")
     else:
         action_label = t(language, "extras_apply")
-    draw_footer_actions(screen, tiny_f, [("A", action_label), ("B", t(language, "btn_back"))])
+    if events:
+        actions = [("↑↓", t(language, "btn_nav")), ("A", action_label), ("B", t(language, "btn_back"))]
+    else:
+        actions = [("B", t(language, "btn_back"))]
+    draw_footer_actions(screen, tiny_f, actions)
 
 
 def draw_extras_utilities(screen, fonts, utilities, selected, language, scroll=0.0, active_ids=None, reversible_ids=None):
@@ -2768,7 +2784,11 @@ def draw_extras_utilities(screen, fonts, utilities, selected, language, scroll=0
         action_label = t(language, "extras_remove")
     else:
         action_label = t(language, "extras_apply")
-    draw_footer_actions(screen, tiny_f, [("A", action_label), ("B", t(language, "btn_back"))])
+    if utilities:
+        actions = [("↑↓", t(language, "btn_nav")), ("A", action_label), ("B", t(language, "btn_back"))]
+    else:
+        actions = [("B", t(language, "btn_back"))]
+    draw_footer_actions(screen, tiny_f, actions)
 
 
 def draw_extras_ereader(screen, fonts, slots, battles, selected, language, scroll=0.0, selected_slot=0):
@@ -2825,7 +2845,16 @@ def draw_extras_ereader(screen, fonts, slots, battles, selected, language, scrol
         action_label = t(language, "extras_remove")
     else:
         action_label = t(language, "extras_apply")
-    draw_footer_actions(screen, tiny_f, [("A", action_label), ("L/R", "Slot"), ("B", t(language, "btn_back"))])
+    if battles:
+        actions = [("↑↓", t(language, "btn_nav")), ("A", action_label)]
+        if slots:
+            actions.append(("L/R", t(language, "btn_slot")))
+        actions.append(("B", t(language, "btn_back")))
+    elif slots:
+        actions = [("L/R", t(language, "btn_slot")), ("B", t(language, "btn_back"))]
+    else:
+        actions = [("B", t(language, "btn_back"))]
+    draw_footer_actions(screen, tiny_f, actions)
 
 
 def draw_extras_result(screen, fonts, result, language):
@@ -2889,7 +2918,11 @@ def draw_extras_item_category(screen, fonts, groups, selected, language):
     info_panel = right_info_panel(layout)
     rect(screen, PANEL_2, info_panel, 0)
     pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "btn_ok")), ("B", t(language, "btn_back"))])
+    if groups:
+        actions = [("↑↓", t(language, "btn_nav")), ("A", t(language, "btn_select")), ("B", t(language, "btn_back"))]
+    else:
+        actions = [("B", t(language, "btn_back"))]
+    draw_footer_actions(screen, tiny_f, actions)
 
 
 def draw_extras_item_select(screen, fonts, items, selected, quantity, language):
@@ -2926,9 +2959,16 @@ def draw_extras_item_select(screen, fonts, items, selected, quantity, language):
     pygame.draw.rect(screen, BORDER, info_panel, 2, border_radius=0)
     qty_label = t(language, "extras_item_qty", qty=str(quantity))
     text(screen, small_f, qty_label, info_panel.x + 16, info_panel.y + 20, ACCENT, info_panel.w - 32)
-    text(screen, tiny_f, t(language, "extras_item_qty_hint"), info_panel.x + 16, info_panel.y + 56, MUTED, info_panel.w - 32)
-
-    draw_footer_actions(screen, tiny_f, [("A", t(language, "extras_item_add")), ("L/R", t(language, "extras_item_qty_short")), ("B", t(language, "btn_back"))])
+    if items:
+        actions = [
+            ("↑↓", t(language, "btn_nav")),
+            ("A", t(language, "extras_item_add")),
+            ("L/R", t(language, "extras_item_qty_short")),
+            ("B", t(language, "btn_back")),
+        ]
+    else:
+        actions = [("B", t(language, "btn_back"))]
+    draw_footer_actions(screen, tiny_f, actions)
 
 
 def reset_flow_state(state):

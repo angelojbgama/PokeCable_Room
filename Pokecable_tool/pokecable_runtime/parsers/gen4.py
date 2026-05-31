@@ -747,7 +747,9 @@ class Gen4Parser:
             national_dex_id = species_id
         if not is_party and not _pk4_box_record_is_plausible(decrypted, national_dex_id):
             return None
-        species_name = _species_name(national_dex_id)
+        iv32 = _u32(decrypted, 0x38)
+        is_egg = bool((iv32 >> 30) & 1)
+        species_name = "Egg" if is_egg else _species_name(national_dex_id)
         nickname = decode_gen4_string(decrypted[0x48:0x48 + 22]) or species_name
         ot_name = decode_gen4_string(decrypted[0x68:0x68 + 16]) or ""
         held_item_id = _u16(decrypted, 0x0A) or None
@@ -760,6 +762,8 @@ class Gen4Parser:
                 level = int(level_from_species_experience(national_dex_id, experience))
             except Exception:
                 level = 1
+        if is_egg:
+            level = 1
         return PokemonSummary(
             location=location,
             species_id=species_id,
@@ -768,10 +772,10 @@ class Gen4Parser:
             nickname=nickname,
             ot_name=ot_name,
             trainer_id=_u16(decrypted, 0x0C),
-            national_dex_id=national_dex_id,
+            national_dex_id=None if is_egg else national_dex_id,
             held_item_id=held_item_id,
             held_item_name=held_name,
-            gender=_gender_symbol((decrypted[0x40] >> 1) & 0x3, national_dex_id),
+            gender=None if is_egg else _gender_symbol((decrypted[0x40] >> 1) & 0x3, national_dex_id),
         )
 
     def list_party(self) -> list[PokemonSummary]:

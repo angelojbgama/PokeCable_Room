@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import queue
+
 from pokecable_save import _ensure_backend_import_path
 
 from frontend.session import default_info_modal, default_self_trade_decisions
@@ -464,8 +466,52 @@ def _without_held_item(pokemon):
     return preview
 
 
+def _lan_thread_alive(services):
+    thread = getattr(getattr(services, "trade_thread_ref", None), "current", None)
+    return bool(thread and thread.is_alive())
+
+
+def _has_cancelable_lan_round(state):
+    if getattr(state, "trade_phase", "idle") == "writing":
+        return False
+    if getattr(state, "_lan_stop_event", None) is None:
+        return False
+    return bool(getattr(state, "selected_pokemon", None))
+
+
+def _drain_ui_queue(services):
+    try:
+        while True:
+            services.ui_queue.get_nowait()
+    except queue.Empty:
+        return
+
+
+def _finish_leave_lan_session(ctx, session, state, services, reason):
+    requested = services.request_leave_room(state)
+    thread = getattr(services.trade_thread_ref, "current", None)
+    if requested and thread and thread.is_alive():
+        thread.join(timeout=1.5)
+    if thread and not thread.is_alive():
+        services.trade_thread_ref.current = None
+    _drain_ui_queue(services)
+    session.trade_status = "LAN encerrada." if requested else ""
+    ctx.logger.info("LAN leave requested=%s thread_alive=%s", requested, _lan_thread_alive(services))
+    services.reset_flow_state(state)
+    session.menu_index = 0
+    services.switch_screen("menu", reason, nav_mode="clear")
+
+
 class ConnectingScreen(ScreenBase):
     screen_id = "connecting"
+
+    def handle_action(self, action, ctx, session, state, services):
+        if action == "back":
+            if getattr(state, "trade_phase", "idle") == "writing":
+                session.trade_status = "Aguarde a gravacao terminar."
+                return
+            ctx.logger.info("Leave LAN from connecting requested")
+            services.switch_screen("leave_room_confirm", "leave_lan_from_connecting")
 
     def render(self, ctx, session, state, services):
         ctx.draw.draw_connecting(ctx.screen, ctx.fonts, session.frame, state.language)
@@ -476,8 +522,15 @@ class WaitingPartnerScreen(ScreenBase):
 
     def handle_action(self, action, ctx, session, state, services):
         if action == "back":
-            ctx.logger.info("Cancel from waiting_partner requested")
-            services.switch_screen("cancel_waiting_confirm", "cancel_requested")
+            if getattr(state, "trade_phase", "idle") == "writing":
+                session.trade_status = "Aguarde a gravacao terminar."
+                return
+            if _has_cancelable_lan_round(state):
+                ctx.logger.info("Cancel round from waiting_partner requested")
+                services.switch_screen("cancel_waiting_confirm", "cancel_requested")
+            else:
+                ctx.logger.info("Leave LAN from waiting_partner requested")
+                services.switch_screen("leave_room_confirm", "leave_lan_requested")
         elif action == "x" and state.action == "lan" and getattr(state, "_lan_connection", None) is None:
             ctx.logger.info("Manual LAN endpoint requested")
             session.lan_endpoint = ""
@@ -486,7 +539,13 @@ class WaitingPartnerScreen(ScreenBase):
             services.switch_screen("enter_lan_endpoint", "manual_lan_endpoint")
 
     def render(self, ctx, session, state, services):
-        ctx.draw.draw_waiting_partner(ctx.screen, ctx.fonts, session.trade_status, state.language)
+        ctx.draw.draw_waiting_partner(
+            ctx.screen,
+            ctx.fonts,
+            session.trade_status,
+            state.language,
+            leave_lan=not _has_cancelable_lan_round(state),
+        )
 
 
 class CancelWaitingConfirmScreen(ScreenBase):
@@ -499,9 +558,17 @@ class CancelWaitingConfirmScreen(ScreenBase):
             if ok:
                 session.trade_status = "Cancelando..."
                 services.switch_screen("waiting_partner", "cancel_pending")
+            elif getattr(state, "trade_phase", "idle") == "writing":
+                show_info_modal(
+                    session,
+                    services,
+                    title="Aguarde",
+                    message="Aguarde a gravacao terminar.",
+                    return_screen="waiting_partner",
+                    reason="cancel_blocked_writing",
+                )
             else:
-                session.trade_status = "Nao foi possivel cancelar agora."
-                services.switch_screen("waiting_partner", "cancel_failed")
+                _finish_leave_lan_session(ctx, session, state, services, "cancel_failed_leave_lan")
         elif action == "back":
             ctx.logger.info("Cancel from waiting aborted")
             services.go_back("waiting_partner", "cancel_aborted")
@@ -522,14 +589,14 @@ class LeaveRoomConfirmScreen(ScreenBase):
     def handle_action(self, action, ctx, session, state, services):
         if action == "select":
             ctx.logger.info("Leave room confirmed")
-            services.request_leave_room(state)
-            session.trade_status = "Saindo da sala..."
-            services.switch_screen("menu", "leave_room_yes")
-            session.menu_index = 0
-            services.reset_flow_state(state)
+            session.trade_status = "Saindo da LAN..."
+            _finish_leave_lan_session(ctx, session, state, services, "leave_room_yes")
         elif action == "back":
             ctx.logger.info("Leave room aborted")
-            services.switch_screen("select_pokemon", "leave_room_no")
+            if state.action == "lan" and (_lan_thread_alive(services) or getattr(state, "trade_phase", "idle") != "idle"):
+                services.switch_screen("waiting_partner", "leave_room_no")
+            else:
+                services.switch_screen("select_pokemon", "leave_room_no")
 
     def render(self, ctx, session, state, services):
         ctx.draw.draw_leave_room_confirm(ctx.screen, ctx.fonts, state.language)
