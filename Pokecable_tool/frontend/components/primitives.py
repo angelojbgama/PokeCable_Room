@@ -442,6 +442,7 @@ def draw_pokedex_shell(
     pulsing=False,
     ok_pulse=False,
     warn_pulse=False,
+    shell_status="neutral",
 ):
     style = style or PokedexStyle()
     lens_state = lens_state if lens_state is not None else {"start_time": 0.0, "title": None}
@@ -485,11 +486,28 @@ def draw_pokedex_shell(
         lens_state["title"] = title
         lens_state["start_time"] = time.perf_counter()
 
+    if shell_status == "neutral":
+        if pulsing:
+            shell_status = "loading"
+        elif ok_pulse:
+            shell_status = "success"
+        elif warn_pulse:
+            shell_status = "confirm"
+
+    current_time = time.perf_counter()
+    loading_active = shell_status == "loading" or loading_progress < 1.0
+    confirm_active = shell_status == "confirm"
+    success_active = shell_status == "success"
+    error_active = shell_status == "error"
+
     muted_color = (155, 155, 155)
     accent_color = style.accent
 
-    if loading_progress < 1.0:
+    if loading_active:
         progress = min(1.0, loading_progress)
+        pulse = 0.5 + 0.5 * math.sin(current_time * 5.0)
+        if loading_progress >= 1.0:
+            progress = 0.55 + 0.45 * pulse
         accent_color = (
             int(muted_color[0] + (style.accent[0] - muted_color[0]) * progress),
             int(muted_color[1] + (style.accent[1] - muted_color[1]) * progress),
@@ -504,80 +522,59 @@ def draw_pokedex_shell(
 
     lens_elapsed = max(0.0, time.perf_counter() - lens_state["start_time"])
     lens_duration = 0.9
-    if (loading_progress >= 1.0 or pulsing) and lens_elapsed <= lens_duration:
+    if shell_status in {"loading", "confirm", "success", "error"} and lens_elapsed <= lens_duration:
         draw_lens_pulse(screen, (49, 47), lens_elapsed / lens_duration)
-    elif pulsing:
+    elif shell_status in {"loading", "confirm", "success", "error"}:
         lens_state["start_time"] = time.perf_counter()
 
     pygame.draw.circle(screen, (144, 229, 252), (41, 38), 8)
     pygame.draw.circle(screen, (255, 255, 255), (36, 31), 5)
 
-    if pulsing:
-        current_time = time.perf_counter()
-        bright_colors = {
-            style.red: (255, 80, 100),
-            style.warn: (255, 200, 50),
-            style.ok: (80, 200, 255),
-        }
-        dim_colors = {
-            style.red: (80, 20, 30),
-            style.warn: (100, 80, 20),
-            style.ok: (30, 80, 100),
-        }
-        for idx, (x, color) in enumerate(((100, style.red), (128, style.warn), (156, style.ok))):
-            pygame.draw.circle(screen, style.border, (x, 32), 12)
-
+    led_specs = (
+        ("error", 100, style.red, (255, 80, 100), (80, 20, 30)),
+        ("confirm", 128, style.warn, (255, 220, 70), (100, 80, 20)),
+        ("success", 156, style.ok, (70, 235, 120), (25, 90, 45)),
+    )
+    for led_name, x, color, bright_color, dim_color in led_specs:
+        pygame.draw.circle(screen, style.border, (x, 32), 12)
+        led_color = color
+        highlight = False
+        if loading_active:
             hash_val = int(hashlib.md5(str(x).encode()).hexdigest(), 16)
             cycle_offset = (hash_val % 10) / 10.0
+            is_on = ((current_time * 3.0 + cycle_offset) % 1.0) < 0.3
+            led_color = bright_color if is_on else dim_color
+            highlight = is_on
+        elif (
+            (error_active and led_name == "error")
+            or (confirm_active and led_name == "confirm")
+            or (success_active and led_name == "success")
+        ):
+            pulse = 0.5 + 0.5 * math.sin(current_time * 4.0)
+            led_color = tuple(int(dim_color[idx] + (bright_color[idx] - dim_color[idx]) * pulse) for idx in range(3))
+            highlight = pulse > 0.7
+        pygame.draw.circle(screen, led_color, (x, 32), 9)
+        if highlight:
+            pygame.draw.circle(screen, (255, 255, 255), (x - 2, 29), 3)
 
-            cycle = (current_time * 3.0 + cycle_offset) % 1.0
-            on_duration = 0.3
-            is_on = cycle < on_duration
-
-            if is_on:
-                bright_color = bright_colors.get(color, color)
-                pygame.draw.circle(screen, bright_color, (x, 32), 9)
-                pygame.draw.circle(screen, (255, 255, 255), (x - 2, 29), 3)
-            else:
-                dim_color = dim_colors.get(color, (40, 40, 40))
-                pygame.draw.circle(screen, dim_color, (x, 32), 9)
-    else:
-        current_time = time.perf_counter()
-        for x, color in ((100, style.red), (128, style.warn), (156, style.ok)):
-            pygame.draw.circle(screen, style.border, (x, 32), 12)
-            if ok_pulse and color == style.ok:
-                pulse = 0.5 + 0.5 * math.sin(current_time * 4.0)
-                bright = (int(80 + 175 * pulse), int(200 + 55 * pulse), int(80 + 80 * pulse))
-                pygame.draw.circle(screen, bright, (x, 32), 9)
-                if pulse > 0.7:
-                    pygame.draw.circle(screen, (255, 255, 255), (x - 2, 29), 3)
-            elif warn_pulse and color == style.warn:
-                pulse = 0.5 + 0.5 * math.sin(current_time * 4.0)
-                bright = (int(200 + 55 * pulse), int(160 + 80 * pulse), int(20 + 30 * pulse))
-                pygame.draw.circle(screen, bright, (x, 32), 9)
-                if pulse > 0.7:
-                    pygame.draw.circle(screen, (255, 255, 255), (x - 2, 29), 3)
-            else:
-                pygame.draw.circle(screen, color, (x, 32), 9)
-
-    title_panel = pygame.Rect(93, 48, 196, 34)
+    title_panel = pygame.Rect(202, 4, 418, 30)
     if not title_state["start_time"]:
         title_state["start_time"] = time.perf_counter()
     sweep_elapsed = max(0.0, time.perf_counter() - title_state["start_time"])
     sweep_duration = 1.1
     if title and title_font_func is not None:
-        title_f = title_font_func(12)
-        for candidate_size in (32, 30, 28, 26, 24, 22, 20, 18, 16, 14, 12):
-            candidate = title_font_func(candidate_size)
-            if candidate.size(str(title))[0] <= title_panel.w - 18:
-                title_f = candidate
-                break
-        title_surface = title_f.render(str(title), True, (255, 255, 255))
+        title_f = title_font_func(24)
+        title_label = fit_text(title_f, str(title), title_panel.w - 18)
+        title_surface = title_f.render(title_label, True, (255, 255, 255))
         sweep_surface = render_title_sweep(title_surface, (sweep_elapsed % sweep_duration) / sweep_duration)
         title_y = title_panel.y + max(0, (title_panel.h - title_surface.get_height()) // 2)
-        screen.blit(sweep_surface, (title_panel.x + 9, title_y))
+        title_x = title_panel.right - 9 - title_surface.get_width()
+        screen.blit(sweep_surface, (title_x, title_y))
     if subtitle and font_func is not None:
-        text(screen, font_func(13), subtitle, title_panel.x + 10, title_panel.bottom + 3, style.muted, title_panel.w - 20)
+        subtitle_font = font_func(13)
+        subtitle_surface = subtitle_font.render(str(subtitle), True, style.muted)
+        subtitle_x = max(title_panel.x + 10, title_panel.right - 10 - subtitle_surface.get_width())
+        screen.blit(subtitle_surface, (subtitle_x, title_panel.bottom + 3))
 
     return frame
 

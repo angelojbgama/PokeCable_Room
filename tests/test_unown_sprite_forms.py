@@ -19,7 +19,7 @@ TEST_SAVES = REPO_ROOT.parent / "roms" / "test-saves"
 
 
 def _sprite_filename(pokemon: dict[str, object]) -> str:
-    loader = SpriteLoader("")
+    loader = SpriteLoader()
     _, lookup = loader._identity(pokemon)
     path = loader._sprite_path(lookup)
     return path.name if path is not None else ""

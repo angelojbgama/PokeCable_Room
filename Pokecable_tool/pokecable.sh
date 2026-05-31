@@ -195,18 +195,11 @@ install_dependencies() {
   ttyprint "Log de instalacao: $DEPS_LOG"
   : > "$DEPS_LOG" 2>/dev/null || true
 
-  ttyprint "[1/2] pygame (obrigatorio)..."
+  ttyprint "[1/1] pygame (obrigatorio)..."
   if check_python_module pygame; then
     ttyprint "  OK"
   else
     install_apt_package "python3-pygame" || install_pip_package "pygame" "pygame" || true
-  fi
-
-  ttyprint "[2/2] websockets (modo remoto legado opcional)..."
-  if check_python_module websockets; then
-    ttyprint "  OK"
-  else
-    install_apt_package "python3-websockets" || install_pip_package "websockets" "websockets" || true
   fi
 
   local missing=""
@@ -216,12 +209,6 @@ install_dependencies() {
     ttyprint "  pygame ... AUSENTE"
     missing="$missing pygame"
   fi
-  if check_python_module websockets; then
-    ttyprint "  websockets ... OK"
-  else
-    ttyprint "  websockets ... AUSENTE (sala LAN local continua disponivel)"
-  fi
-
   if [ -n "$missing" ]; then
     ttyprint "ERRO: modulos ausentes:$missing"
     ttyprint "Inclua as dependencias em: $DEPENDENCE_DIR"

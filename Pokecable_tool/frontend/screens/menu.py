@@ -109,20 +109,17 @@ class ConfigScreen(ScreenBase):
 
     def handle_action(self, action, ctx, session, state, services):
         if action == "up":
-            session.menu_index = (session.menu_index - 1) % 2
+            session.menu_index = 0
         elif action == "down":
-            session.menu_index = (session.menu_index + 1) % 2
+            session.menu_index = 0
         elif action in ("left", "right"):
-            if session.menu_index == 0:
-                order = ["pt", "en", "es"]
-                index = order.index(state.language) if state.language in order else 0
-                direction = -1 if action == "left" else 1
-                state.language = order[(index + direction) % len(order)]
-                session.config_dirty = True
-            else:
-                state.theme = ctx.draw.next_theme(state.theme, -1 if action == "left" else 1)
-                services.apply_theme(state.theme)
-                session.config_dirty = True
+            order = ["pt", "en", "es"]
+            index = order.index(state.language) if state.language in order else 0
+            direction = -1 if action == "left" else 1
+            state.language = order[(index + direction) % len(order)]
+            state.theme = "pokedex_red"
+            services.apply_theme(state.theme)
+            session.config_dirty = True
         elif action == "select":
             state.save_ui_config(state.language, state.theme)
             session.config_dirty = False
@@ -259,16 +256,6 @@ class LoadSaveScreen(ScreenBase):
 
         ctx.draw.draw_select_save(ctx.screen, ctx.fonts, session.menu_index, saves_to_show, language=state.language, state=state, is_loading=progress)
 
-        if self._preload_done and progress >= 1.0:
-            import time
-            if not hasattr(self, '_pulse_start'):
-                self._pulse_start = time.perf_counter()
-            pulse_elapsed = time.perf_counter() - self._pulse_start
-            pulse_duration = 0.9
-            if pulse_elapsed <= pulse_duration:
-                from frontend.components.primitives import draw_lens_pulse
-                draw_lens_pulse(ctx.screen, (49, 47), pulse_elapsed / pulse_duration)
-
 
 class SelfSelectSaveAScreen(ScreenBase):
     screen_id = "self_select_save_a"
@@ -362,18 +349,6 @@ class SelfSelectSaveAScreen(ScreenBase):
             state=state,
             is_loading=progress,
         )
-
-        if self._preload_done and progress >= 1.0:
-            import time
-            if not hasattr(self, '_pulse_start'):
-                self._pulse_start = time.perf_counter()
-            pulse_elapsed = time.perf_counter() - self._pulse_start
-            pulse_duration = 0.9
-            if pulse_elapsed <= pulse_duration:
-                from frontend.components.primitives import draw_lens_pulse
-                draw_lens_pulse(ctx.screen, (49, 47), pulse_elapsed / pulse_duration)
-            else:
-                self._pulse_start = time.perf_counter()
 
 
 class SelfSelectSaveBScreen(ScreenBase):
@@ -491,18 +466,6 @@ class SelfSelectSaveBScreen(ScreenBase):
             state=state,
             is_loading=progress,
         )
-
-        if self._preload_done and progress >= 1.0:
-            import time
-            if not hasattr(self, '_pulse_start'):
-                self._pulse_start = time.perf_counter()
-            pulse_elapsed = time.perf_counter() - self._pulse_start
-            pulse_duration = 0.9
-            if pulse_elapsed <= pulse_duration:
-                from frontend.components.primitives import draw_lens_pulse
-                draw_lens_pulse(ctx.screen, (49, 47), pulse_elapsed / pulse_duration)
-            else:
-                self._pulse_start = time.perf_counter()
 
 
 class UpdateScreen(ScreenBase):

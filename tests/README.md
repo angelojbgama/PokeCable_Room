@@ -70,7 +70,7 @@ Arquivos gerados:
 ## Requisitos
 
 - **Python 3.12+**
-- Dependências instaladas: `pip install -r PokeCable/api/requirements.txt`
+- Dependências instaladas: `python3 -m pip install -r tests/requirements.txt pytest`
 
 ## Troubleshooting
 

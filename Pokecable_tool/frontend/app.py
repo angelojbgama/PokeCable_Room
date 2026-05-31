@@ -68,7 +68,7 @@ from frontend.sprites import (
 from frontend.queue_dispatch import dispatch_ui_queue
 from frontend.screens import ScreenController, register_default_screens
 from frontend.session import InputSessionState, MutableRef, UiContext, UiServices, UiSessionState
-from frontend.theme import next_theme, palette_for_theme, theme_display_name
+from frontend.theme import palette_for_theme
 from frontend.trade_flow import (
     advance_self_trade_prompts,
     finish_self_trade,
@@ -908,7 +908,7 @@ def draw_right_panel_frame(screen, panel, progress=None, glass=False):
     draw_right_panel_frame_element(screen, panel, pokedex_style(), progress, glass)
 
 
-def draw_pokedex_shell(screen, title="", subtitle="", loading_progress=1.0, pulsing=False, ok_pulse=False, warn_pulse=False):
+def draw_pokedex_shell(screen, title="", subtitle="", loading_progress=1.0, pulsing=False, ok_pulse=False, warn_pulse=False, shell_status="neutral"):
     return draw_pokedex_shell_element(
         screen,
         title,
@@ -922,6 +922,7 @@ def draw_pokedex_shell(screen, title="", subtitle="", loading_progress=1.0, puls
         pulsing,
         ok_pulse=ok_pulse,
         warn_pulse=warn_pulse,
+        shell_status=shell_status,
     )
 
 
@@ -1119,7 +1120,6 @@ def draw_config_menu(screen, fonts, selected, language, theme):
 
     items = [
         (t(language, "config_language"), t(language, f"lang_{language}")),
-        (t(language, "config_theme"), theme_display_name(theme)),
     ]
     list_panel = layout.left_panel
     rect(screen, PANEL, list_panel, 0)
@@ -1135,7 +1135,7 @@ def draw_config_menu(screen, fonts, selected, language, theme):
 
     text(screen, tiny_f, "< >", list_panel.right - 54, list_panel.y + 12, MUTED)
 
-    preview_panel = right_info_panel(layout, top_offset=30)
+    preview_panel = right_info_panel(layout)
     draw_right_panel_frame(screen, preview_panel)
     screen_rect = right_visor_rect(preview_panel)
     config_title = "config"
@@ -1145,7 +1145,7 @@ def draw_config_menu(screen, fonts, selected, language, theme):
     visor_elapsed = max(0.0, time.perf_counter() - MENU_VISOR_STATE["start_time"])
     draw_digital_visor(screen, screen_rect, min(visor_elapsed / 1.2, 1.0))
     pygame.draw.rect(screen, BORDER, screen_rect, 2)
-    text_center(screen, body_f, t(language, "config_title"), screen_rect, SCREEN_TEXT)
+    text_center(screen, body_f, t(language, "config_title"), screen_rect, (0, 0, 0))
     draw_footer_actions(screen, tiny_f, [
         ("A", t(language, "btn_ok")),
         ("B", t(language, "btn_back")),
@@ -1259,7 +1259,12 @@ def draw_keyboard(screen, fonts, title, value, grid_index, is_password=False, sh
 def draw_select_save(screen, fonts, selected, saves, title=None, language="pt", state=None, is_loading=1.0):
     _, body_f, small_f, tiny_f = fonts
     progress = is_loading if isinstance(is_loading, (int, float)) else 1.0
-    layout = draw_pokedex_shell(screen, title or screen_title(language, "select_save"), loading_progress=progress, pulsing=False)
+    layout = draw_pokedex_shell(
+        screen,
+        title or screen_title(language, "select_save"),
+        loading_progress=progress,
+        shell_status="loading" if progress < 1.0 else "neutral",
+    )
     list_panel = layout.left_panel
     detail_panel = right_info_panel(layout)
 
@@ -1331,7 +1336,7 @@ def draw_select_save(screen, fonts, selected, saves, title=None, language="pt", 
 
     header_y = screen_rect.y + 8
     if analysis_loading:
-        text(screen, small_f, t(language, "analyzing"), screen_rect.x + 12, header_y + 20, (100, 100, 100), screen_rect.w - 24)
+        text(screen, small_f, t(language, "analyzing"), screen_rect.x + 12, header_y + 20, MUTED, screen_rect.w - 24)
     elif player_name or trainer_id:
         name_label = player_name or "—"
         name_surface = body_f.render(name_label, True, (0, 0, 0))
@@ -1470,7 +1475,7 @@ def draw_select_pokemon(screen, fonts, selected, pokemon_list, source_label, spr
 
 def draw_connecting(screen, fonts, frame, language="pt"):
     _, body_f, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, screen_title(language, "connecting"), pulsing=True)
+    layout = draw_pokedex_shell(screen, screen_title(language, "connecting"), shell_status="loading")
     left_panel = layout.left_panel
     right_panel = right_info_panel(layout)
 
@@ -1487,23 +1492,12 @@ def draw_connecting(screen, fonts, frame, language="pt"):
     pygame.draw.rect(screen, BORDER, visor_rect, 2)
     wrap_text(screen, body_f, message, pygame.Rect(visor_rect.x + 12, visor_rect.y + 35, visor_rect.w - 24, 60), (0, 0, 0), line_gap=1, max_lines=3)
 
-    import time
-    if not hasattr(draw_connecting, '_pulse_start'):
-        draw_connecting._pulse_start = time.perf_counter()
-    pulse_elapsed = time.perf_counter() - draw_connecting._pulse_start
-    pulse_duration = 0.9
-    if pulse_elapsed <= pulse_duration:
-        from frontend.components.primitives import draw_lens_pulse
-        draw_lens_pulse(screen, (49, 47), pulse_elapsed / pulse_duration)
-    else:
-        draw_connecting._pulse_start = time.perf_counter()
-
     draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_cancel"))])
 
 
 def draw_waiting_partner(screen, fonts, status, language="pt"):
     _, body_f, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, screen_title(language, "waiting_partner"), pulsing=True)
+    layout = draw_pokedex_shell(screen, screen_title(language, "waiting_partner"), shell_status="loading")
     left_panel = layout.left_panel
     right_panel = right_info_panel(layout)
 
@@ -1519,23 +1513,12 @@ def draw_waiting_partner(screen, fonts, status, language="pt"):
     pygame.draw.rect(screen, BORDER, visor_rect, 2)
     wrap_text(screen, body_f, message, pygame.Rect(visor_rect.x + 12, visor_rect.y + 35, visor_rect.w - 24, 60), (0, 0, 0), line_gap=1, max_lines=3)
 
-    import time
-    if not hasattr(draw_waiting_partner, '_pulse_start'):
-        draw_waiting_partner._pulse_start = time.perf_counter()
-    pulse_elapsed = time.perf_counter() - draw_waiting_partner._pulse_start
-    pulse_duration = 0.9
-    if pulse_elapsed <= pulse_duration:
-        from frontend.components.primitives import draw_lens_pulse
-        draw_lens_pulse(screen, (49, 47), pulse_elapsed / pulse_duration)
-    else:
-        draw_waiting_partner._pulse_start = time.perf_counter()
-
     draw_footer_actions(screen, tiny_f, [("X", t(language, "btn_enter_ip")), ("B", t(language, "btn_cancel"))])
 
 
 def draw_pokedex_prompt(screen, fonts, title, question, detail_lines, actions, language="pt", tone=WARN):
     _, body_f, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, title)
+    layout = draw_pokedex_shell(screen, title, shell_status="confirm")
     left_panel = layout.left_panel
     right_panel = right_info_panel(layout)
     rect(screen, PANEL, left_panel, 0)
@@ -1574,7 +1557,7 @@ def draw_leave_room_confirm(screen, fonts, language="pt"):
 
 def draw_deposit_confirm(screen, fonts, pokemon, sprite_loader, language="pt"):
     _, body_f, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, screen_title(language, "deposit_title"), warn_pulse=True)
+    layout = draw_pokedex_shell(screen, screen_title(language, "deposit_title"), shell_status="confirm")
     left_panel = layout.left_panel
     right_panel = right_info_panel(layout)
     rect(screen, PANEL, left_panel, 0)
@@ -1631,7 +1614,7 @@ def draw_withdraw_confirm(screen, fonts, pokemon, language="pt"):
 def draw_info_modal(screen, fonts, title, message, language="pt"):
     _, body_f, small_f, tiny_f = fonts
     display_title = translate_literal(language, title) if title else t(language, "notice")
-    layout = draw_pokedex_shell(screen, display_title or screen_title(language, "notice"))
+    layout = draw_pokedex_shell(screen, display_title or screen_title(language, "notice"), shell_status="confirm")
     left_panel = layout.left_panel
     right_panel = right_info_panel(layout)
     rect(screen, PANEL, left_panel, 0)
@@ -1654,7 +1637,7 @@ def draw_info_modal(screen, fonts, title, message, language="pt"):
 
 def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_idx, total, chosen_ids=None, sprite_loader=None, pokemon=None, language="pt"):
     _, body_f, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, screen_title(language, "incompatible_move_title", current=current_idx + 1, total=total), warn_pulse=True)
+    layout = draw_pokedex_shell(screen, screen_title(language, "incompatible_move_title", current=current_idx + 1, total=total), shell_status="confirm")
 
     list_panel = layout.left_panel
     right_panel = right_info_panel(layout)
@@ -1765,7 +1748,7 @@ def draw_resolve_moves(screen, fonts, removed_move, replacement_index, current_i
 
 def draw_resolve_item_relocation(screen, fonts, item_relocation, selected_index, sprite_loader=None, pokemon=None, language="pt"):
     _, _, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, screen_title(language, "incompatible_item_title"), warn_pulse=True)
+    layout = draw_pokedex_shell(screen, screen_title(language, "incompatible_item_title"), shell_status="confirm")
 
     list_panel = layout.left_panel
     right_panel = right_info_panel(layout)
@@ -1804,7 +1787,7 @@ def draw_resolve_item_relocation(screen, fonts, item_relocation, selected_index,
 def draw_cancel_waiting_confirm(screen, fonts, pokemon, sprite_loader, language="pt"):
     title_f, body_f, small_f, tiny_f = fonts
     del title_f
-    layout = draw_pokedex_shell(screen, screen_title(language, "cancel_trade_title"))
+    layout = draw_pokedex_shell(screen, screen_title(language, "cancel_trade_title"), shell_status="confirm")
 
     pokemon_name = pokemon_display_name(pokemon, "???", language)
 
@@ -1849,7 +1832,7 @@ def draw_confirm_pokemon_visor(screen, fonts, panel_area, pokemon, display_name,
 def draw_trade_confirm(screen, fonts, my_pokemon, opponent_pokemon, sprite_loader, language="pt"):
     title_f, body_f, small_f, tiny_f = fonts
     del title_f
-    layout = draw_pokedex_shell(screen, screen_title(language, "confirm_trade"))
+    layout = draw_pokedex_shell(screen, screen_title(language, "confirm_trade"), shell_status="confirm")
 
     mine = pokemon_display_name(my_pokemon, "???", language)
     peer = pokemon_display_name(opponent_pokemon, "???", language)
@@ -2151,7 +2134,7 @@ def _draw_evolution_flash(screen, center, radius, flash_progress):
 def draw_evolution_cancel_prompt(screen, fonts, evolution, sprite_loader, frame, language="pt", pokemon_data=None):
     _, body_f, small_f, tiny_f = fonts
     tr = globals()["t"]
-    layout = draw_pokedex_shell(screen, screen_title(language, "trade_evolution"))
+    layout = draw_pokedex_shell(screen, screen_title(language, "trade_evolution"), shell_status="confirm")
 
     text_panel = layout.left_panel
     info_panel = right_info_panel(layout)
@@ -2365,7 +2348,7 @@ def draw_evolution_cancel_prompt(screen, fonts, evolution, sprite_loader, frame,
 def draw_evolution_cancel_confirm(screen, fonts, evolution, sprite_loader, frame, language="pt", pokemon_data=None):
     _, body_f, small_f, tiny_f = fonts
     tr = globals()["t"]
-    layout = draw_pokedex_shell(screen, screen_title(language, "confirm_cancel"))
+    layout = draw_pokedex_shell(screen, screen_title(language, "confirm_cancel"), shell_status="confirm")
 
     stage_panel = layout.left_panel
     info_panel = right_info_panel(layout)
@@ -2448,7 +2431,7 @@ def draw_evolution_cancel_confirm(screen, fonts, evolution, sprite_loader, frame
 
 def draw_trading(screen, fonts, status, language="pt"):
     _, body_f, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, screen_title(language, "trading"), pulsing=True)
+    layout = draw_pokedex_shell(screen, screen_title(language, "trading"), shell_status="loading")
     left_panel = layout.left_panel
     right_panel = right_info_panel(layout)
 
@@ -2463,17 +2446,6 @@ def draw_trading(screen, fonts, status, language="pt"):
     draw_digital_visor(screen, visor_rect, 1.0)
     pygame.draw.rect(screen, BORDER, visor_rect, 2)
     wrap_text(screen, body_f, message, pygame.Rect(visor_rect.x + 12, visor_rect.y + 35, visor_rect.w - 24, 60), (0, 0, 0), line_gap=1, max_lines=3)
-
-    import time
-    if not hasattr(draw_trading, '_pulse_start'):
-        draw_trading._pulse_start = time.perf_counter()
-    pulse_elapsed = time.perf_counter() - draw_trading._pulse_start
-    pulse_duration = 0.9
-    if pulse_elapsed <= pulse_duration:
-        from frontend.components.primitives import draw_lens_pulse
-        draw_lens_pulse(screen, (49, 47), pulse_elapsed / pulse_duration)
-    else:
-        draw_trading._pulse_start = time.perf_counter()
 
     draw_footer_actions(screen, tiny_f, [("B", t(language, "btn_cancel"))])
 
@@ -2498,7 +2470,7 @@ def _build_sprite_entry(pokemon):
 
 def draw_trade_result(screen, fonts, success, data, sprite_loader, language="pt"):
     _, body_f, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, screen_title(language, "result"), ok_pulse=success)
+    layout = draw_pokedex_shell(screen, screen_title(language, "result"), shell_status="success" if success else "error")
     left_panel = layout.left_panel
     right_panel = right_info_panel(layout)
     rect(screen, PANEL, left_panel, 0)
@@ -2557,7 +2529,15 @@ def draw_trade_result(screen, fonts, success, data, sprite_loader, language="pt"
 
 def draw_update_screen(screen, fonts, update_status, update_data, language):
     _, body_f, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, "PokeCable")
+    if update_status in ("checking", "updating", ""):
+        shell_status = "loading"
+    elif update_status == "error":
+        shell_status = "error"
+    elif update_status in ("done", "up_to_date"):
+        shell_status = "success"
+    else:
+        shell_status = "confirm"
+    layout = draw_pokedex_shell(screen, "PokeCable", shell_status=shell_status)
 
     panel = layout.left_panel
     rect(screen, PANEL, panel, 0)
@@ -2645,14 +2625,20 @@ def draw_extras_select_save(screen, fonts, saves, selected, language):
 def draw_extras_category(screen, fonts, categories, selected, language, error_message=None):
     """Choose between Event Tickets or e-Reader Battles."""
     _, _, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, t(language, "menu_extras"))
+    if error_message:
+        shell_status = "error"
+    elif not categories:
+        shell_status = "loading"
+    else:
+        shell_status = "neutral"
+    layout = draw_pokedex_shell(screen, t(language, "menu_extras"), shell_status=shell_status)
 
     list_panel = layout.left_panel
     rect(screen, PANEL, list_panel, 0)
     pygame.draw.rect(screen, BORDER, list_panel, 2, border_radius=0)
 
     if error_message:
-        text(screen, small_f, error_message, list_panel.x + 20, list_panel.y + 80, ACCENT, list_panel.w - 40)
+        text(screen, small_f, error_message, list_panel.x + 20, list_panel.y + 80, RED, list_panel.w - 40)
     elif not categories:
         text(screen, small_f, t(language, "extras_loading"), list_panel.x + 20, list_panel.y + 80, MUTED, list_panel.w - 40)
     else:
@@ -2691,7 +2677,7 @@ def draw_extras_events(screen, fonts, events, selected, language, scroll=0.0, ap
     """List of event tickets available for the selected game."""
     applied_ids = applied_ids or set()
     _, _, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, t(language, "extras_tickets"))
+    layout = draw_pokedex_shell(screen, t(language, "extras_tickets"), shell_status="confirm")
 
     list_panel = layout.left_panel
     rect(screen, PANEL, list_panel, 0)
@@ -2740,7 +2726,7 @@ def draw_extras_utilities(screen, fonts, utilities, selected, language, scroll=0
     active_ids = active_ids or set()
     reversible_ids = reversible_ids or set()
     _, _, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, t(language, "extras_cat_utilities"))
+    layout = draw_pokedex_shell(screen, t(language, "extras_cat_utilities"), shell_status="confirm")
 
     list_panel = layout.left_panel
     rect(screen, PANEL, list_panel, 0)
@@ -2788,7 +2774,7 @@ def draw_extras_utilities(screen, fonts, utilities, selected, language, scroll=0
 def draw_extras_ereader(screen, fonts, slots, battles, selected, language, scroll=0.0, selected_slot=0):
     """Show e-Reader slots and available battles to inject."""
     _, _, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, t(language, "extras_ereader"))
+    layout = draw_pokedex_shell(screen, t(language, "extras_ereader"), shell_status="confirm")
 
     list_panel = layout.left_panel
     rect(screen, PANEL, list_panel, 0)
@@ -2845,7 +2831,7 @@ def draw_extras_ereader(screen, fonts, slots, battles, selected, language, scrol
 def draw_extras_result(screen, fonts, result, language):
     """Show success or error message from event/battle injection."""
     _, _, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, t(language, "menu_extras"))
+    layout = draw_pokedex_shell(screen, t(language, "menu_extras"), shell_status="success" if result.get("success") else "error")
 
     panel = layout.left_panel
     rect(screen, PANEL, panel, 0)
@@ -2857,7 +2843,7 @@ def draw_extras_result(screen, fonts, result, language):
     else:
         msg = result.get("message", "extras_no_events")
         status_text = t(language, msg)
-        status_color = (255, 100, 100)
+        status_color = RED
 
     y_offset = panel.y + 40
     text(screen, small_f, status_text, panel.x + 20, y_offset, status_color, panel.w - 40)
@@ -2909,7 +2895,7 @@ def draw_extras_item_category(screen, fonts, groups, selected, language):
 def draw_extras_item_select(screen, fonts, items, selected, quantity, language):
     """Pick an item from the chosen consumable category and set the quantity."""
     _, _, small_f, tiny_f = fonts
-    layout = draw_pokedex_shell(screen, t(language, "extras_cat_additem"))
+    layout = draw_pokedex_shell(screen, t(language, "extras_cat_additem"), shell_status="confirm")
 
     list_panel = layout.left_panel
     rect(screen, PANEL, list_panel, 0)
@@ -3071,7 +3057,6 @@ def main(initial_screen=None):
         draw_extras_result=draw_extras_result,
         draw_extras_item_category=draw_extras_item_category,
         draw_extras_item_select=draw_extras_item_select,
-        next_theme=next_theme,
         KEYBOARD_GRID_W=KEYBOARD_GRID_W,
     )
     ctx = UiContext(screen=screen, fonts=fonts, state=state, sprite_loader=sprite_loader, logger=logger, draw=draw)

@@ -32,66 +32,8 @@ if DEBUG:
 
 
 DEFAULT_LANGUAGE = "pt"
-DEFAULT_THEME = "pokedex_white"
+DEFAULT_THEME = "pokedex_red"
 SUPPORTED_LANGUAGES = {"pt", "en", "es"}
-SUPPORTED_THEMES = {
-    "pokedex_red",
-    "pokedex_dark",
-    "pokedex_white",
-    "ink_wash",
-    "neutral_elegance",
-    "jade_pebble_morning",
-    "woodland",
-    "driftwood_pearl_morning",
-    "graphite",
-    "urban_slate",
-    "pearl",
-    "vichy",
-    "sorbet",
-    "frozen_mist",
-    "yacht_club",
-    "amber_walnut_morning",
-    "copper_aquamarine_dream",
-    "cocoa_topaz_noonday",
-    "sandstone_aquamarine_serenity",
-    "honey_opal_sunset",
-    "seashell_garnet_afternoon",
-    "rose_quartz_evening",
-    "calcite",
-    "fireside",
-    "terrazzo",
-    "sapphire_nightfall_whisper",
-    "lapis_velvet_evening",
-    "marina",
-    "emerald_lavender_lake",
-    "sage_peridot_morning",
-    "amethyst_dawn_haze",
-    "moon_dust",
-    "turquoise_amber_autumn",
-    "sapphire_ash_morning",
-    "frosted_aura",
-    "royal_glimmer",
-    "neptune",
-    "tropical_jade_sunrise",
-    "amethyst_mint_harmony",
-    "hibiscus_aura",
-    "ocean_ruby_radiance",
-    "tropical_heat",
-    "celestial",
-    "festive_eve",
-    "freshly_squeezed",
-    "jelly_shoes",
-    "opaline",
-    "gossamer",
-    "clockwork",
-    "lemon_granite_morning",
-    "arctic_reflection",
-    "slate",
-    "autumn_luxe",
-    "inked",
-    "wraith",
-    "urban_nocturne",
-}
 SUPPORTED_TRADE_MODES = [
     "same_generation",
     "time_capsule_gen1_gen2",
@@ -247,21 +189,17 @@ class PokecableState:
         try:
             payload = json.loads(config_file.read_text())
             language = str(payload.get("language", DEFAULT_LANGUAGE)).strip().lower()
-            theme = str(payload.get("theme", DEFAULT_THEME)).strip().lower()
             if language in SUPPORTED_LANGUAGES:
                 self.language = language
-            if theme in SUPPORTED_THEMES:
-                self.theme = theme
+            self.theme = DEFAULT_THEME
         except Exception as exc:
             logger.warning("Failed to read ui.conf: %s", exc)
 
     def save_ui_config(self, language: str, theme: str) -> None:
         language = str(language or "").strip().lower()
-        theme = str(theme or "").strip().lower()
         if language not in SUPPORTED_LANGUAGES:
             language = DEFAULT_LANGUAGE
-        if theme not in SUPPORTED_THEMES:
-            theme = DEFAULT_THEME
+        theme = DEFAULT_THEME
         payload = {"language": language, "theme": theme}
         config_file = self.config_dir / "ui.conf"
         try:

@@ -10,12 +10,10 @@ Current target:
 - Python: `3.13`
 - Bundled Python packages:
   - `pygame 2.6.1`
-  - `websockets 15.0.1`
 - Bundled native library path:
   - `lib/aarch64-linux-gnu`
 
-`websockets` is mostly self-contained. `pygame` includes native Python
-extensions, and the native libraries it needs are bundled in
+`pygame` includes native Python extensions, and the native libraries it needs are bundled in
 `lib/aarch64-linux-gnu`. The launcher prepends this directory to
 `LD_LIBRARY_PATH` only when the device matches the target above.
 

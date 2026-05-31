@@ -335,7 +335,7 @@ def test_gen2_tool_parser_keeps_non_shiny_false(tmp_path):
 def test_gen2_shiny_reaches_tool_pokemon_list_and_sprite_key(tmp_path):
     pytest.importorskip("pygame")
     from r36s_pokecable_core import PokecableState
-    from r36s_pokecable_ui import SpriteLoader
+    from frontend.sprites import SpriteLoader
 
     save_path = tmp_path / "shiny_crystal.sav"
     save_path.write_bytes(_build_gen2_save_with_party0(shiny=True))
@@ -343,7 +343,7 @@ def test_gen2_shiny_reaches_tool_pokemon_list_and_sprite_key(tmp_path):
     state.selected_save = save_path
 
     pokemon = state.get_pokemon_list("party", enrich=False)[0]
-    key, lookup = SpriteLoader("")._identity(pokemon)
+    key, lookup = SpriteLoader()._identity(pokemon)
 
     assert pokemon["is_shiny"] is True
     assert key == "pixel-v1-shiny-25-front"
@@ -518,7 +518,7 @@ def test_self_trade_preflight_does_not_call_online_runtime(tmp_path, monkeypatch
 
 def test_sprite_loader_uses_only_local_sprite_assets(tmp_path, monkeypatch):
     pygame = _pygame_for_sprite_tests()
-    import r36s_pokecable_ui as ui
+    import frontend.sprites as ui
 
     monkeypatch.setattr(ui, "POKEMON_SPRITE_ASSET_DIR", tmp_path)
     asset = tmp_path / "normal" / "25.png"
@@ -527,7 +527,7 @@ def test_sprite_loader_uses_only_local_sprite_assets(tmp_path, monkeypatch):
     surface.fill((255, 0, 0, 255))
     pygame.image.save(surface, str(asset))
 
-    loader = ui.SpriteLoader("wss://example.test/ws")
+    loader = ui.SpriteLoader()
     key, lookup = loader._identity(
         {"species_name": "Pikachu", "species_id": 25, "national_dex_id": 25, "generation": 1}
     )
@@ -544,7 +544,7 @@ def test_sprite_loader_uses_only_local_sprite_assets(tmp_path, monkeypatch):
 
 def test_sprite_loader_uses_local_shiny_form_asset(tmp_path, monkeypatch):
     pygame = _pygame_for_sprite_tests()
-    import r36s_pokecable_ui as ui
+    import frontend.sprites as ui
 
     monkeypatch.setattr(ui, "POKEMON_SPRITE_ASSET_DIR", tmp_path)
     asset = tmp_path / "shiny" / "201-question.png"
@@ -553,7 +553,7 @@ def test_sprite_loader_uses_local_shiny_form_asset(tmp_path, monkeypatch):
     surface.fill((0, 255, 0, 255))
     pygame.image.save(surface, str(asset))
 
-    loader = ui.SpriteLoader("")
+    loader = ui.SpriteLoader()
     key, lookup = loader._identity(
         {
             "species_name": "Unown",
@@ -575,10 +575,10 @@ def test_sprite_loader_uses_local_shiny_form_asset(tmp_path, monkeypatch):
 
 def test_sprite_loader_has_no_remote_fallback_when_asset_is_missing(tmp_path, monkeypatch):
     pytest.importorskip("pygame")
-    import r36s_pokecable_ui as ui
+    import frontend.sprites as ui
 
     monkeypatch.setattr(ui, "POKEMON_SPRITE_ASSET_DIR", tmp_path)
-    loader = ui.SpriteLoader("")
+    loader = ui.SpriteLoader()
     key, lookup = loader._identity(
         {"species_name": "Pikachu", "species_id": 25, "national_dex_id": 25, "generation": 1}
     )
@@ -592,9 +592,9 @@ def test_sprite_loader_has_no_remote_fallback_when_asset_is_missing(tmp_path, mo
 
 def test_sprite_loader_cache_key_is_pixel_versioned():
     pytest.importorskip("pygame")
-    from r36s_pokecable_ui import SpriteLoader
+    from frontend.sprites import SpriteLoader
 
-    key, lookup = SpriteLoader("")._identity(
+    key, lookup = SpriteLoader()._identity(
         {"species_name": "Pikachu", "species_id": 25, "national_dex_id": 25, "generation": 1}
     )
 
@@ -604,9 +604,9 @@ def test_sprite_loader_cache_key_is_pixel_versioned():
 
 def test_sprite_loader_resolves_gen1_internal_species_to_local_asset():
     pytest.importorskip("pygame")
-    from r36s_pokecable_ui import SpriteLoader
+    from frontend.sprites import SpriteLoader
 
-    key, lookup = SpriteLoader("")._identity(
+    key, lookup = SpriteLoader()._identity(
         {"species_name": "Kadabra", "species_id": 38, "generation": 1}
     )
 
@@ -629,10 +629,10 @@ def _pygame_for_sprite_tests():
 
 def test_sprite_loader_snapshot_does_not_report_stale_loading(monkeypatch):
     pytest.importorskip("pygame")
-    import r36s_pokecable_ui as ui
+    import frontend.sprites as ui
 
     monkeypatch.setattr(ui, "SPRITE_LOADING_MAX_SECONDS", 0.1)
-    loader = ui.SpriteLoader("")
+    loader = ui.SpriteLoader()
     loader.entries["stale"] = {
         "surface": None,
         "loading": True,
@@ -647,12 +647,12 @@ def test_sprite_loader_snapshot_does_not_report_stale_loading(monkeypatch):
 
 
 def test_move_labels_resolves_local_move_names():
-    from r36s_pokecable_ui import move_labels
+    from frontend.app import move_labels
 
     assert move_labels({"moves": [22, 33]}) == ["Vine Whip", "Tackle"]
 
 
 def test_move_labels_replaces_move_number_placeholders():
-    from r36s_pokecable_ui import move_labels
+    from frontend.app import move_labels
 
     assert move_labels({"moves": [22, 33], "move_names": ["Move #22", "Tackle"]}) == ["Vine Whip", "Tackle"]
